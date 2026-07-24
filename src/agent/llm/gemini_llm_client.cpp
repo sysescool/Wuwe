@@ -199,6 +199,9 @@ json gemini_llm_client::build_payload(const llm_request& request) const {
     {"contents", std::move(contents)},
     {"generationConfig", {{"temperature", request.temperature}}},
   };
+  if (request.max_output_tokens && *request.max_output_tokens > 0) {
+    payload["generationConfig"]["maxOutputTokens"] = *request.max_output_tokens;
+  }
   if (!system.empty()) {
     payload["systemInstruction"] = {{"parts", json::array({{{"text", system}}})}};
   }

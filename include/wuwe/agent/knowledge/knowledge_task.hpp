@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <condition_variable>
 #include <functional>
 #include <future>
 #include <mutex>
@@ -63,10 +64,19 @@ public:
 
   void request_cancel() {
     cancel_requested_.store(true);
+    cancellation_condition_.notify_all();
   }
 
   bool cancel_requested() const {
     return cancel_requested_.load();
+  }
+
+  bool wait_for_cancel(std::chrono::milliseconds duration) const {
+    if (cancel_requested()) return true;
+    std::unique_lock lock(cancellation_mutex_);
+    return cancellation_condition_.wait_for(lock, duration, [&] {
+      return cancel_requested();
+    });
   }
 
 private:
@@ -74,6 +84,8 @@ private:
   mutable std::mutex mutex_;
   knowledge_task_progress progress_;
   std::atomic<bool> cancel_requested_ { false };
+  mutable std::mutex cancellation_mutex_;
+  mutable std::condition_variable cancellation_condition_;
 };
 
 } // namespace wuwe::agent::knowledge

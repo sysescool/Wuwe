@@ -759,6 +759,10 @@ json openai_compatible_llm_client::build_openai_payload(const llm_request& reque
     { "temperature", request.temperature },
   };
 
+  if (request.max_output_tokens && *request.max_output_tokens > 0) {
+    payload["max_tokens"] = *request.max_output_tokens;
+  }
+
   if (request.response_format.has_value()) {
     if (*request.response_format == "json_object") {
       payload["response_format"] = { { "type", "json_object" } };

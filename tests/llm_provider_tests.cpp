@@ -477,6 +477,7 @@ void test_reasoning_language_contract_is_mapped_to_provider_payloads() {
     .reasoning_language = "zh-CN",
     .locale = "zh-CN",
   };
+  request.max_output_tokens = 321;
   request.messages.push_back({ .role = "user", .content = "分析一下当前应用" });
 
   auto openai_http = std::make_shared<capture_http_client>(
@@ -494,6 +495,8 @@ void test_reasoning_language_contract_is_mapped_to_provider_payloads() {
   require(openai_body["messages"].front().value("content", std::string {}).find("zh-CN") !=
       std::string::npos,
     "OpenAI-compatible language contract should include requested language");
+  require(openai_body.value("max_tokens", 0) == 321,
+    "OpenAI-compatible requests should carry the output token limit");
   require(openai_response.reasoning_metadata.at("requested_language") == "zh-CN",
     "reasoning metadata should preserve requested reasoning language");
   require(openai_response.reasoning_metadata.at("detected_language") == "en",
@@ -514,6 +517,8 @@ void test_reasoning_language_contract_is_mapped_to_provider_payloads() {
   const auto anthropic_body = nlohmann::json::parse(anthropic_http->requests.front().body);
   require(anthropic_body.value("system", std::string {}).find("zh-CN") != std::string::npos,
     "Anthropic language contract should be carried in system");
+  require(anthropic_body.value("max_tokens", 0) == 321,
+    "Anthropic requests should carry the output token limit");
 
   auto gemini_http = std::make_shared<capture_http_client>(
     R"({"candidates":[{"content":{"parts":[{"text":"好的"}]},"finishReason":"STOP"}]})");
@@ -527,6 +532,8 @@ void test_reasoning_language_contract_is_mapped_to_provider_payloads() {
   require(gemini_body["systemInstruction"]["parts"].front().value("text", std::string {})
         .find("zh-CN") != std::string::npos,
     "Gemini language contract should be carried in systemInstruction");
+  require(gemini_body["generationConfig"].value("maxOutputTokens", 0) == 321,
+    "Gemini requests should carry the output token limit");
 
   auto ollama_http = std::make_shared<capture_http_client>(
     R"({"message":{"role":"assistant","content":"好的"},"done_reason":"stop"})");
@@ -540,6 +547,8 @@ void test_reasoning_language_contract_is_mapped_to_provider_payloads() {
   require(ollama_body["messages"].front().value("content", std::string {}).find("zh-CN") !=
       std::string::npos,
     "Ollama language contract should include requested language");
+  require(ollama_body["options"].value("num_predict", 0) == 321,
+    "Ollama requests should carry the output token limit");
 }
 
 void test_native_provider_streaming_success_and_incomplete_streams() {

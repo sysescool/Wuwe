@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -120,6 +121,13 @@ public:
       throw std::runtime_error("embedding failed");
     }
     return { 1.0F, 0.0F, 0.0F };
+  }
+};
+
+class nonstandard_throwing_embedding_model final : public agent::memory::embedding_model {
+public:
+  std::vector<float> embed(std::string_view) const override {
+    throw 42;
   }
 };
 
@@ -1839,6 +1847,119 @@ void test_ingest_batch_async_retries_transient_failures() {
   require(result.errors.empty(), "async ingest retry should avoid final errors");
 }
 
+void test_async_retriever_operations_hold_safe_lifetime() {
+  auto retriever = std::make_shared<knowledge_retriever>(
+    std::make_shared<in_memory_knowledge_store>(),
+    std::make_shared<in_memory_knowledge_index>(),
+    std::make_shared<slow_embedding_model>(),
+    knowledge_splitter({
+      .max_chars = 200,
+      .overlap_chars = 0,
+    }));
+  auto task = retriever->ingest_batch_async({ {
+    .id = "lifetime-doc",
+    .content = "asynchronous retrieval lifetime",
+  } });
+  retriever.reset();
+  const auto result = task->get();
+  require(result.ingested == 1,
+    "asynchronous knowledge work retains its retriever until completion");
+
+  bool rejected_unowned_async = false;
+  try {
+    knowledge_retriever unowned(
+      std::make_shared<in_memory_knowledge_store>(),
+      std::make_shared<in_memory_knowledge_index>(),
+      std::make_shared<topic_embedding_model>());
+    (void)unowned.ingest_batch_async({});
+  }
+  catch (const std::invalid_argument&) {
+    rejected_unowned_async = true;
+  }
+  require(rejected_unowned_async,
+    "asynchronous knowledge APIs reject retrievers without shared ownership");
+}
+
+void test_async_task_callbacks_and_retry_backoff_are_safe() {
+  auto callback_retriever = std::make_shared<knowledge_retriever>(
+    std::make_shared<in_memory_knowledge_store>(),
+    std::make_shared<in_memory_knowledge_index>(),
+    std::make_shared<topic_embedding_model>());
+  auto callback_task = callback_retriever->ingest_batch_async({ {
+    .id = "callback-doc",
+    .content = "RAG retrieval callback",
+  } }, [](const knowledge_task_progress&) {
+    throw std::runtime_error("progress unavailable");
+  });
+  const auto callback_result = callback_task->get();
+  require(callback_result.ingested == 1 && !callback_result.errors.empty(),
+    "progress callback failures are isolated without breaking task completion");
+
+  auto cancellable = std::make_shared<knowledge_retriever>(
+    std::make_shared<in_memory_knowledge_store>(),
+    std::make_shared<in_memory_knowledge_index>(),
+    std::make_shared<selectively_failing_embedding_model>());
+  auto task = cancellable->ingest_batch_async({ {
+    .id = "broken-doc",
+    .content = "broken embedding",
+  } }, {}, {
+    .max_retries = (std::numeric_limits<std::size_t>::max)(),
+    .retry_backoff = std::chrono::seconds(5),
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  const auto cancelled_at = std::chrono::steady_clock::now();
+  task->request_cancel();
+  (void)task->get();
+  const auto cancellation_latency = std::chrono::steady_clock::now() - cancelled_at;
+  require(task->progress().state == knowledge_task_state::canceled &&
+      cancellation_latency < std::chrono::seconds(1),
+    "retry backoff is cancellation-aware and cannot wrap its retry counter");
+
+  bool negative_backoff = false;
+  try {
+    (void)cancellable->ingest_batch_async({}, {}, {
+      .retry_backoff = std::chrono::milliseconds(-1),
+    });
+  }
+  catch (const std::invalid_argument&) {
+    negative_backoff = true;
+  }
+  require(negative_backoff, "knowledge tasks reject negative retry backoff");
+}
+
+void test_async_workers_contain_nonstandard_exceptions() {
+  auto ingest_retriever = std::make_shared<knowledge_retriever>(
+    std::make_shared<in_memory_knowledge_store>(),
+    std::make_shared<in_memory_knowledge_index>(),
+    std::make_shared<nonstandard_throwing_embedding_model>());
+  const auto ingest_result = ingest_retriever->ingest_batch_async({ {
+    .id = "nonstandard-ingest",
+    .content = "nonstandard async failure",
+  } })->get();
+  require(ingest_result.ingested == 0 && ingest_result.errors.size() == 1,
+    "async ingest should contain non-standard provider exceptions");
+  require(contains(ingest_result.errors.front(), "unknown exception"),
+    "async ingest should report a stable error for non-standard exceptions");
+
+  auto store = std::make_shared<in_memory_knowledge_store>();
+  auto index = std::make_shared<in_memory_knowledge_index>();
+  {
+    auto seed = std::make_shared<knowledge_retriever>(
+      store, index, std::make_shared<topic_embedding_model>());
+    seed->ingest({
+      .id = "nonstandard-rebuild",
+      .content = "rebuild source",
+    });
+  }
+  auto rebuild_retriever = std::make_shared<knowledge_retriever>(
+    store, index, std::make_shared<nonstandard_throwing_embedding_model>());
+  const auto rebuild_result = rebuild_retriever->rebuild_index_detailed_async()->get();
+  require(rebuild_result.rebuilt == 0 && rebuild_result.errors.size() == 1,
+    "async rebuild should contain non-standard provider exceptions");
+  require(contains(rebuild_result.errors.front(), "unknown exception"),
+    "async rebuild should report a stable error for non-standard exceptions");
+}
+
 void test_indexing_policy_records_embedding_metadata_and_dimension() {
   auto retriever = std::make_shared<knowledge_retriever>(
     std::make_shared<in_memory_knowledge_store>(),
@@ -3219,6 +3340,12 @@ int main() {
     run("ingest batch async can be canceled", test_ingest_batch_async_can_be_canceled);
     run("ingest batch async retries transient failures",
       test_ingest_batch_async_retries_transient_failures);
+    run("async retriever operations hold safe lifetime",
+      test_async_retriever_operations_hold_safe_lifetime);
+    run("async task callbacks and retry backoff are safe",
+      test_async_task_callbacks_and_retry_backoff_are_safe);
+    run("async workers contain non-standard exceptions",
+      test_async_workers_contain_nonstandard_exceptions);
     run("indexing policy records embedding metadata and dimension",
       test_indexing_policy_records_embedding_metadata_and_dimension);
     run("retriever returns relevant chunk", test_retriever_returns_relevant_chunk);

@@ -8,6 +8,8 @@ description: Configure built-in cloud and local model clients through one interf
 
 Wuwe normalizes provider configuration, requests, responses, streaming events, tool calls, usage, retries, and errors behind `llm_client`.
 
+`llm_request::max_output_tokens` is the common output limit. Built-in OpenAI-compatible, Anthropic, Gemini, and Ollama clients translate it to their protocol-specific request field.
+
 ## Built-in providers
 
 | Provider ID | Protocol | Default credential |
@@ -70,4 +72,4 @@ Capabilities describe the Wuwe adapter and protocol path. A specific model or up
 - retry count and backoff;
 - optional OpenRouter referer and application title.
 
-See [Streaming](llm-streaming.md), [Typed tools](llm-tools.md), and [HTTP backends](http-backends.md).
+See [Resource-aware routing](resource-routing.md), [Streaming](llm-streaming.md), [Typed tools](llm-tools.md), and [HTTP backends](http-backends.md).

@@ -130,6 +130,7 @@ struct llm_request {
   std::vector<llm_tool> tools;
   std::optional<llm_tool_choice> tool_choice;
   llm_language_preferences language;
+  std::optional<int> max_output_tokens;
 };
 
 struct llm_usage {

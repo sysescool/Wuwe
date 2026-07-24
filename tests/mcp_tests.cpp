@@ -1231,6 +1231,74 @@ void test_async_task_registry_tracks_completion_progress_cancel_and_timeout() {
     "async registry should mark timed out task failed");
   require(timed_out->record.error == "request timed out",
     "async registry should record timeout error");
+
+  bool empty_id = false;
+  try {
+    registry.submit("", "tools/call", "worker", json::object(),
+      [](wuwe::agent::mcp::mcp_async_cancel_token) {});
+  }
+  catch (const std::invalid_argument&) {
+    empty_id = true;
+  }
+  bool negative_timeout = false;
+  try {
+    registry.submit("negative-timeout", "tools/call", "worker", json::object(),
+      [](wuwe::agent::mcp::mcp_async_cancel_token) {},
+      std::chrono::milliseconds(-1));
+  }
+  catch (const std::invalid_argument&) {
+    negative_timeout = true;
+  }
+  bool duplicate_id = false;
+  try {
+    registry.submit("async-complete", "tools/call", "worker", json::object(),
+      [](wuwe::agent::mcp::mcp_async_cancel_token) {});
+  }
+  catch (const std::invalid_argument&) {
+    duplicate_id = true;
+  }
+  require(empty_id && negative_timeout && duplicate_id,
+    "async registry rejects invalid and ambiguous task configuration");
+
+  registry.submit(
+    "cancel-then-throw",
+    "tools/call",
+    "worker",
+    json::object(),
+    [](wuwe::agent::mcp::mcp_async_cancel_token token) {
+      while (!token.is_cancelled()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+      throw std::runtime_error("late worker failure");
+    });
+  require(registry.cancel("cancel-then-throw", "cancel wins"),
+    "async registry accepts cooperative cancellation");
+  for (int i = 0; i < 50; ++i) {
+    const auto current = registry.poll("cancel-then-throw");
+    if (current && current->ready) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  const auto cancel_wins = registry.poll("cancel-then-throw");
+  require(cancel_wins && cancel_wins->record.state ==
+      wuwe::agent::mcp::mcp_request_state::cancelled &&
+      cancel_wins->record.error == "cancel wins",
+    "worker exceptions cannot overwrite an already committed cancellation");
+
+  const auto destruction_started = std::chrono::steady_clock::now();
+  {
+    wuwe::agent::mcp::mcp_async_task_registry short_lived;
+    short_lived.submit(
+      "registry-lifetime",
+      "tools/call",
+      "worker",
+      json::object(),
+      [](wuwe::agent::mcp::mcp_async_cancel_token) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      });
+  }
+  require(std::chrono::steady_clock::now() - destruction_started >=
+      std::chrono::milliseconds(15),
+    "registry destruction safely joins work without a task-state ownership cycle");
 }
 
 void test_stdio_transport_uses_content_length_framing() {

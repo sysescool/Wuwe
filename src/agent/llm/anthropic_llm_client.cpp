@@ -156,7 +156,9 @@ json anthropic_llm_client::build_payload(const llm_request& request, bool stream
 
   json payload = {
     {"model", request.model.empty() ? config_.model : request.model},
-    {"max_tokens", 4096},
+    {"max_tokens", request.max_output_tokens && *request.max_output_tokens > 0
+                     ? *request.max_output_tokens
+                     : 4096},
     {"messages", std::move(messages)},
     {"temperature", request.temperature},
     {"stream", stream},

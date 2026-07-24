@@ -114,6 +114,35 @@ public:
   std::vector<llm_request> requests;
 };
 
+class model_callback_client final : public llm_client {
+public:
+  bool supports_streaming() const noexcept override {
+    return true;
+  }
+
+  llm_response complete(const llm_request& request) override {
+    ++completion_calls;
+    requests.push_back(request);
+    return {
+      .content = "prepared response",
+      .usage = { .prompt_tokens = 7, .completion_tokens = 3, .total_tokens = 10 },
+    };
+  }
+
+  llm_response complete_stream(
+    const llm_request& request,
+    const llm_stream_callbacks&,
+    std::stop_token = {}) override {
+    ++streaming_calls;
+    requests.push_back(request);
+    return { .content = "unexpected streaming response" };
+  }
+
+  int completion_calls { 0 };
+  int streaming_calls { 0 };
+  std::vector<llm_request> requests;
+};
+
 class blocking_client final : public llm_client {
 public:
   llm_response complete(const llm_request& request) override {
@@ -424,6 +453,87 @@ void test_runner_callbacks_and_stop_token_reach_provider() {
   require(events[3] == "done:final answer", "runner should emit done");
 }
 
+void test_runner_prepares_model_requests_and_observes_results() {
+  model_callback_client client;
+  llm_agent_runner runner(client);
+
+  int prepare_calls = 0;
+  int result_calls = 0;
+  llm_request observed_request;
+  llm_response observed_response;
+  llm_agent_run_options options;
+  options.callbacks.prepare_model_request = [&](llm_request request) {
+    ++prepare_calls;
+    request.model = "routed-model";
+    request.max_output_tokens = 64;
+    return std::optional<llm_request>(std::move(request));
+  };
+  options.callbacks.on_model_result = [&](
+                                      const llm_request& request,
+                                      const llm_response& response) {
+    ++result_calls;
+    observed_request = request;
+    observed_response = response;
+  };
+
+  llm_request request;
+  request.model = "original-model";
+  request.messages.push_back({ .role = "user", .content = "prepare this request" });
+  const auto response = runner.complete(std::move(request), std::move(options));
+
+  require(!response.error_code && response.content == "prepared response",
+    "prepared model request should complete normally");
+  require(prepare_calls == 1 && result_calls == 1,
+    "model preparation and result callbacks should run once per provider call");
+  require(client.completion_calls == 1 && client.streaming_calls == 0,
+    "model lifecycle callbacks alone should not force streaming");
+  require(client.requests.size() == 1 && client.requests.front().model == "routed-model" &&
+      client.requests.front().max_output_tokens == 64,
+    "the provider should receive the prepared model request");
+  require(observed_request.model == "routed-model" &&
+      observed_request.max_output_tokens == 64,
+    "the result observer should receive the exact prepared request");
+  require(observed_response.content == "prepared response" &&
+      observed_response.usage.total_tokens == 10,
+    "the result observer should receive the completed provider response");
+}
+
+void test_runner_can_defer_assistant_memory_persistence() {
+  model_callback_client client;
+  agent::memory::memory_context memory;
+  memory.set_scope({ .conversation_id = "deferred-memory" });
+  llm_agent_runner runner(client, &memory);
+  llm_agent_run_options options;
+  options.persist_assistant_messages = false;
+
+  const auto response = runner.complete("defer persistence", std::move(options));
+  require(!response.error_code, "deferred assistant persistence should not affect completion");
+  const auto records = memory.list();
+  require(std::none_of(records.begin(), records.end(), [](const auto& record) {
+      return record.metadata.contains("message_role") &&
+             record.metadata.at("message_role") == "assistant";
+    }),
+    "deferred persistence should keep raw assistant responses out of memory");
+}
+
+void test_runner_can_isolate_all_memory_persistence() {
+  tool_call_client client;
+  auto provider = std::make_shared<tool_provider<echo_text>>();
+  agent::memory::memory_context memory;
+  memory.set_scope({ .conversation_id = "isolated-memory" });
+  llm_agent_runner runner(client, provider, &memory, 1);
+  llm_agent_run_options options;
+  options.persist_request_messages = false;
+  options.persist_assistant_messages = false;
+  options.persist_tool_messages = false;
+
+  const auto response = runner.complete("do not persist this run", std::move(options));
+  require(!response.error_code && response.content == "final answer",
+    "memory isolation should not alter tool-loop execution");
+  require(memory.list().empty(),
+    "request, assistant, and tool persistence can be disabled as one isolation boundary");
+}
+
 void test_runner_reports_tool_round_budget_exhaustion_with_stable_error() {
   endless_tool_call_client client;
   auto provider = std::make_shared<tool_provider<echo_text>>();
@@ -496,6 +606,28 @@ void test_async_runner_can_be_cancelled_by_handle() {
   require(!external_stop_source.stop_requested(),
     "async runner handle cancellation should not mutate the caller-owned stop source");
   require(client.calls == 1, "async runner should call model once");
+}
+
+void test_async_runner_owns_runner_state() {
+  blocking_client client;
+  auto run = llm_agent_runner(client).run_async("temporary runner");
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  run.request_stop();
+  const auto response = run.get();
+  require(response.error_code == agent::llm_error_code::cancelled && client.calls == 1,
+    "async execution remains valid after the originating runner is destroyed");
+}
+
+void test_runner_rejects_negative_tool_round_limits() {
+  model_callback_client client;
+  bool rejected = false;
+  try {
+    (void)llm_agent_runner(client, -1);
+  }
+  catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected, "agent runner rejects negative tool-round limits at construction");
 }
 
 void test_sse_parser_handles_split_and_batched_events() {
@@ -1200,11 +1332,20 @@ int main() {
       test_composite_tool_provider_preserves_stop_token);
     run("runner callbacks and stop token reach provider",
       test_runner_callbacks_and_stop_token_reach_provider);
+    run("runner prepares model requests and observes results",
+      test_runner_prepares_model_requests_and_observes_results);
+    run("runner can defer assistant memory persistence",
+      test_runner_can_defer_assistant_memory_persistence);
+    run("runner can isolate all memory persistence",
+      test_runner_can_isolate_all_memory_persistence);
     run("runner reports tool round budget exhaustion with stable error",
       test_runner_reports_tool_round_budget_exhaustion_with_stable_error);
     run("runner pre-cancelled request does not call model",
       test_runner_pre_cancelled_request_does_not_call_model);
     run("async runner can be cancelled by handle", test_async_runner_can_be_cancelled_by_handle);
+    run("async runner owns runner state", test_async_runner_owns_runner_state);
+    run("runner validates tool round limits",
+      test_runner_rejects_negative_tool_round_limits);
     run("SSE parser handles split and batched events",
       test_sse_parser_handles_split_and_batched_events);
     run("OpenRouter streaming content and tool call accumulation",

@@ -5,7 +5,9 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <optional>
 #include <stop_token>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -59,11 +61,19 @@ struct llm_agent_callbacks {
   std::function<void(const llm_response&)> on_done;
   std::function<void(std::error_code, std::string_view)> on_error;
   std::function<void()> on_cancelled;
+  std::function<std::optional<llm_tool_call>(const llm_tool_call&)> prepare_tool_call;
+  std::function<std::optional<llm_tool_result>(const llm_tool_call&, llm_tool_result)>
+    prepare_tool_result;
+  std::function<std::optional<llm_request>(llm_request)> prepare_model_request;
+  std::function<void(const llm_request&, const llm_response&)> on_model_result;
 };
 
 struct llm_agent_run_options {
   std::stop_token stop_token;
   llm_agent_callbacks callbacks;
+  bool persist_request_messages { true };
+  bool persist_assistant_messages { true };
+  bool persist_tool_messages { true };
 };
 
 class llm_agent_run {
@@ -104,6 +114,7 @@ class llm_agent_runner {
 public:
   explicit llm_agent_runner(llm_client& client, int max_tool_rounds = 4)
       : client_(client), max_tool_rounds_(max_tool_rounds) {
+    validate_max_tool_rounds();
   }
 
   explicit llm_agent_runner(
@@ -111,6 +122,7 @@ public:
     agent::memory::memory_context* memory,
     int max_tool_rounds = 4)
       : client_(client), memory_(memory), max_tool_rounds_(max_tool_rounds) {
+    validate_max_tool_rounds();
   }
 
   template<typename ToolProvider>
@@ -119,6 +131,10 @@ public:
       : client_(client),
         tools_([tool_provider] { return tool_provider->tools(); }),
         max_tool_rounds_(max_tool_rounds) {
+    if (!tool_provider) {
+      throw std::invalid_argument("llm_agent_runner requires a tool provider");
+    }
+    validate_max_tool_rounds();
     bind_invoke(std::move(tool_provider));
   }
 
@@ -131,6 +147,10 @@ public:
         tools_([tool_provider] { return tool_provider->tools(); }),
         memory_(memory),
         max_tool_rounds_(max_tool_rounds) {
+    if (!tool_provider) {
+      throw std::invalid_argument("llm_agent_runner requires a tool provider");
+    }
+    validate_max_tool_rounds();
     bind_invoke(std::move(tool_provider));
   }
 
@@ -161,9 +181,13 @@ public:
   llm_agent_run run_async(llm_request request, llm_agent_run_options options = {}) const {
     auto promise = std::make_shared<std::promise<llm_response>>();
     auto future = promise->get_future();
+    auto runner = *this;
 
     std::jthread worker(
-      [this, request = std::move(request), options = std::move(options), promise](
+      [runner = std::move(runner),
+       request = std::move(request),
+       options = std::move(options),
+       promise](
         std::stop_token worker_stop_token) mutable {
         const auto external_stop_token = options.stop_token;
         std::stop_source run_stop_source;
@@ -189,10 +213,17 @@ public:
 
         try {
           promise->set_value(
-            complete_impl(std::move(request), std::move(options), run_stop_token, is_cancelled));
+            runner.complete_impl(
+              std::move(request), std::move(options), run_stop_token, is_cancelled));
         }
         catch (...) {
-          promise->set_exception(std::current_exception());
+          const auto failure = std::current_exception();
+          try {
+            promise->set_exception(failure);
+          }
+          catch (...) {
+            // Never allow promise bookkeeping to escape a worker thread.
+          }
         }
       });
 
@@ -206,6 +237,12 @@ public:
   }
 
 private:
+  void validate_max_tool_rounds() const {
+    if (max_tool_rounds_ < 0) {
+      throw std::invalid_argument("llm_agent_runner max_tool_rounds must not be negative");
+    }
+  }
+
   template<typename ToolProvider>
   void bind_invoke(std::shared_ptr<ToolProvider> tool_provider) {
     invoke_ =
@@ -242,7 +279,9 @@ private:
 
     if (memory_) {
       request = memory_->augment(std::move(request), query_text);
-      observe_request_messages(request_to_observe);
+      if (options.persist_request_messages) {
+        observe_request_messages(request_to_observe);
+      }
     }
 
     const bool use_streaming =
@@ -265,8 +304,13 @@ private:
       emit_delta(options.callbacks, response);
       emit_reasoning_done(options.callbacks, response);
     }
-    observe_assistant_response(response);
-
+    if (response.tool_calls.empty()) {
+      if (options.persist_assistant_messages) {
+        observe_assistant_response(response);
+      }
+      emit_done(options.callbacks, response);
+      return response;
+    }
     int used_tool_rounds = 0;
     llm_tool_call last_tool_call;
     llm_tool_result last_tool_result;
@@ -276,29 +320,52 @@ private:
         return cancelled_response(options.callbacks);
       }
       if (response.tool_calls.empty() || !invoke_) {
+        if (options.persist_assistant_messages) {
+          observe_assistant_response(response);
+        }
         emit_done(options.callbacks, response);
         return response;
       }
       ++used_tool_rounds;
 
-      chat_message assistant_message {
-        .role = "assistant",
-        .content = response.content,
-        .tool_calls = response.tool_calls,
-      };
-      request.messages.push_back(assistant_message);
-
-      for (const auto& call : response.tool_calls) {
+      std::vector<llm_tool_call> prepared_calls;
+      prepared_calls.reserve(response.tool_calls.size());
+      for (const auto& original_call : response.tool_calls) {
         if (is_cancelled()) {
           return cancelled_response(options.callbacks);
         }
 
-        if (!allow_tool_call(options.callbacks, call)) {
+        if (!allow_tool_call(options.callbacks, original_call)) {
           return cancelled_response(options.callbacks);
         }
+        auto prepared_call = prepare_tool_call(options.callbacks, original_call);
+        if (!prepared_call) {
+          return cancelled_response(options.callbacks);
+        }
+        prepared_calls.push_back(std::move(*prepared_call));
+      }
+
+      request.messages.push_back({
+        .role = "assistant",
+        .content = response.content,
+        .tool_calls = prepared_calls,
+      });
+      if (options.persist_assistant_messages) {
+        observe_assistant_response(response, &prepared_calls);
+      }
+
+      for (auto& call : prepared_calls) {
         emit_tool_start(options.callbacks, call);
         last_tool_call = call;
-        const llm_tool_result tool_result = invoke_(call.name, call.arguments_json, client_stop_token);
+        auto tool_result = invoke_(call.name, call.arguments_json, client_stop_token);
+        auto prepared_result = prepare_tool_result(
+          options.callbacks,
+          call,
+          std::move(tool_result));
+        if (!prepared_result) {
+          return cancelled_response(options.callbacks);
+        }
+        tool_result = std::move(*prepared_result);
         last_tool_result = tool_result;
         if (is_cancelled()) {
           return cancelled_response(options.callbacks);
@@ -310,7 +377,7 @@ private:
           .name = call.name,
           .tool_call_id = call.id };
         request.messages.push_back(tool_message);
-        if (memory_) {
+        if (memory_ && options.persist_tool_messages) {
           memory_->observe(tool_message);
         }
       }
@@ -327,7 +394,13 @@ private:
         emit_delta(options.callbacks, response);
         emit_reasoning_done(options.callbacks, response);
       }
-      observe_assistant_response(response);
+      if (response.tool_calls.empty() || !invoke_) {
+        if (options.persist_assistant_messages) {
+          observe_assistant_response(response);
+        }
+        emit_done(options.callbacks, response);
+        return response;
+      }
     }
 
     response.error_code = agent::make_error_code(agent::llm_error_code::agent_loop_budget_exceeded);
@@ -375,10 +448,15 @@ private:
   }
 
   llm_response complete_model(
-    const llm_request& request,
+    llm_request request,
     const llm_agent_callbacks& callbacks,
     std::stop_token stop_token,
     bool use_streaming) const {
+    auto prepared_request = prepare_model_request(callbacks, std::move(request));
+    if (!prepared_request) {
+      return cancelled_response(callbacks);
+    }
+    request = std::move(*prepared_request);
     if (callbacks.on_model_start && !callbacks.on_model_start(request)) {
       return cancelled_response(callbacks);
     }
@@ -393,6 +471,7 @@ private:
         .request = &request,
         .response = &response,
       });
+      emit_model_result(callbacks, request, response);
       return response;
     }
 
@@ -477,6 +556,7 @@ private:
       .request = &request,
       .response = &response,
     });
+    emit_model_result(callbacks, request, response);
     return response;
   }
 
@@ -493,6 +573,39 @@ private:
 
   static bool allow_tool_call(const llm_agent_callbacks& callbacks, const llm_tool_call& call) {
     return !callbacks.allow_tool_call || callbacks.allow_tool_call(call);
+  }
+
+  static std::optional<llm_tool_call> prepare_tool_call(
+    const llm_agent_callbacks& callbacks,
+    const llm_tool_call& call) {
+    return callbacks.prepare_tool_call ? callbacks.prepare_tool_call(call)
+                                       : std::optional<llm_tool_call>(call);
+  }
+
+  static std::optional<llm_tool_result> prepare_tool_result(
+    const llm_agent_callbacks& callbacks,
+    const llm_tool_call& call,
+    llm_tool_result result) {
+    return callbacks.prepare_tool_result
+             ? callbacks.prepare_tool_result(call, std::move(result))
+             : std::optional<llm_tool_result>(std::move(result));
+  }
+
+  static std::optional<llm_request> prepare_model_request(
+    const llm_agent_callbacks& callbacks,
+    llm_request request) {
+    return callbacks.prepare_model_request
+             ? callbacks.prepare_model_request(std::move(request))
+             : std::optional<llm_request>(std::move(request));
+  }
+
+  static void emit_model_result(
+    const llm_agent_callbacks& callbacks,
+    const llm_request& request,
+    const llm_response& response) {
+    if (callbacks.on_model_result) {
+      callbacks.on_model_result(request, response);
+    }
   }
 
   static void emit_tool_result(
@@ -571,14 +684,16 @@ private:
     }
   }
 
-  void observe_assistant_response(const llm_response& response) const {
+  void observe_assistant_response(
+    const llm_response& response,
+    const std::vector<llm_tool_call>* tool_calls = nullptr) const {
     if (!memory_) {
       return;
     }
 
     memory_->observe({ .role = "assistant",
       .content = response.content,
-      .tool_calls = response.tool_calls });
+      .tool_calls = tool_calls == nullptr ? response.tool_calls : *tool_calls });
   }
 
 private:

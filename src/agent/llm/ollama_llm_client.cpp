@@ -175,6 +175,9 @@ json ollama_llm_client::build_payload(const llm_request& request, bool stream) c
     {"stream", stream},
     {"options", {{"temperature", request.temperature}}},
   };
+  if (request.max_output_tokens && *request.max_output_tokens > 0) {
+    payload["options"]["num_predict"] = *request.max_output_tokens;
+  }
   if (request.response_format == "json_object") {
     payload["format"] = "json";
   }

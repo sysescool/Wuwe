@@ -83,6 +83,6 @@ The loader owns the started runtime for its lifetime. Plain text and supported l
 
 Grounding reports and citations help a host explain supporting evidence, but they do not guarantee factual correctness. The application should decide how to handle low scores, missing evidence, conflicting sources, and access-denied results.
 
-Bulk ingestion and rebuild operations are available through cancellable `knowledge_task` operations.
+Bulk ingestion and rebuild operations are available through cancellable `knowledge_task` operations. The asynchronous APIs require the retriever itself to be owned by `std::shared_ptr`; each task retains that ownership until its detached worker exits, preventing use-after-free when the caller releases its reference before `get()` completes. Calling an asynchronous operation on a stack-owned or otherwise unshared retriever is rejected at the API boundary. Retry backoff must be non-negative, is interruptible by `request_cancel()`, and uses an overflow-safe retry loop. Progress callback exceptions are recorded in task errors without breaking the result future. Detached worker boundaries contain both standard and non-standard provider exceptions, so an extension cannot terminate the host process by throwing through a worker entry point.
 
 See `examples/src/knowledge_retrieval_example.cpp`, `url_rag_example.cpp`, and `knowledge_mcp_example.cpp`.

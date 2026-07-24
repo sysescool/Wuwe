@@ -1,9 +1,11 @@
 #ifndef WUWE_AGENT_KNOWLEDGE_RETRIEVER_HPP
 #define WUWE_AGENT_KNOWLEDGE_RETRIEVER_HPP
 
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <future>
 #include <map>
@@ -76,7 +78,8 @@ struct knowledge_retrieval_report {
   knowledge_retrieval_trace trace;
 };
 
-class knowledge_retriever {
+class knowledge_retriever
+    : public std::enable_shared_from_this<knowledge_retriever> {
 public:
   knowledge_retriever(
     std::shared_ptr<knowledge_store> store,
@@ -166,6 +169,14 @@ public:
     std::vector<knowledge_document> documents,
     knowledge_task_progress_callback progress_callback = {},
     knowledge_task_policy task_policy = {}) {
+    if (task_policy.retry_backoff.count() < 0) {
+      throw std::invalid_argument("knowledge task retry backoff must not be negative");
+    }
+    auto lifetime = weak_from_this().lock();
+    if (!lifetime) {
+      throw std::invalid_argument(
+        "knowledge_retriever asynchronous operations require shared ownership");
+    }
     auto promise = std::make_shared<std::promise<knowledge_ingest_result>>();
     auto task = std::make_shared<knowledge_task<knowledge_ingest_result>>(promise->get_future());
 
@@ -176,8 +187,9 @@ public:
       .message = "ingest pending",
     });
 
-    std::thread(
-      [this, task, promise, documents = std::move(documents),
+    std::thread worker(
+      [this, lifetime = std::move(lifetime), task, promise,
+        documents = std::move(documents),
         progress_callback = std::move(progress_callback),
         task_policy]() mutable {
         knowledge_ingest_result result;
@@ -185,7 +197,42 @@ public:
           progress.errors = result.errors;
           task->update_progress(progress);
           if (progress_callback) {
-            progress_callback(progress);
+            try {
+              progress_callback(progress);
+            }
+            catch (const std::exception& ex) {
+              result.errors.push_back(
+                std::string("ingest progress callback failed: ") + ex.what());
+              progress.errors = result.errors;
+              task->update_progress(progress);
+            }
+            catch (...) {
+              result.errors.push_back(
+                "ingest progress callback failed with an unknown exception");
+              progress.errors = result.errors;
+              task->update_progress(progress);
+            }
+          }
+        };
+
+        auto fail = [&](std::string message, std::exception_ptr cause) noexcept {
+          try {
+            result.errors.push_back(std::move(message));
+            publish({
+              .state = knowledge_task_state::failed,
+              .completed = result.ingested,
+              .total = documents.size(),
+              .message = result.errors.back(),
+            });
+            promise->set_value(std::move(result));
+          }
+          catch (...) {
+            try {
+              promise->set_exception(cause ? cause : std::current_exception());
+            }
+            catch (...) {
+              // Never allow bookkeeping failure to escape a detached worker.
+            }
           }
         };
 
@@ -210,7 +257,7 @@ public:
             }
 
             bool ingested = false;
-            for (std::size_t attempt = 0; attempt <= task_policy.max_retries; ++attempt) {
+            for (std::size_t attempt = 0;; ++attempt) {
               try {
                 ingest(documents[index]);
                 ++result.ingested;
@@ -218,11 +265,19 @@ public:
                 break;
               }
               catch (const std::exception& ex) {
-                if (attempt == task_policy.max_retries) {
+                if (attempt >= task_policy.max_retries) {
                   result.errors.push_back(documents[index].id + ": " + ex.what());
+                  break;
                 }
-                else {
-                  std::this_thread::sleep_for(task_policy.retry_backoff);
+                if (task->wait_for_cancel(task_policy.retry_backoff)) {
+                  publish({
+                    .state = knowledge_task_state::canceled,
+                    .completed = index,
+                    .total = documents.size(),
+                    .message = "ingest canceled during retry backoff",
+                  });
+                  promise->set_value(std::move(result));
+                  return;
                 }
               }
             }
@@ -244,16 +299,20 @@ public:
           promise->set_value(std::move(result));
         }
         catch (const std::exception& ex) {
-          result.errors.push_back(std::string("ingest task failed: ") + ex.what());
-          publish({
-            .state = knowledge_task_state::failed,
-            .completed = result.ingested,
-            .total = documents.size(),
-            .message = ex.what(),
-          });
-          promise->set_value(std::move(result));
+          const auto cause = std::current_exception();
+          fail(std::string("ingest task failed: ") + ex.what(), cause);
         }
-      }).detach();
+        catch (...) {
+          const auto cause = std::current_exception();
+          fail("ingest task failed with an unknown exception", cause);
+        }
+      });
+    try {
+      worker.detach();
+    }
+    catch (...) {
+      if (worker.joinable()) worker.join();
+    }
 
     return task;
   }
@@ -522,6 +581,14 @@ public:
     knowledge_query query = {},
     knowledge_task_progress_callback progress_callback = {},
     knowledge_task_policy task_policy = {}) {
+    if (task_policy.retry_backoff.count() < 0) {
+      throw std::invalid_argument("knowledge task retry backoff must not be negative");
+    }
+    auto lifetime = weak_from_this().lock();
+    if (!lifetime) {
+      throw std::invalid_argument(
+        "knowledge_retriever asynchronous operations require shared ownership");
+    }
     auto promise = std::make_shared<std::promise<knowledge_rebuild_result>>();
     auto task = std::make_shared<knowledge_task<knowledge_rebuild_result>>(promise->get_future());
 
@@ -530,8 +597,9 @@ public:
       .message = "rebuild pending",
     });
 
-    std::thread(
-      [this, task, promise, query = std::move(query),
+    std::thread worker(
+      [this, lifetime = std::move(lifetime), task, promise,
+        query = std::move(query),
         progress_callback = std::move(progress_callback),
         task_policy]() mutable {
         knowledge_rebuild_result result;
@@ -539,10 +607,53 @@ public:
           progress.errors = result.errors;
           task->update_progress(progress);
           if (progress_callback) {
-            progress_callback(progress);
+            try {
+              progress_callback(progress);
+            }
+            catch (const std::exception& ex) {
+              result.errors.push_back(
+                std::string("rebuild progress callback failed: ") + ex.what());
+              progress.errors = result.errors;
+              task->update_progress(progress);
+            }
+            catch (...) {
+              result.errors.push_back(
+                "rebuild progress callback failed with an unknown exception");
+              progress.errors = result.errors;
+              task->update_progress(progress);
+            }
           }
         };
         const auto trace_id = next_trace_id();
+
+        auto fail = [&](std::string message, std::exception_ptr cause) noexcept {
+          try {
+            result.errors.push_back(std::move(message));
+            publish_event(trace_id, "knowledge.rebuild.failed", {
+              { "async", "true" },
+              { "scanned", std::to_string(result.scanned) },
+              { "rebuilt", std::to_string(result.rebuilt) },
+              { "skipped", std::to_string(result.skipped) },
+              { "errors", std::to_string(result.errors.size()) },
+              { "error", result.errors.back() },
+            });
+            publish({
+              .state = knowledge_task_state::failed,
+              .completed = result.rebuilt + result.skipped,
+              .total = result.scanned,
+              .message = result.errors.back(),
+            });
+            promise->set_value(std::move(result));
+          }
+          catch (...) {
+            try {
+              promise->set_exception(cause ? cause : std::current_exception());
+            }
+            catch (...) {
+              // Never allow bookkeeping failure to escape a detached worker.
+            }
+          }
+        };
 
         try {
           publish_event(trace_id, "knowledge.rebuild.start", {
@@ -585,7 +696,7 @@ public:
               ++result.skipped;
             }
             else {
-              for (std::size_t attempt = 0; attempt <= task_policy.max_retries; ++attempt) {
+              for (std::size_t attempt = 0;; ++attempt) {
                 try {
                   auto indexed_chunk = chunk;
                   auto embedding = embedding_model_->embed(chunk.content);
@@ -595,11 +706,26 @@ public:
                   break;
                 }
                 catch (const std::exception& ex) {
-                  if (attempt == task_policy.max_retries) {
+                  if (attempt >= task_policy.max_retries) {
                     result.errors.push_back(chunk.id + ": " + ex.what());
+                    break;
                   }
-                  else {
-                    std::this_thread::sleep_for(task_policy.retry_backoff);
+                  if (task->wait_for_cancel(task_policy.retry_backoff)) {
+                    publish_event(trace_id, "knowledge.rebuild.canceled", {
+                      { "scanned", std::to_string(result.scanned) },
+                      { "rebuilt", std::to_string(result.rebuilt) },
+                      { "skipped", std::to_string(result.skipped) },
+                      { "completed", std::to_string(index) },
+                    });
+                    publish({
+                      .state = knowledge_task_state::canceled,
+                      .completed = index,
+                      .total = chunks.size(),
+                      .message = "rebuild canceled during retry backoff",
+                    });
+                    clear_retrieval_cache();
+                    promise->set_value(std::move(result));
+                    return;
                   }
                 }
               }
@@ -630,24 +756,20 @@ public:
           promise->set_value(std::move(result));
         }
         catch (const std::exception& ex) {
-          result.errors.push_back(std::string("rebuild task failed: ") + ex.what());
-          publish_event(trace_id, "knowledge.rebuild.failed", {
-            { "async", "true" },
-            { "scanned", std::to_string(result.scanned) },
-            { "rebuilt", std::to_string(result.rebuilt) },
-            { "skipped", std::to_string(result.skipped) },
-            { "errors", std::to_string(result.errors.size()) },
-            { "error", ex.what() },
-          });
-          publish({
-            .state = knowledge_task_state::failed,
-            .completed = result.rebuilt + result.skipped,
-            .total = result.scanned,
-            .message = ex.what(),
-          });
-          promise->set_value(std::move(result));
+          const auto cause = std::current_exception();
+          fail(std::string("rebuild task failed: ") + ex.what(), cause);
         }
-      }).detach();
+        catch (...) {
+          const auto cause = std::current_exception();
+          fail("rebuild task failed with an unknown exception", cause);
+        }
+      });
+    try {
+      worker.detach();
+    }
+    catch (...) {
+      if (worker.joinable()) worker.join();
+    }
 
     return task;
   }
@@ -950,7 +1072,7 @@ private:
   std::function<bool(const knowledge_chunk&)> access_filter_;
   knowledge_splitter splitter_;
   knowledge_indexing_policy indexing_policy_;
-  std::size_t next_document_id_ {};
+  std::atomic<std::size_t> next_document_id_ { 0 };
 };
 
 } // namespace wuwe::agent::knowledge

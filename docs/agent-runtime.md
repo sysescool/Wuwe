@@ -50,7 +50,9 @@ options.callbacks.on_tool_result =
 const auto response = runner.complete("Inspect the input.", std::move(options));
 ```
 
-The callback surface includes normalized stream events, content deltas, provider-supplied reasoning summaries, tool lifecycle events, completion, errors, and cancellation. Wuwe does not invent reasoning text when a provider does not supply it.
+The callback surface includes normalized stream events, content deltas, provider-supplied reasoning summaries, tool lifecycle events, completion, errors, and cancellation. `prepare_model_request`, `prepare_tool_call`, and `prepare_tool_result` provide explicit transformation or rejection points before a request or result advances through the loop; `on_model_result` observes every completed provider call without forcing streaming. Wuwe does not invent reasoning text when a provider does not supply it.
+
+`llm_agent_run_options::persist_request_messages`, `persist_assistant_messages`, and `persist_tool_messages` default to `true`. Disable the relevant writes when a higher-level boundary must validate or select an execution before committing it to Memory. Reasoning does this automatically for isolated Best-of-N candidates, and Guarded Reasoning delays assistant persistence until the accepted or modified final output is available.
 
 `run_async()` returns an `llm_agent_run` with `request_stop()`, `wait()`, and `get()`. Cancellation is cooperative across the runner, HTTP transport, and tools that honor the supplied stop token.
 
@@ -60,6 +62,6 @@ Constructors accept an optional `memory_context`. When present, the runner augme
 
 ## Policy boundary
 
-`llm_agent_callbacks::allow_tool_call` can reject a proposed tool call before dispatch. Security-sensitive tools should also enforce their own capability, approval, path, and audit policies; a model-facing tool schema is not an authorization boundary.
+`llm_agent_callbacks::allow_tool_call` can reject a proposed tool call before dispatch. Prepared tool calls are used both for invocation and for the assistant tool-call message sent to later model rounds. Security-sensitive tools should also enforce their own capability, approval, path, and audit policies; a model-facing tool schema is not an authorization boundary.
 
 Use [Reasoning](reasoning.md) when the run needs explicit modes, budgets, or traces. Use [Planning](planning.md) for dependency-aware multi-step execution.

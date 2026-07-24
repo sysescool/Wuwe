@@ -59,6 +59,8 @@ Resources, templates, prompts, image content, and typed tools are demonstrated i
 
 The host runtime can load server definitions from JSON files, initialize processes, call protocol methods, collect stderr, and expose operational snapshots. The host application owns the user interface, secret handling, process allowlist, and configuration distribution.
 
+`mcp_async_task_registry` provides an in-process lifecycle registry for host-owned background work. Task IDs must be non-empty and unique until `clear_finished()` removes the prior record; timeouts must be non-negative and are measured with a monotonic clock. Cancellation is terminal even if the worker subsequently throws. The registry owns each future separately from the worker's shared task data, so destroying the registry safely waits for outstanding work without creating a self-referential future ownership cycle.
+
 ## HTTP
 
 `mcp_http_transport` adapts JSON-RPC requests to an MCP server. `mcp_http_listener` provides a cpp-httplib listener with configurable host, port, MCP path, health path, body limit, CORS policy, and authorization callback.
