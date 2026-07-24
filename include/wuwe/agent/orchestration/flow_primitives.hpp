@@ -10,6 +10,7 @@
 #include <type_traits>
 #include <utility>
 
+#include <wuwe/agent/orchestration/fan_out.hpp>
 #include <wuwe/agent/orchestration/flow.hpp>
 
 WUWE_NAMESPACE_BEGIN
