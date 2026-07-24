@@ -154,8 +154,9 @@ private:
   static std::string default_system_prompt() {
     return "You are a production planning component. Return only a JSON object, without markdown. "
            "The object must have: id, goal, steps. Each step must be an executable action with "
-           "id, title, description, input, depends_on, optional assigned_tool, optional "
-           "assigned_agent, and metadata. Use assigned_tool only when it appears in the provided "
+           "id, title, description, input, depends_on, optional priority, urgency, expected_value, "
+           "estimated_cost, deadline_unix_ms, assigned_tool, assigned_agent, and metadata. "
+           "Use assigned_tool only when it appears in the provided "
            "tool catalog. For tool steps, input must be a JSON object serialized as a string.";
   }
 
@@ -182,7 +183,8 @@ private:
     out << "Return schema:\n"
         << "{\"id\":\"plan-id\",\"goal\":\"...\",\"steps\":[{\"id\":\"step-id\","
            "\"title\":\"...\",\"description\":\"...\",\"depends_on\":[],"
-           "\"assigned_tool\":null,\"assigned_agent\":null,\"input\":\"{}\","
+           "\"priority\":0,\"urgency\":0,\"expected_value\":0,\"estimated_cost\":0,"
+           "\"deadline_unix_ms\":null,\"assigned_tool\":null,\"assigned_agent\":null,\"input\":\"{}\","
            "\"metadata\":{}}],\"metadata\":{}}\n";
     return out.str();
   }

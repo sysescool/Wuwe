@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <map>
 #include <optional>
 #include <set>
@@ -83,6 +84,7 @@ enum class plan_run_stop_reason {
   max_iterations,
   step_budget_exhausted,
   cancelled,
+  run_timeout,
 };
 
 inline std::string to_string(plan_run_stop_reason reason) {
@@ -103,6 +105,8 @@ inline std::string to_string(plan_run_stop_reason reason) {
     return "max_iterations";
   case plan_run_stop_reason::step_budget_exhausted:
     return "step_budget_exhausted";
+  case plan_run_stop_reason::run_timeout:
+    return "run_timeout";
   case plan_run_stop_reason::cancelled:
     return "cancelled";
   }
@@ -115,6 +119,11 @@ struct plan_step {
   std::string description;
   std::vector<std::string> depends_on;
   std::vector<std::string> input_from_steps;
+  double priority { 0.0 };
+  double urgency { 0.0 };
+  double expected_value { 0.0 };
+  double estimated_cost { 0.0 };
+  std::optional<std::chrono::system_clock::time_point> deadline;
   std::optional<std::string> assigned_tool;
   std::optional<std::string> assigned_agent;
   bool requires_approval { false };
@@ -128,6 +137,16 @@ struct plan_step {
   std::size_t attempts { 0 };
   std::vector<std::string> produced_artifacts;
   std::map<std::string, std::string> metadata;
+};
+
+struct plan_prioritization_policy {
+  bool enabled { true };
+  double priority_weight { 1.0 };
+  double urgency_weight { 1.0 };
+  double expected_value_weight { 1.0 };
+  double estimated_cost_weight { 1.0 };
+  double deadline_weight { 1.0 };
+  std::chrono::milliseconds deadline_horizon { std::chrono::hours(24) };
 };
 
 struct plan {
@@ -154,11 +173,14 @@ struct plan_policy {
   std::size_t max_step_attempts { 1 };
   std::size_t max_steps_per_run { 0 };
   std::size_t max_parallel_steps { 1 };
+  plan_prioritization_policy prioritization;
   std::chrono::milliseconds step_timeout { 0 };
   std::chrono::milliseconds run_timeout { 0 };
   bool allow_replanning { false };
   bool continue_after_step_failure { false };
   bool reset_running_steps_on_resume { true };
+  std::chrono::milliseconds cancellation_poll_interval { 10 };
+  bool reset_detached_steps_on_resume { false };
 };
 
 struct plan_step_result {
@@ -203,6 +225,8 @@ struct plan_run_result {
   std::chrono::milliseconds elapsed { 0 };
   std::string final_output;
   std::string error;
+  std::size_t steps_timed_out { 0 };
+  std::size_t steps_detached { 0 };
 };
 
 enum class plan_policy_decision {
@@ -385,6 +409,17 @@ public:
       if (step.approved && !step.requires_approval) {
         add_error("approval_without_gate", "step approval is set but approval is not required", step.id);
       }
+      if (!std::isfinite(step.priority) || !std::isfinite(step.urgency) ||
+          !std::isfinite(step.expected_value) || !std::isfinite(step.estimated_cost)) {
+        add_error("invalid_priority_signal",
+          "step priority signals must be finite", step.id);
+      }
+      if (step.urgency < 0.0 || step.expected_value < 0.0 ||
+          step.estimated_cost < 0.0) {
+        add_error("negative_priority_signal",
+          "step urgency, expected value, and estimated cost must not be negative",
+          step.id);
+      }
 
       graph[step.id] = step.depends_on;
 
@@ -529,6 +564,10 @@ public:
       { "description", step.description },
       { "depends_on", step.depends_on },
       { "input_from_steps", step.input_from_steps },
+      { "priority", step.priority },
+      { "urgency", step.urgency },
+      { "expected_value", step.expected_value },
+      { "estimated_cost", step.estimated_cost },
       { "requires_approval", step.requires_approval },
       { "approved", step.approved },
       { "status", to_string(step.status) },
@@ -545,6 +584,10 @@ public:
       step.assigned_tool ? nlohmann::json(*step.assigned_tool) : nlohmann::json(nullptr);
     item["assigned_agent"] =
       step.assigned_agent ? nlohmann::json(*step.assigned_agent) : nlohmann::json(nullptr);
+    item["deadline_unix_ms"] = step.deadline
+      ? nlohmann::json(std::chrono::duration_cast<std::chrono::milliseconds>(
+          step.deadline->time_since_epoch()).count())
+      : nlohmann::json(nullptr);
     return item;
   }
 
@@ -569,6 +612,14 @@ public:
     step.description = item.value("description", std::string {});
     step.depends_on = item.value("depends_on", std::vector<std::string> {});
     step.input_from_steps = item.value("input_from_steps", std::vector<std::string> {});
+    step.priority = item.value("priority", 0.0);
+    step.urgency = item.value("urgency", 0.0);
+    step.expected_value = item.value("expected_value", 0.0);
+    step.estimated_cost = item.value("estimated_cost", 0.0);
+    if (item.contains("deadline_unix_ms") && !item.at("deadline_unix_ms").is_null()) {
+      step.deadline = std::chrono::system_clock::time_point(
+        std::chrono::milliseconds(item.at("deadline_unix_ms").get<std::int64_t>()));
+    }
     step.requires_approval = item.value("requires_approval", false);
     step.approved = item.value("approved", false);
     if (item.contains("assigned_tool") && !item.at("assigned_tool").is_null()) {

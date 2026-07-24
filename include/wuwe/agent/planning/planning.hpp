@@ -2,6 +2,7 @@
 #define WUWE_AGENT_PLANNING_HPP
 
 #include <wuwe/agent/planning/plan.hpp>
+#include <wuwe/agent/planning/plan_prioritizer.hpp>
 #include <wuwe/agent/planning/plan_executor.hpp>
 #include <wuwe/agent/planning/plan_reflection.hpp>
 #include <wuwe/agent/planning/plan_runner.hpp>
