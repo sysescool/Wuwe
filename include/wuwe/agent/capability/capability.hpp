@@ -48,6 +48,8 @@ inline constexpr const char* filesystem_write = "filesystem.write";
 inline constexpr const char* network_outbound = "network.outbound";
 inline constexpr const char* environment_read = "environment.read";
 inline constexpr const char* secret_read = "secret.read";
+inline constexpr const char* learning_activate = "learning.activate";
+inline constexpr const char* exploration_execute = "exploration.execute";
 
 } // namespace names
 
