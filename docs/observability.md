@@ -30,7 +30,7 @@ events->publish({
 });
 ```
 
-The built-in sinks support in-memory collection, JSON Lines output, and fan-out. Implement `event_sink` to connect Wuwe events to an existing logging, tracing, or telemetry stack.
+The built-in sinks support in-memory collection, JSON Lines output, and fan-out. Fan-out takes a stable sink snapshot, attempts delivery to every sink, and then rethrows the first failure. The JSON Lines sink flushes each record and reports both open and write failures. Implement `event_sink` to connect Wuwe events to an existing logging, tracing, or telemetry stack.
 
 ## Module observation surfaces
 
@@ -42,6 +42,12 @@ Modules expose the event shape appropriate to their work:
 | Reasoning | `reasoning_observer`, normalized usage, and structured trace records |
 | Planning | `plan_observer` and `plan_trace_sink` |
 | Reflection | `reflection_observer` |
+| Guardrails | `guardrail_observer`, common audit sink, and common event sink |
+| Evaluation | `evaluation_observer` and common event sink |
+| Learning and adaptation | `learning_observer` and common event sink for finalized candidate versions; stores retain Experience, Reward, and activation provenance |
+| Exploration and discovery | `exploration_observer` and common event sink for finalized hypothesis runs and evidence records |
+| Resource routing | `model_routing_observer`, common event sink, and Reasoning `model_routed` traces |
+| Multi-Agent | `team_observer` and common event sink for dispatch, task, and consensus lifecycle |
 | Memory | A module-specific audit callback on `memory_context` |
 | Knowledge / RAG | `knowledge_event_sink` with in-memory, common-event, Prometheus-text, and OTEL-style adapters |
 | MCP host | `mcp_host_event_sink` with in-memory, JSONL, fan-out, common-event, Prometheus-text, and OTEL-style adapters |
@@ -54,6 +60,6 @@ Knowledge and MCP host events can be bridged into the common sink with `agent_kn
 
 The Prometheus sinks produce scrape text, and the OTEL-style sinks produce in-memory span representations. They do not automatically start an HTTP metrics endpoint or export to an OpenTelemetry collector.
 
-Production integrations should define trace propagation, attribute naming, sampling, secret and prompt redaction, file rotation, retention, and failure behavior. Telemetry sinks run in the calling process, so blocking or throwing adapters can affect the operation that publishes an event.
+Production integrations should define trace propagation, attribute naming, sampling, secret and prompt redaction, file rotation, retention, and failure behavior. Telemetry sinks run in the calling process, so blocking adapters still affect latency. Failure behavior is module-specific: Guardrails, Resource Routing, and Multi-Agent isolate telemetry exceptions by default and expose an explicit propagation mode. Multi-Agent common events omit task input and output content.
 
 Use [Security and governance](security-governance.md) for authorization and audit semantics. Module pages describe the domain-specific events emitted by each runtime.

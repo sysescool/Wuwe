@@ -10,7 +10,7 @@ Wuwe separates four concerns that are often conflated: declaring a sensitive cap
 
 ## Capability policy
 
-`capability_request` describes the requested action, risk, affected resources, tool, trace, subject, and host metadata. Built-in capability names cover Python and shell processes, filesystem reads and writes, outbound networking, environment access, and secret access.
+`capability_request` describes the requested action, risk, affected resources, tool, trace, subject, and host metadata. Built-in capability names cover Python and shell processes, filesystem reads and writes, outbound networking, environment access, secret access, learned-artifact activation, and effectful exploration execution.
 
 Policy evaluation returns a `capability_policy_result` with one of three decisions:
 
@@ -42,7 +42,7 @@ public:
 
 Decisions can be approved, denied, or sent for manual review, with once, session, or workspace scope. Scope is descriptive data for the host to enforce; Wuwe does not persist product authorization automatically.
 
-`deny_all_approval_service` is a safe default. `allow_all_approval_service` is intended for tests or an explicitly trusted environment, not as a production default. Controlled execution rejects requests that require approval when no approval service is configured.
+`deny_all_approval_service` is a safe default. `allow_all_approval_service` is intended for tests or an explicitly trusted environment, not as a production default. Controlled execution rejects requests that require approval when no approval service is configured. Learning & Adaptation leaves an accepted artifact in `approval_required`, and Exploration & Discovery leaves the experiment unexecuted, when their policies require approval but no service is available. Imported exploration evidence does not create rewards unless the host provides an explicit mapper.
 
 ## Audit
 

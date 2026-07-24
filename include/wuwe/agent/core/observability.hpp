@@ -2,6 +2,7 @@
 #define WUWE_AGENT_CORE_OBSERVABILITY_HPP
 
 #include <chrono>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -15,6 +16,25 @@
 #include <nlohmann/json.hpp>
 
 namespace wuwe::agent::observability {
+
+enum class telemetry_failure_mode {
+  ignore,
+  propagate,
+};
+
+template<typename Callback>
+[[nodiscard]] bool invoke_telemetry(
+  telemetry_failure_mode mode,
+  Callback&& callback) {
+  try {
+    std::forward<Callback>(callback)();
+    return true;
+  }
+  catch (...) {
+    if (mode == telemetry_failure_mode::propagate) throw;
+    return false;
+  }
+}
 
 struct agent_event {
   std::string module;
@@ -85,9 +105,16 @@ public:
       std::scoped_lock lock(mutex_);
       sinks = sinks_;
     }
+    std::exception_ptr first_failure;
     for (const auto& sink : sinks) {
-      sink->publish(event);
+      try {
+        sink->publish(event);
+      }
+      catch (...) {
+        if (!first_failure) first_failure = std::current_exception();
+      }
     }
+    if (first_failure) std::rethrow_exception(first_failure);
   }
 
 private:
@@ -107,6 +134,10 @@ public:
       throw std::runtime_error("failed to open agent event file: " + path_.string());
     }
     output << agent_event_to_json(event).dump() << '\n';
+    output.flush();
+    if (!output) {
+      throw std::runtime_error("failed to write agent event file: " + path_.string());
+    }
   }
 
 private:
