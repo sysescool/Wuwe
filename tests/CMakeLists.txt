@@ -77,6 +77,99 @@ wuwe_copy_runtime_dlls(reflection_tests)
 
 add_test(NAME reflection_tests COMMAND reflection_tests)
 
+add_executable(guardrails_tests
+    guardrails_tests.cpp
+)
+
+target_link_libraries(guardrails_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(guardrails_tests)
+
+add_test(NAME guardrails_tests COMMAND guardrails_tests)
+
+add_executable(evaluation_tests
+    evaluation_tests.cpp
+)
+
+target_link_libraries(evaluation_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(evaluation_tests)
+
+add_test(NAME evaluation_tests COMMAND evaluation_tests)
+
+add_executable(learning_tests
+    learning_tests.cpp
+)
+
+target_link_libraries(learning_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(learning_tests)
+
+add_test(NAME learning_tests COMMAND learning_tests)
+
+add_executable(exploration_tests
+    exploration_tests.cpp
+)
+
+target_link_libraries(exploration_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(exploration_tests)
+
+add_test(NAME exploration_tests COMMAND exploration_tests)
+
+add_executable(routing_tests
+    routing_tests.cpp
+)
+
+target_link_libraries(routing_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(routing_tests)
+
+add_test(NAME routing_tests COMMAND routing_tests)
+
+add_executable(orchestration_tests
+    orchestration_tests.cpp
+)
+
+target_link_libraries(orchestration_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(orchestration_tests)
+
+add_test(NAME orchestration_tests COMMAND orchestration_tests)
+
+add_executable(best_of_n_tests
+    best_of_n_tests.cpp
+)
+
+target_link_libraries(best_of_n_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(best_of_n_tests)
+
+add_test(NAME best_of_n_tests COMMAND best_of_n_tests)
+
+add_executable(multi_agent_tests
+    multi_agent_tests.cpp
+)
+
+target_link_libraries(multi_agent_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(multi_agent_tests)
+
+add_test(NAME multi_agent_tests COMMAND multi_agent_tests)
+
+add_executable(a2a_tests
+    a2a_tests.cpp
+)
+
+target_link_libraries(a2a_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(a2a_tests)
+
+add_test(NAME a2a_tests COMMAND a2a_tests)
+
+add_executable(header_independence_tests
+    header_independence/main.cpp
+    header_independence/evaluation_header.cpp
+    header_independence/multi_agent_header.cpp
+    header_independence/a2a_header.cpp
+)
+
+target_link_libraries(header_independence_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(header_independence_tests)
+
+add_test(NAME header_independence_tests COMMAND header_independence_tests)
+
 add_executable(reasoning_tests
     reasoning_tests.cpp
 )
@@ -116,3 +209,15 @@ target_compile_definitions(mcp_tests PRIVATE
 )
 
 add_test(NAME mcp_tests COMMAND mcp_tests)
+
+set_tests_properties(
+    knowledge_tests
+    planning_tests
+    orchestration_tests
+    best_of_n_tests
+    multi_agent_tests
+    a2a_tests
+    reasoning_tests
+    mcp_tests
+    PROPERTIES LABELS "concurrency"
+)

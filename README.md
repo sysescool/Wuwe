@@ -17,7 +17,7 @@
 
 Wuwe is a C++20 framework for building tool-using, stateful, and auditable AI agents in native applications, services, and command-line programs.
 
-It provides independently usable modules for model access, typed tools, reasoning, reflection, planning, orchestration, memory, retrieval-augmented generation, MCP, networking, policy, approvals, audit, observability, and controlled execution.
+It provides independently usable modules for model access, resource-aware routing, typed tools, reasoning with Best-of-N selection, reflection, planning, multi-agent collaboration, A2A, typed fan-out/fan-in orchestration, memory, retrieval-augmented generation, guardrails, evaluation, offline learning and adaptation, controlled exploration and discovery, MCP, networking, policy, approvals, audit, observability, and controlled execution.
 
 ## Release support
 
@@ -34,11 +34,16 @@ The codebase is kept portable, but macOS is not part of the 0.1.0 certification 
 
 | Area | Included capabilities |
 | --- | --- |
-| Models and tools | OpenAI-compatible, Anthropic, Gemini, and Ollama clients; streaming; typed schemas and dispatch |
-| Agent runtime | Tool loops, callbacks, cancellation, typed orchestration, reasoning modes, reflection, plans, and traces |
+| Models and tools | OpenAI-compatible, Anthropic, Gemini, and Ollama clients; capability-aware model routing; token and cost budgets; streaming; typed schemas and dispatch |
+| Agent runtime | Tool loops, callbacks, cancellation, reasoning modes, team sessions, skill dispatch, parallel collaboration, consensus, plans, and traces |
+| Agent interoperability | A2A Agent Cards, Messages, Tasks, Artifacts, discovery, JSON-RPC, HTTP transport, and local/remote team adapters |
+| Orchestration | Typed chains, context-aware cancellation, bounded fan-out/fan-in, dynamic parallel mapping, retries, recovery, and routing |
 | State and knowledge | Scoped memory, file and SQLite persistence, embeddings, retrieval, reranking, grounding, and citations |
 | MCP | Server, client, subprocess host, gateway, stdio, HTTP, access policy, audit, and telemetry |
 | Operations and governance | Capability decisions, host approvals, audit events, common observability sinks, and module telemetry |
+| Guardrails and evaluation | Composable boundary checks, safe buffered output, weighted evaluators, suite metrics, and trajectory regression |
+| Learning and adaptation | Experience and reward ledgers, versioned artifacts, offline optimization, regression gates, approvals, activation, and rollback |
+| Exploration and discovery | Bounded hypotheses, controlled experiments, evidence review, persistence, and an explicit Learning evidence adapter |
 | Controlled execution | Policy-bound Python subprocesses, approvals, resource limits, backend contracts, and audit events |
 | Networking | Common HTTP API with cpr/libcurl and cpp-httplib backends |
 
@@ -74,6 +79,22 @@ ctest --preset linux-vcpkg-release
 ```
 
 The official Windows profile uses Schannel and SQLite. The Linux profile uses OpenSSL and SQLite. Dependencies are restored from the pinned vcpkg manifest into the build tree.
+
+Hardening builds are opt-in and must use a separate build directory. Enable
+`WUWE_ENABLE_ADDRESS_SANITIZER` for AddressSanitizer (plus UndefinedBehaviorSanitizer
+on supported Clang/GCC toolchains), or `WUWE_ENABLE_THREAD_SANITIZER` for
+ThreadSanitizer on supported Clang/GCC toolchains. The two modes are intentionally
+mutually exclusive. Concurrency-sensitive tests carry the `concurrency` CTest label:
+
+```bash
+cmake -S . -B build-asan -DWUWE_ENABLE_ADDRESS_SANITIZER=ON
+cmake --build build-asan
+ctest --test-dir build-asan --output-on-failure
+
+cmake -S . -B build-tsan -DWUWE_ENABLE_THREAD_SANITIZER=ON
+cmake --build build-tsan
+ctest --test-dir build-tsan -L concurrency --repeat until-fail:20 --output-on-failure
+```
 
 See [Getting started](https://lkimuk.github.io/Wuwe/docs/getting-started/) and [Dependencies](https://lkimuk.github.io/Wuwe/docs/dependencies/).
 

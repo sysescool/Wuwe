@@ -17,11 +17,18 @@ Its modules are independently usable. A host can start with one provider client 
 | Module | Responsibility |
 | --- | --- |
 | LLM providers | Provider configuration, normalized requests and responses, streaming, retries, and errors |
+| Resource routing | Capability-aware model profiles, token and cost budgets, and dynamic model selection |
 | Tools | Typed schemas, JSON argument parsing, dispatch, and provider composition |
-| Reasoning | Simple, ReAct, reflect-and-retry, and plan-execute runs with budgets and traces |
+| Reasoning | Simple, ReAct, reflect-and-retry, plan-execute, and Best-of-N runs with budgets and traces |
 | Reflection | Rule-based or model-based evaluation, revision guidance, policy, and persistence |
 | Planning | Plan generation, validation, dependency execution, retries, replanning, approvals, and checkpoints |
-| Orchestration | Typed flows with branching, filtering, retry, recovery, and routing primitives |
+| Multi-Agent | Agent registry, roles and skills, lifecycle, capacity, shared sessions, parallel work, consensus, and Planning dispatch |
+| A2A | Agent Card discovery, remote Messages, Tasks, Artifacts, JSON-RPC/HTTP transport, and local/remote Agent adapters |
+| Guardrails | Ordered input/output and runtime-boundary checks with modification, denial, approval, audit, and telemetry |
+| Evaluation | Weighted output, structured-result, and trajectory regression suites |
+| Learning and adaptation | Experience and reward ledgers, versioned artifacts, offline optimization, regression gates, approval, activation, and rollback |
+| Exploration and discovery | Bounded hypotheses, approved experiments, evidence review, confidence thresholds, persistence, and explicit evidence export |
+| Orchestration | Typed flows with branching, bounded fan-out/fan-in, filtering, retry, cancellation, recovery, and routing primitives |
 | Memory | Scoped records, context injection, persistence, ranking, embeddings, and model-visible tools |
 | Knowledge / RAG | Loading, splitting, indexing, retrieval, reranking, grounding, and citation support |
 | MCP | Server, client, host, gateway, stdio, process, and HTTP integration |
@@ -51,6 +58,6 @@ Optional capabilities stay explicit:
 
 1. [Build and run Wuwe](getting-started.md).
 2. Configure an [LLM provider](llm-providers.md) and [typed tools](llm-tools.md).
-3. Compose the [agent runtime](agent-runtime.md), [orchestration](orchestration.md), [reasoning](reasoning.md), [planning](planning.md), or [reflection](reflection.md) layer you need.
-4. Add [memory](memory-management.md), [knowledge retrieval](knowledge-retrieval.md), or [MCP](mcp.md).
+3. Compose the [agent runtime](agent-runtime.md), [orchestration](orchestration.md), [reasoning](reasoning.md), [planning](planning.md), [multi-agent runtime](multi-agent.md), [reflection](reflection.md), [learning and adaptation](learning-adaptation.md), or [exploration and discovery](exploration-discovery.md) layer you need.
+4. Add [memory](memory-management.md), [knowledge retrieval](knowledge-retrieval.md), [MCP](mcp.md), or remote [A2A](a2a.md) interoperability.
 5. Review [security and governance](security-governance.md), [observability](observability.md), [dependencies](dependencies.md), [packaging](packaging.md), and [controlled execution](execution-runtime.md) before deployment.
