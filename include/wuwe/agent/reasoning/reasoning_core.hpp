@@ -17,9 +17,11 @@
 #include <nlohmann/json.hpp>
 
 #include <wuwe/agent/llm/llm_types.h>
+#include <wuwe/agent/guardrails/guardrail_core.hpp>
 #include <wuwe/agent/planning/plan.hpp>
 #include <wuwe/agent/reflection/reflection_core.hpp>
 #include <wuwe/agent/reflection/reflection_runner.hpp>
+#include <wuwe/agent/routing/resource_routing_core.hpp>
 #include <wuwe/agent/tools/tool.hpp>
 
 namespace wuwe::agent::reasoning {
@@ -91,6 +93,15 @@ enum class reasoning_error_code {
   invalid_configuration,
   transport_failed,
   unknown,
+  input_guardrail_blocked,
+  output_guardrail_blocked,
+  guardrail_approval_required,
+  tool_input_guardrail_blocked,
+  tool_output_guardrail_blocked,
+  token_budget_exceeded,
+  cost_budget_exceeded,
+  model_routing_failed,
+  side_effect_blocked,
 };
 
 inline std::string to_string(reasoning_error_code code) {
@@ -131,6 +142,24 @@ inline std::string to_string(reasoning_error_code code) {
       return "transport_failed";
     case reasoning_error_code::unknown:
       return "unknown";
+    case reasoning_error_code::input_guardrail_blocked:
+      return "input_guardrail_blocked";
+    case reasoning_error_code::output_guardrail_blocked:
+      return "output_guardrail_blocked";
+    case reasoning_error_code::guardrail_approval_required:
+      return "guardrail_approval_required";
+    case reasoning_error_code::tool_input_guardrail_blocked:
+      return "tool_input_guardrail_blocked";
+    case reasoning_error_code::tool_output_guardrail_blocked:
+      return "tool_output_guardrail_blocked";
+    case reasoning_error_code::token_budget_exceeded:
+      return "token_budget_exceeded";
+    case reasoning_error_code::cost_budget_exceeded:
+      return "cost_budget_exceeded";
+    case reasoning_error_code::model_routing_failed:
+      return "model_routing_failed";
+    case reasoning_error_code::side_effect_blocked:
+      return "side_effect_blocked";
   }
   return "unknown";
 }
@@ -178,6 +207,10 @@ enum class reasoning_event_type {
   completed,
   failed,
   cancelled,
+  guardrail_checked,
+  guardrail_blocked,
+  model_routed,
+  model_route_failed,
 };
 
 inline std::string to_string(reasoning_event_type type) {
@@ -226,6 +259,14 @@ inline std::string to_string(reasoning_event_type type) {
       return "failed";
     case reasoning_event_type::cancelled:
       return "cancelled";
+    case reasoning_event_type::guardrail_checked:
+      return "guardrail_checked";
+    case reasoning_event_type::guardrail_blocked:
+      return "guardrail_blocked";
+    case reasoning_event_type::model_routed:
+      return "model_routed";
+    case reasoning_event_type::model_route_failed:
+      return "model_route_failed";
   }
   return "unknown";
 }
@@ -237,6 +278,11 @@ struct reasoning_budget {
   std::size_t max_tool_rounds { 4 };
   std::size_t max_reflection_attempts { 2 };
   std::chrono::milliseconds timeout { 0 };
+  std::size_t max_prompt_tokens { 0 };
+  std::size_t max_completion_tokens { 0 };
+  std::size_t max_total_tokens { 0 };
+  double max_cost_usd { 0.0 };
+  std::size_t estimated_output_tokens_per_call { 512 };
 };
 
 struct reasoning_policy {
@@ -343,6 +389,7 @@ struct reasoning_request {
   reasoning_policy policy;
   reflection::reflection_rubric rubric;
   std::map<std::string, std::string> metadata;
+  routing::model_route_requirements model_routing;
 };
 
 struct reasoning_step {
@@ -375,6 +422,12 @@ struct reasoning_usage {
   std::size_t max_tool_rounds { 0 };
   std::size_t reflection_calls { 0 };
   std::size_t plan_steps { 0 };
+  std::size_t prompt_tokens { 0 };
+  std::size_t completion_tokens { 0 };
+  std::size_t total_tokens { 0 };
+  double estimated_cost_usd { 0.0 };
+  double cost_usd { 0.0 };
+  std::size_t estimated_token_calls { 0 };
 };
 
 struct reasoning_result {
@@ -393,6 +446,8 @@ struct reasoning_result {
   std::error_code error_code;
   std::string error;
   std::chrono::milliseconds elapsed { 0 };
+  std::vector<guardrails::guardrail_run_result> guardrail_runs;
+  std::vector<routing::model_route_decision> model_routes;
 
   explicit operator bool() const noexcept {
     return completed && !error_code;
@@ -435,9 +490,18 @@ struct reasoning_callbacks {
   std::function<void(const reasoning_result&)> on_cancelled;
 };
 
+struct reasoning_effect_policy {
+  bool allow_tool_calls { true };
+  bool allow_plan_execution { true };
+  bool persist_memory { true };
+  bool persist_plan { true };
+  bool persist_reflection { true };
+};
+
 struct reasoning_run_options {
   std::stop_token stop_token;
   reasoning_callbacks callbacks;
+  reasoning_effect_policy effects;
 };
 
 inline nlohmann::json reasoning_usage_to_json(const reasoning_usage& usage) {
@@ -448,6 +512,12 @@ inline nlohmann::json reasoning_usage_to_json(const reasoning_usage& usage) {
     { "max_tool_rounds", usage.max_tool_rounds },
     { "reflection_calls", usage.reflection_calls },
     { "plan_steps", usage.plan_steps },
+    { "prompt_tokens", usage.prompt_tokens },
+    { "completion_tokens", usage.completion_tokens },
+    { "total_tokens", usage.total_tokens },
+    { "estimated_cost_usd", usage.estimated_cost_usd },
+    { "cost_usd", usage.cost_usd },
+    { "estimated_token_calls", usage.estimated_token_calls },
   };
 }
 
@@ -477,6 +547,14 @@ inline nlohmann::json reasoning_trace_to_json(
 }
 
 inline nlohmann::json reasoning_result_to_json(const reasoning_result& result) {
+  auto guardrail_runs = nlohmann::json::array();
+  for (const auto& run : result.guardrail_runs) {
+    guardrail_runs.push_back(guardrails::guardrail_run_result_to_json(run));
+  }
+  auto model_routes = nlohmann::json::array();
+  for (const auto& route : result.model_routes) {
+    model_routes.push_back(routing::model_route_decision_to_json(route));
+  }
   return {
     { "mode", to_string(result.mode) },
     { "completed", result.completed },
@@ -488,6 +566,8 @@ inline nlohmann::json reasoning_result_to_json(const reasoning_result& result) {
     { "elapsed_ms", result.elapsed.count() },
     { "usage", reasoning_usage_to_json(result.usage) },
     { "trace", reasoning_trace_to_json(result.trace) },
+    { "guardrails", std::move(guardrail_runs) },
+    { "model_routes", std::move(model_routes) },
   };
 }
 

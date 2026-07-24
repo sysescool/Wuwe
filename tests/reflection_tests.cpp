@@ -235,6 +235,15 @@ void reflection_runner_applies_policy_and_records() {
     "runner applies policy-compatible action");
   require(store.load(run.record.id).has_value(), "runner stores reflection record");
   require(events.size() == 2, "runner emits started and completed events");
+
+  const auto isolated = runner.run({
+    .task = "Isolated runner",
+    .candidate_output = "missing",
+  }, { .persist_record = false });
+  require(!store.load(isolated.record.id).has_value(),
+    "per-run reflection isolation suppresses store persistence");
+  require(events.size() == 4,
+    "isolated reflection still emits normal lifecycle events");
 }
 
 void codec_round_trips_result() {
