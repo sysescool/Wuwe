@@ -9,6 +9,8 @@ param(
   [string] $TikaJar = "third_party/runtime/tika/tika-server-standard.jar",
   [string] $JreArchive = "",
   [string] $JreDir = "",
+  [switch] $ExcludeTikaRuntime,
+  [switch] $ExcludeBundledJre,
   [switch] $SkipBuild,
   [switch] $KeepArtifacts
 )
@@ -401,7 +403,8 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Version = (Get-Content -LiteralPath (Join-Path $RepoRoot "VERSION")).Trim()
 Assert-PackageHostMatchesPlatform $Platform
 
-if ([string]::IsNullOrWhiteSpace($JreArchive) -and
+if (-not $ExcludeBundledJre -and
+    [string]::IsNullOrWhiteSpace($JreArchive) -and
     [string]::IsNullOrWhiteSpace($JreDir)) {
   $JreArchive = Get-DefaultJreArchive $Platform
 }
@@ -460,10 +463,12 @@ if (-not $KeepArtifacts) {
 }
 
 $TikaJarPath = Resolve-RepoPath $TikaJar
-if (-not (Test-Path -LiteralPath $TikaJarPath)) {
-  throw "Tika jar not found: $TikaJarPath. Place the pinned project jar at third_party/runtime/tika/tika-server-standard.jar."
+if (-not $ExcludeTikaRuntime) {
+  if (-not (Test-Path -LiteralPath $TikaJarPath)) {
+    throw "Tika jar not found: $TikaJarPath. Place the pinned project jar at third_party/runtime/tika/tika-server-standard.jar."
+  }
+  Assert-TikaJarChecksum $TikaJarPath
 }
-Assert-TikaJarChecksum $TikaJarPath
 
 Invoke-Native cmake @("--install", $BuildPath, "--config", $Configuration, "--prefix", $PackageRoot)
 Copy-IfExists (Join-Path $RepoRoot "README.md") $PackageRoot
@@ -473,16 +478,24 @@ Copy-IfExists (Join-Path $RepoRoot "vcpkg.json") $PackageRoot
 Copy-IfExists (Join-Path $RepoRoot "docs") (Join-Path $PackageRoot "docs")
 Copy-IfExists (Join-Path $RepoRoot "examples") (Join-Path $PackageRoot "examples")
 
+$runtime = [ordered] @{}
 $runtimeTika = Join-Path $PackageRoot "runtime/tika"
-New-Item -ItemType Directory -Force -Path $runtimeTika | Out-Null
-Copy-Item -LiteralPath $TikaJarPath -Destination $runtimeTika -Force
-Copy-IfExists "$TikaJarPath.sha1" $runtimeTika
-Copy-IfExists (Join-Path (Split-Path -Parent $TikaJarPath) "README.md") $runtimeTika
-Copy-Item -LiteralPath (Join-Path $RepoRoot "tools/runtime/start-tika.ps1") -Destination $runtimeTika -Force
-Copy-Item -LiteralPath (Join-Path $RepoRoot "tools/runtime/start-tika.sh") -Destination $runtimeTika -Force
-
-$runtime = [ordered] @{
-  tika = [ordered] @{
+if ($ExcludeTikaRuntime) {
+  Remove-DirectoryIfExists $runtimeTika
+  $runtime.tika = [ordered] @{
+    bundled = $false
+    note = "document parsing can use an externally managed Tika endpoint"
+  }
+}
+else {
+  New-Item -ItemType Directory -Force -Path $runtimeTika | Out-Null
+  Copy-Item -LiteralPath $TikaJarPath -Destination $runtimeTika -Force
+  Copy-IfExists "$TikaJarPath.sha1" $runtimeTika
+  Copy-IfExists (Join-Path (Split-Path -Parent $TikaJarPath) "README.md") $runtimeTika
+  Copy-Item -LiteralPath (Join-Path $RepoRoot "tools/runtime/start-tika.ps1") -Destination $runtimeTika -Force
+  Copy-Item -LiteralPath (Join-Path $RepoRoot "tools/runtime/start-tika.sh") -Destination $runtimeTika -Force
+  $runtime.tika = [ordered] @{
+    bundled = $true
     jar = "runtime/tika/" + (Split-Path -Leaf $TikaJarPath)
     sha256 = (Get-FileHash -LiteralPath $TikaJarPath -Algorithm SHA256).Hash.ToLowerInvariant()
     internal_url = "http://127.0.0.1:9998"
@@ -490,16 +503,22 @@ $runtime = [ordered] @{
 }
 
 $jreRequired = @("windows-x64", "linux-x64") -contains $Platform.ToLowerInvariant()
-$jreRuntime = Copy-JreRuntime `
-  -Destination (Join-Path $PackageRoot "runtime/jre") `
-  -TargetPlatform $Platform `
-  -SourceDir $JreDir `
-  -SourceArchive $JreArchive `
-  -Required:$jreRequired
+if ($ExcludeBundledJre) {
+  $jreRuntime = [ordered] @{ bundled = $false }
+}
+else {
+  $jreRuntime = Copy-JreRuntime `
+    -Destination (Join-Path $PackageRoot "runtime/jre") `
+    -TargetPlatform $Platform `
+    -SourceDir $JreDir `
+    -SourceArchive $JreArchive `
+    -Required:$jreRequired
+}
 if ($jreRuntime.bundled) {
   $runtime.jre = $jreRuntime
 }
 else {
+  Remove-DirectoryIfExists (Join-Path $PackageRoot "runtime/jre")
   $runtime.jre = [ordered] @{
     bundled = $false
     note = "runtime will use java from PATH when runtime/jre is absent"

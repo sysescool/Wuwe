@@ -251,6 +251,12 @@ install(
 )
 
 option(WUWE_INSTALL_BUNDLED_RUNTIME "Install bundled runtime sidecars" ON)
+option(WUWE_INSTALL_TIKA_RUNTIME
+    "Install the bundled Apache Tika sidecar"
+    ${WUWE_INSTALL_BUNDLED_RUNTIME})
+option(WUWE_INSTALL_BUNDLED_JRE
+    "Install the platform-specific bundled JRE"
+    ${WUWE_INSTALL_BUNDLED_RUNTIME})
 set(WUWE_BUNDLED_TIKA_DIR
     "${CMAKE_SOURCE_DIR}/third_party/runtime/tika"
     CACHE PATH "Bundled Tika runtime directory")
@@ -278,11 +284,11 @@ set(WUWE_BUNDLED_JAVA_RELATIVE_PATH
     "${WUWE_DEFAULT_BUNDLED_JAVA_RELATIVE_PATH}"
     CACHE STRING "Java executable path relative to the bundled JRE root")
 
-if(WUWE_INSTALL_BUNDLED_RUNTIME)
+if(WUWE_INSTALL_TIKA_RUNTIME)
     if(NOT EXISTS "${WUWE_BUNDLED_TIKA_DIR}")
         message(FATAL_ERROR
             "Bundled Tika runtime directory not found: ${WUWE_BUNDLED_TIKA_DIR}. "
-            "Disable WUWE_INSTALL_BUNDLED_RUNTIME only for non-release developer installs.")
+            "Disable WUWE_INSTALL_TIKA_RUNTIME for packages without document parsing.")
     endif()
     install(
         DIRECTORY "${WUWE_BUNDLED_TIKA_DIR}/"
@@ -298,12 +304,14 @@ if(WUWE_INSTALL_BUNDLED_RUNTIME)
             "${CMAKE_SOURCE_DIR}/tools/runtime/start-tika.sh"
         DESTINATION runtime/tika
     )
+endif()
 
+if(WUWE_INSTALL_BUNDLED_JRE)
     if(NOT WUWE_BUNDLED_JRE_ARCHIVE STREQUAL "")
         if(NOT EXISTS "${WUWE_BUNDLED_JRE_ARCHIVE}")
             message(FATAL_ERROR
                 "Bundled JRE archive not found: ${WUWE_BUNDLED_JRE_ARCHIVE}. "
-                "Disable WUWE_INSTALL_BUNDLED_RUNTIME only for non-release developer installs.")
+                "Disable WUWE_INSTALL_BUNDLED_JRE for a package that uses Java from PATH.")
         endif()
         if(NOT EXISTS "${WUWE_BUNDLED_JRE_SHA256_FILE}")
             message(FATAL_ERROR

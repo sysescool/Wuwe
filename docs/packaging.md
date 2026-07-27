@@ -54,6 +54,15 @@ cmake --install build-vcpkg --config Release --prefix install
 
 The install tree has the same SDK layout and, by default, the bundled runtime sidecars.
 
+Tika and the JRE are independently optional:
+
+```powershell
+cmake -S . -B build-core -DWUWE_INSTALL_TIKA_RUNTIME=OFF -DWUWE_INSTALL_BUNDLED_JRE=OFF
+cmake --install build-core --config Release --prefix install-core
+```
+
+For the Windows archive script, `-ExcludeTikaRuntime` and `-ExcludeBundledJre` remove the corresponding runtime. The Linux archive script provides `--without-tika` and `--without-jre`. Both scripts record the decision in `manifest.json`. A package can include Tika without a JRE when the deployment supplies Java through `PATH`, or omit Tika entirely when document parsing is not needed or an external endpoint is managed by the host.
+
 ## Default document runtime
 
 ```cpp

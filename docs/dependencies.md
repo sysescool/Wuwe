@@ -16,7 +16,7 @@ Wuwe separates C++ build dependencies from runtime sidecars and external service
 | Default HTTP backend | cpr/libcurl | cpr/libcurl |
 | TLS | Schannel | OpenSSL |
 | SQLite | Required | Required |
-| Document parsing | Bundled Tika and Temurin 21 JRE | Bundled Tika and Temurin 21 JRE |
+| Document parsing | Tika and Temurin 21 JRE in the default package; independently optional | Tika and Temurin 21 JRE in the default package; independently optional |
 
 The configure step uses `vcpkg.json` and its pinned `builtin-baseline` to restore missing manifest dependencies into the selected build tree. It does not install them globally.
 
@@ -30,8 +30,8 @@ The configure step uses `vcpkg.json` and its pinned `builtin-baseline` to restor
 | OpenSSL | Linux TLS and the optional Windows OpenSSL profile | vcpkg or another compatible development package |
 | SQLite3 | Durable memory and knowledge storage | vcpkg in official profiles; compatible package for SDK consumers |
 | nlohmann/json | JSON representation and codecs | Checked-in headers |
-| Apache Tika Server | PDF and Office parsing | Bundled runtime sidecar |
-| Temurin 21 JRE | Runs the bundled Tika server | Bundled per target platform |
+| Apache Tika Server | PDF and Office parsing | Default bundled sidecar; may be omitted or externally managed |
+| Temurin 21 JRE | Runs the bundled Tika server | Default platform bundle; may be omitted when Java is supplied by the host |
 | Qdrant | Optional vector service | Deployed separately and accessed over HTTP |
 
 ## TLS selection
