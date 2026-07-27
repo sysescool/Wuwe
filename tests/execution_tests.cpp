@@ -3229,7 +3229,11 @@ void test_restricted_process_backend_candidate_enforces_configured_roots() {
     escape_python_string(denied_write_file.string());
 
   execution::execution_request request;
-  request.limits.timeout = std::chrono::milliseconds(5000);
+  // AppContainer profile activation and the first Python launch can be delayed
+  // by Windows security scanning on otherwise healthy CI hosts. Keep the
+  // product timeout path covered by its dedicated test and give this ACL probe
+  // enough time to measure filesystem enforcement rather than startup jitter.
+  request.limits.timeout = std::chrono::milliseconds(10000);
   request.limits.max_stdout_bytes = 65536;
   request.limits.max_stderr_bytes = 65536;
   request.code =
@@ -3263,6 +3267,12 @@ void test_restricted_process_backend_candidate_enforces_configured_roots() {
     result.stderr_text,
     result.metadata.at("python_executable"));
   if (result.exit_code.value_or(1) != 0 || !unexpected_stderr.empty()) {
+    std::cerr << "restricted configured-roots termination="
+              << execution::to_string(result.termination_reason)
+              << " elapsed_ms=" << result.elapsed.count()
+              << " exit_code="
+              << (result.exit_code ? std::to_string(*result.exit_code) : "none")
+              << " error=" << result.error_message << "\n";
     std::cerr << "restricted configured-roots stdout:\n"
               << result.stdout_text << "\n";
     std::cerr << "restricted configured-roots stderr:\n"

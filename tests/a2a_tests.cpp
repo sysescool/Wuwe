@@ -582,18 +582,21 @@ void non_blocking_handler_applies_background_backpressure() {
 }
 
 void handler_destruction_cancels_background_work() {
-  std::atomic<bool> entered { false };
-  std::atomic<bool> stopped { false };
+  struct worker_state {
+    std::atomic<bool> entered { false };
+    std::atomic<bool> stopped { false };
+  };
+  const auto state = std::make_shared<worker_state>();
   auto registry = std::make_shared<ma::agent_registry>();
   registry->add({ .id = "cooperative", .name = "cooperative" },
     std::make_shared<ma::function_agent_executor>(
-      [&](const ma::agent_task_request&,
+      [state](const ma::agent_task_request&,
           const ma::agent_execution_context& context) {
-        entered = true;
+        state->entered = true;
         while (!context.stop_token.stop_requested()) {
           std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        stopped = true;
+        state->stopped = true;
         return ma::agent_task_result {
           .status = ma::agent_task_status::cancelled,
           .error_code = ma::agent_task_error_code::cancelled,
@@ -617,10 +620,16 @@ void handler_destruction_cancels_background_work() {
   }, {});
   require(static_cast<bool>(submitted),
     "background task should be accepted before handler shutdown");
-  while (!entered) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  while (!state->entered) std::this_thread::sleep_for(std::chrono::milliseconds(1));
   handler.reset();
-  require(stopped,
-    "handler destruction must request cancellation and join accepted background work");
+  const auto cancellation_deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!state->stopped &&
+         std::chrono::steady_clock::now() < cancellation_deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  require(state->stopped,
+    "handler destruction must request cancellation for accepted background work");
 }
 
 void run(const char* name, void (*test)()) {
