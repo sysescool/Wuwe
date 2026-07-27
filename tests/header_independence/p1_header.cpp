@@ -5,5 +5,6 @@
 #include <wuwe/agent/runtime/run_observability.hpp>
 
 bool p1_header_is_independent() {
-  return true;
+  const wuwe::llm_json_schema_output output;
+  return output.schema.is_object();
 }

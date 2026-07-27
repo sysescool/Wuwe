@@ -55,7 +55,7 @@ private:
 
 struct create_run_request {
   core::agent_execution_context context;
-  nlohmann::json input { nlohmann::json::object() };
+  nlohmann::json input = nlohmann::json::object();
   std::map<std::string, std::string> metadata;
 };
 
@@ -82,7 +82,7 @@ struct resume_run_request {
   std::string run_id;
   std::uint64_t expected_revision { 0 };
   std::string approval_id;
-  nlohmann::json input { nlohmann::json::object() };
+  nlohmann::json input = nlohmann::json::object();
 };
 
 struct list_events_request {

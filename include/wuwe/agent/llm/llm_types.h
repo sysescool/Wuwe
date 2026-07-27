@@ -146,7 +146,7 @@ inline std::string_view to_string(llm_cache_mode mode) noexcept {
 
 struct llm_json_schema_output {
   std::string name;
-  nlohmann::json schema { nlohmann::json::object() };
+  nlohmann::json schema = nlohmann::json::object();
   bool strict { true };
 };
 

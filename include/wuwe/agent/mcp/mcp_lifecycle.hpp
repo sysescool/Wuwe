@@ -26,7 +26,7 @@ struct mcp_request_record {
   std::string target;
   mcp_request_state state { mcp_request_state::pending };
   std::string error;
-  json params { json::object() };
+  json params = json::object();
   json progress_token;
   double progress { 0.0 };
   std::optional<double> total;

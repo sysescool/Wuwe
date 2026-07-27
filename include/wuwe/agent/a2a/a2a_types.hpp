@@ -49,10 +49,10 @@ struct agent_card {
   std::vector<std::string> default_input_modes { "text/plain" };
   std::vector<std::string> default_output_modes { "text/plain" };
   std::vector<agent_skill> skills;
-  nlohmann::json security_schemes { nlohmann::json::object() };
-  nlohmann::json security { nlohmann::json::array() };
+  nlohmann::json security_schemes = nlohmann::json::object();
+  nlohmann::json security = nlohmann::json::array();
   bool supports_authenticated_extended_card { false };
-  nlohmann::json metadata { nlohmann::json::object() };
+  nlohmann::json metadata = nlohmann::json::object();
 };
 
 enum class part_kind {
@@ -82,7 +82,7 @@ struct part {
   std::string text;
   nlohmann::json data;
   file_part file;
-  nlohmann::json metadata { nlohmann::json::object() };
+  nlohmann::json metadata = nlohmann::json::object();
 
   static part text_part(std::string value) {
     return { .kind = part_kind::text, .text = std::move(value) };
@@ -109,7 +109,7 @@ struct message {
   std::string task_id;
   std::string context_id;
   std::vector<std::string> reference_task_ids;
-  nlohmann::json metadata { nlohmann::json::object() };
+  nlohmann::json metadata = nlohmann::json::object();
 };
 
 enum class task_state {
@@ -150,7 +150,7 @@ struct artifact {
   std::string name;
   std::string description;
   std::vector<part> parts;
-  nlohmann::json metadata { nlohmann::json::object() };
+  nlohmann::json metadata = nlohmann::json::object();
 };
 
 struct task {
@@ -159,7 +159,7 @@ struct task {
   task_status status;
   std::vector<artifact> artifacts;
   std::vector<message> history;
-  nlohmann::json metadata { nlohmann::json::object() };
+  nlohmann::json metadata = nlohmann::json::object();
 };
 
 struct send_message_configuration {
@@ -171,18 +171,18 @@ struct send_message_configuration {
 struct send_message_params {
   message value;
   send_message_configuration configuration;
-  nlohmann::json metadata { nlohmann::json::object() };
+  nlohmann::json metadata = nlohmann::json::object();
 };
 
 struct task_query_params {
   std::string id;
   std::size_t history_length { 0 };
-  nlohmann::json metadata { nlohmann::json::object() };
+  nlohmann::json metadata = nlohmann::json::object();
 };
 
 struct task_id_params {
   std::string id;
-  nlohmann::json metadata { nlohmann::json::object() };
+  nlohmann::json metadata = nlohmann::json::object();
 };
 
 enum class error_code : int {

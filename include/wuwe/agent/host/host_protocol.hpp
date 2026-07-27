@@ -127,14 +127,14 @@ struct host_call_context {
 struct host_request_envelope {
   host_call_context call;
   host_operation operation { host_operation::get_run };
-  nlohmann::json body { nlohmann::json::object() };
+  nlohmann::json body = nlohmann::json::object();
 };
 
 struct host_error {
   host_error_code code { host_error_code::internal };
   std::string message;
   bool retryable { false };
-  nlohmann::json details { nlohmann::json::object() };
+  nlohmann::json details = nlohmann::json::object();
   std::map<std::string, std::string> metadata;
 };
 
@@ -142,7 +142,7 @@ struct host_response_envelope {
   std::string protocol_version { default_protocol_version };
   std::string request_id;
   host_operation operation { host_operation::get_run };
-  nlohmann::json body { nlohmann::json::object() };
+  nlohmann::json body = nlohmann::json::object();
   std::optional<host_error> error;
 
   [[nodiscard]] explicit operator bool() const noexcept {

@@ -187,8 +187,8 @@ struct tool_descriptor {
   std::string name;
   std::string version { "1" };
   std::string description;
-  nlohmann::json input_schema { nlohmann::json::object() };
-  nlohmann::json output_schema { nlohmann::json::object() };
+  nlohmann::json input_schema = nlohmann::json::object();
+  nlohmann::json output_schema = nlohmann::json::object();
   tool_side_effect side_effect { tool_side_effect::none };
   tool_idempotency idempotency { tool_idempotency::unknown };
   tool_approval_mode approval { tool_approval_mode::never };

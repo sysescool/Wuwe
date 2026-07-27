@@ -1183,7 +1183,7 @@ private:
   mutable bool initialized_ { false };
   mutable std::string negotiated_protocol_version_;
   mutable mcp_client_info client_info_;
-  mutable json client_capabilities_ { json::object() };
+  mutable json client_capabilities_ = json::object();
   mutable bool client_capabilities_known_ { false };
   mutable mcp_request_registry request_registry_;
   std::chrono::milliseconds request_timeout_ { 0 };

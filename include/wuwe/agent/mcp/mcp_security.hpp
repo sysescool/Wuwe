@@ -13,7 +13,7 @@ struct mcp_auth_context {
   std::string issuer;
   std::string audience;
   std::vector<std::string> scopes;
-  json claims { json::object() };
+  json claims = json::object();
 };
 
 struct mcp_access_policy {
@@ -46,7 +46,7 @@ struct mcp_audit_event {
   std::vector<std::string> scopes;
   bool allowed { false };
   std::string reason;
-  json arguments { json::object() };
+  json arguments = json::object();
   bool redacted { false };
 };
 
