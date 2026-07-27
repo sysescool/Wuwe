@@ -2,7 +2,15 @@
 #define WUWE_WUWE_H
 
 #include <wuwe/agent/core/message.hpp>
+#include <wuwe/agent/core/content.hpp>
+#include <wuwe/agent/core/execution_context.hpp>
+#include <wuwe/agent/core/execution_context_projection.hpp>
+#include <wuwe/agent/core/filesystem.hpp>
+#include <wuwe/agent/core/metadata.hpp>
+#include <wuwe/agent/core/sqlite_schema.hpp>
+#include <wuwe/agent/core/execution_observability.hpp>
 #include <wuwe/agent/core/observability.hpp>
+#include <wuwe/agent/core/storage.hpp>
 #include <wuwe/agent/approval/approval_module.hpp>
 #include <wuwe/agent/audit/audit_module.hpp>
 #include <wuwe/agent/capability/capability.hpp>
@@ -11,10 +19,13 @@
 #include <wuwe/agent/evaluation/evaluation.hpp>
 #include <wuwe/agent/evaluation/reasoning_evaluation.hpp>
 #include <wuwe/agent/guardrails/guardrails.hpp>
+#include <wuwe/agent/host/host.hpp>
 #include <wuwe/agent/exploration/exploration.hpp>
 #include <wuwe/agent/knowledge/knowledge.hpp>
 #include <wuwe/agent/llm/anthropic_llm_client.h>
 #include <wuwe/agent/llm/gemini_llm_client.h>
+#include <wuwe/agent/llm/context_budget.hpp>
+#include <wuwe/agent/llm/llm_capabilities.hpp>
 #include <wuwe/agent/llm/llm_agent_runner.h>
 #include <wuwe/agent/llm/llm_provider_factory.h>
 #include <wuwe/agent/llm/llm_provider_registry.h>
@@ -22,6 +33,9 @@
 #include <wuwe/agent/llm/openai_compatible_llm_client.h>
 #include <wuwe/agent/llm/openai_provider_presets.h>
 #include <wuwe/agent/llm/openrouter_llm_client.h>
+#include <wuwe/agent/llm/resilient_llm_client.hpp>
+#include <wuwe/agent/llm/scripted_llm_client.hpp>
+#include <wuwe/agent/llm/llm_usage.hpp>
 #include <wuwe/agent/learning/learning.hpp>
 #include <wuwe/agent/learning/exploration_adapter.hpp>
 #include <wuwe/agent/mcp/mcp.hpp>
@@ -33,10 +47,12 @@
 #include <wuwe/agent/reasoning/reasoning.hpp>
 #include <wuwe/agent/reflection/reflection.hpp>
 #include <wuwe/agent/routing/routing.hpp>
+#include <wuwe/agent/runtime/runtime.hpp>
 #include <wuwe/agent/a2a/a2a.hpp>
 #include <wuwe/agent/a2a/multi_agent_adapter.hpp>
 #include <wuwe/agent/sandbox/sandbox_module.hpp>
 #include <wuwe/agent/tools/tool.hpp>
+#include <wuwe/agent/tools/json_schema.hpp>
 #include <wuwe/common/print.h>
 #include <wuwe/net/cpr_http_client.h>
 #include <wuwe/net/default_http_client.h>
