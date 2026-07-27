@@ -17,6 +17,7 @@ Its modules are independently usable. A host can start with one provider client 
 | Module | Responsibility |
 | --- | --- |
 | LLM providers | Provider configuration, normalized requests and responses, streaming, retries, and errors |
+| Context budget | Unified allocation across system prompts, conversation, memory, retrieval, tool schemas/results, and reserved output |
 | Resource routing | Capability-aware model profiles, token and cost budgets, and dynamic model selection |
 | Tools | Typed schemas, JSON argument parsing, dispatch, and provider composition |
 | Reasoning | Simple, ReAct, reflect-and-retry, plan-execute, and Best-of-N runs with budgets and traces |
@@ -39,6 +40,8 @@ Its modules are independently usable. A host can start with one provider client 
 | Controlled execution | Policy-bound Python subprocess execution with limits and cancellation |
 | Sandbox contracts | Isolation and enforcement capability descriptions exposed by execution backends |
 | Observability | Common events, module observers, traces, metrics adapters, and host-owned sinks |
+| Agent Host protocol | Versioned, transport-neutral run, approval, resume, cancellation, and event contracts |
+| Storage contracts | Explicit durability, transaction, migration, replay, and coordination guarantees |
 
 ## Release boundary
 
@@ -50,7 +53,7 @@ Optional capabilities stay explicit:
 
 - Windows uses Schannel by default; Linux release builds use OpenSSL.
 - SQLite is required by the official release presets but remains configurable for custom builds.
-- Tika and a platform-specific Java 21 runtime are bundled for default document parsing.
+- Default packages bundle Tika and a platform-specific Java 21 runtime for document parsing; either runtime component can be omitted for core-only or host-managed deployments.
 - Qdrant and other remote indexes are external services configured by the host.
 - `controlled_process` applies policy and resource limits but is not a strong isolation boundary.
 
@@ -58,6 +61,6 @@ Optional capabilities stay explicit:
 
 1. [Build and run Wuwe](getting-started.md).
 2. Configure an [LLM provider](llm-providers.md) and [typed tools](llm-tools.md).
-3. Compose the [agent runtime](agent-runtime.md), [orchestration](orchestration.md), [reasoning](reasoning.md), [planning](planning.md), [multi-agent runtime](multi-agent.md), [reflection](reflection.md), [learning and adaptation](learning-adaptation.md), or [exploration and discovery](exploration-discovery.md) layer you need.
+3. Compose the [agent runtime](agent-runtime.md), optional [Agent Host protocol](agent-host-protocol.md), [orchestration](orchestration.md), [reasoning](reasoning.md), [planning](planning.md), [multi-agent runtime](multi-agent.md), [reflection](reflection.md), [learning and adaptation](learning-adaptation.md), or [exploration and discovery](exploration-discovery.md) layer you need.
 4. Add [memory](memory-management.md), [knowledge retrieval](knowledge-retrieval.md), [MCP](mcp.md), or remote [A2A](a2a.md) interoperability.
-5. Review [security and governance](security-governance.md), [observability](observability.md), [dependencies](dependencies.md), [packaging](packaging.md), and [controlled execution](execution-runtime.md) before deployment.
+5. Review [security and governance](security-governance.md), [observability](observability.md), [storage contracts](storage-contracts.md), [dependencies](dependencies.md), [packaging](packaging.md), and [controlled execution](execution-runtime.md) before deployment.

@@ -51,3 +51,7 @@ Use `function_evaluator` to adapt LLM judges, grounding checks, policy complianc
 Observer and common event-sink failures are ignored and reported in case metadata by default. Configure `telemetry_failure_mode = propagate` when strict telemetry delivery is part of the evaluation gate.
 
 Knowledge retrieval keeps its domain-specific `knowledge_eval` metrics such as recall-at-k and mean reciprocal rank. Reflection remains an online candidate-review mechanism. Both can coexist with the common Evaluation module rather than being redefined by it.
+
+## Security regression
+
+`security_invariant_evaluator` normalizes tool-selection, permission-bypass, prompt-injection, and cross-tenant scenarios. `make_security_evaluation_case()` records a typed scenario and an observation covering policy bypass, unauthorized tool invocation, following untrusted instructions, and cross-tenant exposure. The evaluator fails closed when required boolean observations are absent and preserves diagnostic evidence in the common suite report. Product-specific fixtures still execute the real Tool, Guardrail, Memory, or Knowledge path; the common evaluator supplies the reusable result contract and CI gate.

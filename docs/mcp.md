@@ -6,7 +6,7 @@ description: Build MCP servers, clients, process hosts, gateways, and HTTP endpo
 
 # Model Context Protocol
 
-Wuwe implements MCP protocol version `2024-11-05` for exposing tools and context, consuming external servers, and aggregating multiple process servers behind one host.
+Wuwe defaults to MCP protocol version `2025-06-18` and retains compatibility with `2024-11-05` for exposing tools and context, consuming external servers, and aggregating multiple process servers behind one host. Initialize requests negotiate an explicitly supported version; unsupported versions receive an error containing the supported-version list. Clients and host entries can select a supported version without changing global state.
 
 ## Server
 

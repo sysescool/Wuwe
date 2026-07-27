@@ -67,6 +67,30 @@ The execution runtime records policy, approval, start, completion, failure, canc
 
 The host owns durable storage, redaction, access control, retention, and export of audit data.
 
+## Content trust and retrieval isolation
+
+`content_provenance` labels content by trust level and source. Memory and Knowledge
+set conservative provenance when a host has not supplied one. Their default request
+augmentation keeps retrieved material out of system messages, preserves leading
+system instructions, and escapes boundary delimiters before rendering the material
+inside `<wuwe-context>`.
+
+The keys `trust`, `source`, `source_id`, and `source_uri` are reserved inside
+`content_provenance::metadata`; extension metadata cannot overwrite their
+authoritative `wuwe.content.*` values. Reapplying provenance also removes stale
+optional source identifiers when the new provenance does not provide them.
+
+`content_trust_guardrail` can enforce this contract at input, retrieval, tool-output,
+and memory-write stages. It fails closed on missing or unknown trust labels and
+denies promotion of non-system/non-application content to the system role. This is
+a defense-in-depth boundary, not a replacement for capability authorization and
+tenant-aware retrieval filtering.
+
+Knowledge high-level APIs use strict ACL defaults. Unlabeled and empty-labeled
+records are denied; explicitly public or matching tenant/user/role labels are
+required. Identity comes from the host execution context by default, not from model
+tool arguments.
+
 ## Sandbox enforcement contracts
 
 `sandbox_backend_info` reports backend availability, isolation level, features, and a field-by-field `sandbox_enforcement_contract`. Enforcement levels distinguish controls that are enforced, partial, not enforced, not applicable, or planned.

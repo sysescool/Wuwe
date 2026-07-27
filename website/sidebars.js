@@ -11,7 +11,7 @@ const sidebars = {
       type: 'category',
       label: 'Core runtime',
       collapsed: false,
-      items: ['agent-runtime', 'orchestration', 'reasoning', 'planning', 'multi-agent', 'reflection', 'learning-adaptation', 'exploration-discovery'],
+      items: ['agent-runtime', 'agent-host-protocol', 'orchestration', 'reasoning', 'planning', 'multi-agent', 'reflection', 'learning-adaptation', 'exploration-discovery'],
     },
     {
       type: 'category',
@@ -41,7 +41,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Operations and governance',
-      items: ['security-governance', 'guardrails', 'evaluation', 'observability'],
+      items: ['security-governance', 'guardrails', 'evaluation', 'observability', 'storage-contracts'],
     },
   ],
 };

@@ -71,6 +71,24 @@ Vector search is optional. Attach an embedding model and vector index for semant
 
 Records marked hidden, or with metadata `sensitivity=secret`, are not exposed to the model context.
 
+Memory injection is fail-safe by default. Retrieved memory is labeled with content
+provenance, inserted as a `user` message after leading system instructions, and
+wrapped in an escaped `<wuwe-context>` data boundary. `inject_as_system_message`
+now defaults to `false`. Even when enabled, untrusted content remains non-system
+unless `allow_untrusted_system_message=true` is explicitly selected. That override
+should be limited to a trusted, host-controlled data source.
+
+The agent runner projects tenant, user, application, conversation, and agent fields
+from `agent_execution_context` into `memory_scope`, avoiding a second independently
+assembled identity path.
+
+`memory_context::set_scope()` is a default/legacy scope, not request-local mutable
+state. Configure it before concurrent use. Multi-tenant or concurrent hosts should
+put identity on each run's `agent_execution_context`; the runner then uses that
+scope consistently for recall and for persisted request, assistant, and tool
+messages. Partial execution identities replace the active scope rather than being
+merged with it.
+
 ## Lifecycle and audit
 
 The API supports update, erase, scoped clear, expired-record compaction, conversation summarization, and vector-index rebuild. Audit callbacks can record remember, recall, update, erase, clear, and maintenance operations.

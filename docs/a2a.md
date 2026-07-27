@@ -56,6 +56,11 @@ Set `send_message_configuration::blocking = false` when using `team_task_handler
 
 `team_task_handler_options::max_background_tasks` bounds in-process background work and must be greater than zero. Capacity exhaustion returns an `internal_error` with structured `error.data` containing `reason = "background_capacity_exhausted"`, `retryable = true`, and the configured maximum. Background launch failures roll back the tentative task record and are returned through the same typed result boundary rather than escaping as thread exceptions.
 
+Destroying a handler requests cancellation for every accepted background task and
+waits for its cooperative workers to finish before releasing the task registry.
+Agent executors should honor their `stop_token`; an uncooperative executor can
+necessarily delay shutdown because Wuwe does not terminate application threads.
+
 Once `tasks/cancel` succeeds, cancellation remains terminal even if the worker returns concurrently. Message and request metadata are merged into the local `agent_task_request`; request-level keys override message-level keys, strings remain strings, and other JSON values use their serialized representation.
 
 An `input-required` Task can be continued by sending another Message with the same `taskId`. The bridge inherits the existing context when `contextId` is omitted, appends history, clears the previous status message after successful continuation, and replaces Artifacts with matching IDs. Paused tasks may also be cancelled without holding an Agent capacity lease.
