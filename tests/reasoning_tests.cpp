@@ -64,6 +64,13 @@ public:
   std::vector<llm_request> requests;
 };
 
+class nonstandard_throwing_llm_client final : public llm_client {
+public:
+  llm_response complete(const llm_request&) override {
+    throw 42;
+  }
+};
+
 class streaming_tool_call_llm_client final : public llm_client {
 public:
   bool supports_streaming() const noexcept override {
@@ -1544,6 +1551,19 @@ void resource_budgets_fail_before_or_after_model_calls() {
     "failed routing decisions are represented in the reasoning trace");
 }
 
+void nonstandard_provider_exceptions_are_contained() {
+  nonstandard_throwing_llm_client client;
+  reasoning::reasoning_runner runner(client);
+  const auto result = runner.run({
+    .input = "contain provider failure",
+    .policy = { .mode = reasoning::reasoning_mode::simple },
+  });
+  require(!result.completed &&
+      result.reasoning_error == reasoning::reasoning_error_code::unknown &&
+      !result.error.empty(),
+    "reasoning must translate non-standard provider exceptions into a stable result");
+}
+
 void run(const char* name, void (*test)()) {
   test();
   println("[PASS] {}", name);
@@ -1598,6 +1618,8 @@ int main() {
       resource_routing_requires_streaming_for_streamed_calls);
     run("resource budgets fail before or after model calls",
       resource_budgets_fail_before_or_after_model_calls);
+    run("non-standard provider exceptions are contained",
+      nonstandard_provider_exceptions_are_contained);
   }
   catch (const std::exception& ex) {
     println("[FAIL] {}", ex.what());

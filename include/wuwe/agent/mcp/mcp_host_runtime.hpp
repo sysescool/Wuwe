@@ -31,6 +31,7 @@ struct mcp_host_server_config {
   mcp_process_command command;
   mcp_client_info client_info { .name = "wuwe-host", .version = "0.1.0" };
   json capabilities = json::object();
+  std::string protocol_version { default_protocol_version };
   bool auto_initialize { true };
   bool send_initialized_notification { true };
   bool restart_on_failure { false };

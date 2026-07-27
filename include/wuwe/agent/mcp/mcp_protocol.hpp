@@ -1,6 +1,8 @@
 #ifndef WUWE_AGENT_MCP_PROTOCOL_HPP
 #define WUWE_AGENT_MCP_PROTOCOL_HPP
 
+#include <algorithm>
+#include <array>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -11,7 +13,18 @@ namespace wuwe::agent::mcp {
 
 using json = nlohmann::json;
 
-inline constexpr std::string_view default_protocol_version = "2024-11-05";
+inline constexpr std::string_view default_protocol_version = "2025-06-18";
+inline constexpr std::array<std::string_view, 2> supported_protocol_versions {
+  "2025-06-18",
+  "2024-11-05",
+};
+
+[[nodiscard]] inline bool supports_protocol_version(std::string_view version) {
+  return std::find(
+    supported_protocol_versions.begin(),
+    supported_protocol_versions.end(),
+    version) != supported_protocol_versions.end();
+}
 
 enum class mcp_error_code : int {
   parse_error = -32700,

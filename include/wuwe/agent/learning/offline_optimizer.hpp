@@ -180,6 +180,11 @@ inline learning_activator make_registry_only_activator(
     catch (const std::exception& ex) {
       return learning_activation_result { .error = ex.what() };
     }
+    catch (...) {
+      return learning_activation_result {
+        .error = "registry activation failed with an unknown exception",
+      };
+    }
   };
 }
 

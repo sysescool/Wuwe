@@ -21,6 +21,14 @@ void require(bool condition, const std::string& message) {
   if (!condition) throw std::runtime_error(message);
 }
 
+class nonstandard_throwing_approval final : public approval::approval_service {
+public:
+  approval::approval_decision decide(
+    const approval::approval_request&) override {
+    throw 42;
+  }
+};
+
 learning::learning_evaluation evaluation_for(double score, std::size_t regressions = 0) {
   return {
     .passed = true,
@@ -159,6 +167,36 @@ void activates_only_after_explicit_approval() {
   require(denied_result && denied_result.approval_denied_count == 1 &&
       denied_result.accepted_count == 1 && activations == 1,
     "denied approval prevents activation without failing the controlled run");
+}
+
+void nonstandard_approval_failures_are_contained() {
+  nonstandard_throwing_approval approvals;
+  learning::learning_runner runner({
+    .proposer = [](const learning::learning_request&,
+                   const learning::learning_context&) {
+      return std::vector<learning::learning_candidate> {
+        { .proposed_version = "approval-failure-v1" },
+      };
+    },
+    .evaluator = [](const learning::learning_candidate&,
+                    const learning::learning_context&) {
+      return evaluation_for(0.95);
+    },
+    .activator = [](const learning::learning_candidate&,
+                    const learning::learning_context&) {
+      return learning::learning_activation_result { .activated = true };
+    },
+    .approvals = &approvals,
+  });
+  const auto result = runner.run({ .target = "approval-failure" }, {
+    .policy = {
+      .activation_mode = learning::learning_activation_mode::require_approval,
+    },
+  });
+  require(result && result.approval_required_count == 1 &&
+      result.records.front().status ==
+        learning::learning_candidate_status::approval_required,
+    "learning must convert non-standard approval failures into review-required state");
 }
 
 void evaluation_suite_comparison_detects_regressions() {
@@ -625,6 +663,8 @@ int main() {
   try {
     run("stages candidates", stages_only_candidates_that_pass_promotion_policy);
     run("approval activation", activates_only_after_explicit_approval);
+    run("non-standard approval failure",
+      nonstandard_approval_failures_are_contained);
     run("suite comparison", evaluation_suite_comparison_detects_regressions);
     run("bounded evaluator", bounds_uncooperative_evaluators);
     run("limits and configuration", enforces_candidate_limits_and_activation_configuration);

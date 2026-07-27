@@ -38,7 +38,13 @@ public:
       std::move(method), std::move(params)));
   }
 
-  json initialize(mcp_client_info info = {}, json capabilities = json::object()) {
+  json initialize(
+    mcp_client_info info = {},
+    json capabilities = json::object(),
+    std::string protocol_version = std::string(default_protocol_version)) {
+    if (!supports_protocol_version(protocol_version)) {
+      throw std::invalid_argument("unsupported MCP protocol version: " + protocol_version);
+    }
     json client_info = json::object();
     if (!info.name.empty()) {
       client_info["name"] = std::move(info.name);
@@ -48,7 +54,7 @@ public:
     }
 
     return request("initialize", {
-      { "protocolVersion", std::string(default_protocol_version) },
+      { "protocolVersion", std::move(protocol_version) },
       { "clientInfo", std::move(client_info) },
       { "capabilities", std::move(capabilities) },
     });

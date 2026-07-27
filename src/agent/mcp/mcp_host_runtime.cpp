@@ -262,7 +262,10 @@ void mcp_host_runtime::start_entry(server_entry& entry) {
   try {
     entry.client.start(entry.config.command);
     if (entry.config.auto_initialize) {
-      entry.client.initialize(entry.config.client_info, entry.config.capabilities);
+      entry.client.initialize(
+        entry.config.client_info,
+        entry.config.capabilities,
+        entry.config.protocol_version);
       if (entry.config.send_initialized_notification) {
         entry.client.notify("notifications/initialized");
       }

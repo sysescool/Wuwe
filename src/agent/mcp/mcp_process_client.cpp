@@ -671,7 +671,13 @@ void mcp_process_client::notify(std::string method, json params) {
   impl_->write_framed_message(make_notification(std::move(method), std::move(params)));
 }
 
-json mcp_process_client::initialize(mcp_client_info info, json capabilities) {
+json mcp_process_client::initialize(
+  mcp_client_info info,
+  json capabilities,
+  std::string protocol_version) {
+  if (!supports_protocol_version(protocol_version)) {
+    throw std::invalid_argument("unsupported MCP protocol version: " + protocol_version);
+  }
   json client_info = json::object();
   if (!info.name.empty()) {
     client_info["name"] = std::move(info.name);
@@ -681,7 +687,7 @@ json mcp_process_client::initialize(mcp_client_info info, json capabilities) {
   }
 
   return request("initialize", {
-    { "protocolVersion", default_protocol_version },
+    { "protocolVersion", std::move(protocol_version) },
     { "clientInfo", std::move(client_info) },
     { "capabilities", std::move(capabilities) },
   });

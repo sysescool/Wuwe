@@ -581,6 +581,48 @@ void non_blocking_handler_applies_background_backpressure() {
     "non-blocking A2A tasks apply bounded backpressure instead of spawning without limit");
 }
 
+void handler_destruction_cancels_background_work() {
+  std::atomic<bool> entered { false };
+  std::atomic<bool> stopped { false };
+  auto registry = std::make_shared<ma::agent_registry>();
+  registry->add({ .id = "cooperative", .name = "cooperative" },
+    std::make_shared<ma::function_agent_executor>(
+      [&](const ma::agent_task_request&,
+          const ma::agent_execution_context& context) {
+        entered = true;
+        while (!context.stop_token.stop_requested()) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        stopped = true;
+        return ma::agent_task_result {
+          .status = ma::agent_task_status::cancelled,
+          .error_code = ma::agent_task_error_code::cancelled,
+        };
+      }));
+  auto runtime = std::make_shared<ma::team_runtime>(ma::team_runtime_options {
+    .registry = registry,
+  });
+  auto handler = std::make_unique<a2a::team_task_handler>(
+    a2a::team_task_handler_options {
+      .runtime = runtime,
+      .preferred_agent = "cooperative",
+    });
+  const auto submitted = handler->send({
+    .value = {
+      .message_id = "shutdown-message",
+      .parts = { a2a::part::text_part("wait") },
+      .task_id = "shutdown-task",
+    },
+    .configuration = { .blocking = false },
+  }, {});
+  require(static_cast<bool>(submitted),
+    "background task should be accepted before handler shutdown");
+  while (!entered) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  handler.reset();
+  require(stopped,
+    "handler destruction must request cancellation and join accepted background work");
+}
+
 void run(const char* name, void (*test)()) {
   test();
   wuwe::println("[PASS] {}", name);
@@ -606,6 +648,8 @@ int main() {
       in_process_transport_honors_pre_cancelled_requests);
     run("non-blocking handler applies background backpressure",
       non_blocking_handler_applies_background_backpressure);
+    run("handler destruction cancels background work",
+      handler_destruction_cancels_background_work);
   }
   catch (const std::exception& ex) {
     wuwe::println("[FAIL] {}", ex.what());

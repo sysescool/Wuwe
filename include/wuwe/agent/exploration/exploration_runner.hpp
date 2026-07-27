@@ -403,6 +403,11 @@ private:
           experiment.status = experiment_status::approval_required;
           experiment.error = std::string("experiment approval failed: ") + ex.what();
         }
+        catch (...) {
+          experiment.status = experiment_status::approval_required;
+          experiment.error =
+            "experiment approval failed with an unknown exception";
+        }
       }
     }
   }

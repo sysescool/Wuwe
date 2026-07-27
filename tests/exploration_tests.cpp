@@ -19,6 +19,14 @@ void require(bool condition, const std::string& message) {
   if (!condition) throw std::runtime_error(message);
 }
 
+class nonstandard_throwing_approval final : public approval::approval_service {
+public:
+  approval::approval_decision decide(
+    const approval::approval_request&) override {
+    throw 42;
+  }
+};
+
 exploration::exploration_runner make_runner(
   int& executions,
   exploration::exploration_store* store = nullptr,
@@ -250,6 +258,20 @@ void telemetry_failures_follow_the_common_policy() {
   require(propagated, "exploration can explicitly propagate telemetry failures");
 }
 
+void nonstandard_approval_failures_are_contained() {
+  int executions = 0;
+  nonstandard_throwing_approval approvals;
+  auto runner = make_runner(executions, nullptr, &approvals);
+  const auto result = runner.run({ .objective = "approval failure" }, {
+    .policy = { .allow_effectful_experiments = true },
+  });
+  const auto& effectful = result.record.hypotheses.front().experiments.back();
+  require(result && executions == 1 &&
+      effectful.status == exploration::experiment_status::approval_required &&
+      !effectful.error.empty(),
+    "exploration must convert non-standard approval failures into review-required state");
+}
+
 void run(void (*test)()) {
   test();
 }
@@ -264,6 +286,7 @@ int main() {
     run(bounds_uncooperative_experiments);
     run(reports_total_design_failure);
     run(telemetry_failures_follow_the_common_policy);
+    run(nonstandard_approval_failures_are_contained);
   }
   catch (const std::exception& ex) {
     std::cerr << "[FAIL] " << ex.what() << '\n';

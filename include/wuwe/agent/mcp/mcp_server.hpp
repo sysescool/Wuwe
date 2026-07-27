@@ -278,6 +278,11 @@ public:
     return initialized_;
   }
 
+  std::string negotiated_protocol_version() const {
+    std::lock_guard lock(mutex_);
+    return negotiated_protocol_version_;
+  }
+
   mcp_client_info client_info() const {
     std::lock_guard lock(mutex_);
     return client_info_;
@@ -541,11 +546,26 @@ private:
     }
 
     const auto protocol_version = params.find("protocolVersion");
-    if (protocol_version != params.end() && !protocol_version->is_string()) {
+    if (protocol_version == params.end() || !protocol_version->is_string()) {
       return make_error_response(id,
         { .code = mcp_error_code::invalid_params,
           .message = "params.protocolVersion must be a string" });
     }
+    const auto requested_version = protocol_version->get<std::string>();
+    if (!supports_protocol_version(requested_version)) {
+      json supported = json::array();
+      for (const auto version : supported_protocol_versions) {
+        supported.push_back(version);
+      }
+      return make_error_response(id,
+        { .code = mcp_error_code::invalid_params,
+          .message = "unsupported MCP protocol version",
+          .data = json {
+            { "requestedVersion", requested_version },
+            { "supportedVersions", std::move(supported) },
+          } });
+    }
+    negotiated_protocol_version_ = requested_version;
 
     const auto capabilities = params.find("capabilities");
     if (capabilities != params.end() && capabilities->is_object()) {
@@ -574,7 +594,9 @@ private:
 
   json initialize_result() const {
     return {
-      { "protocolVersion", std::string(default_protocol_version) },
+      { "protocolVersion", negotiated_protocol_version_.empty()
+          ? std::string(default_protocol_version)
+          : negotiated_protocol_version_ },
       { "capabilities", {
           { "tools", { { "listChanged", true } } },
           { "resources", { { "subscribe", true }, { "listChanged", true } } },
@@ -1159,6 +1181,7 @@ private:
   mutable std::vector<std::string> subscribed_resource_uris_;
   std::size_t list_page_size_ { 0 };
   mutable bool initialized_ { false };
+  mutable std::string negotiated_protocol_version_;
   mutable mcp_client_info client_info_;
   mutable json client_capabilities_ { json::object() };
   mutable bool client_capabilities_known_ { false };

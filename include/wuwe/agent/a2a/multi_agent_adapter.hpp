@@ -219,6 +219,28 @@ public:
     background_.reserve(options_.max_background_tasks);
   }
 
+  ~team_task_handler() override {
+    std::vector<std::future<void>> background;
+    try {
+      std::scoped_lock lock(mutex_);
+      for (auto& [_, record] : tasks_) {
+        if (record.stop_source) {
+          record.stop_source->request_stop();
+        }
+      }
+      background.swap(background_);
+    }
+    catch (...) {
+    }
+    for (auto& task : background) {
+      try {
+        task.get();
+      }
+      catch (...) {
+      }
+    }
+  }
+
   result<task> send(
     const send_message_params& params,
     std::stop_token transport_stop_token) override {

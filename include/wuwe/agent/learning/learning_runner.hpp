@@ -270,6 +270,12 @@ private:
           record.error = std::string("learning approval failed: ") + ex.what();
           continue;
         }
+        catch (...) {
+          record.status = learning_candidate_status::approval_required;
+          record.error =
+            "learning approval failed with an unknown exception";
+          continue;
+        }
         if (record.approval->kind != approval::approval_decision_kind::approved) {
           record.status = record.approval->kind ==
                               approval::approval_decision_kind::needs_manual_review

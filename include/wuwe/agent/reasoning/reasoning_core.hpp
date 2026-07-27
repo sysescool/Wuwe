@@ -194,6 +194,7 @@ enum class reasoning_event_type {
   tool_call_building,
   tool_call_ready,
   tool_started,
+  tool_heartbeat,
   tool_completed,
   model_completed,
   reflection_started,
@@ -233,6 +234,8 @@ inline std::string to_string(reasoning_event_type type) {
       return "tool_call_ready";
     case reasoning_event_type::tool_started:
       return "tool_started";
+    case reasoning_event_type::tool_heartbeat:
+      return "tool_heartbeat";
     case reasoning_event_type::tool_completed:
       return "tool_completed";
     case reasoning_event_type::model_completed:

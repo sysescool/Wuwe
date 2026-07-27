@@ -233,6 +233,13 @@ public:
             : reasoning_error_code::unknown;
         result.error_code = make_error_code(result.reasoning_error);
       }
+      catch (...) {
+        result.mode = request.policy.mode;
+        result.completed = false;
+        result.error = "reasoning execution failed with an unknown exception";
+        result.reasoning_error = reasoning_error_code::unknown;
+        result.error_code = make_error_code(result.reasoning_error);
+      }
     }
 
     if (state->side_effect_blocked) {
@@ -1382,6 +1389,21 @@ private:
         .tool_call = &call,
       }, state.get());
     };
+    callbacks.on_tool_heartbeat =
+      [this, mode, state](const llm_tool_call& call,
+                          const tools::tool_heartbeat& heartbeat) {
+        auto metadata = heartbeat.metadata;
+        if (heartbeat.progress) {
+          metadata["progress"] = std::to_string(*heartbeat.progress);
+        }
+        notify({
+          .type = reasoning_event_type::tool_heartbeat,
+          .mode = mode,
+          .message = heartbeat.message,
+          .tool_call = &call,
+          .metadata = std::move(metadata),
+        }, state.get());
+      };
     callbacks.on_tool_result =
       [this, mode, state](const llm_tool_call& call, const llm_tool_result& result) {
         notify({
