@@ -14,6 +14,9 @@ add_executable(knowledge_tests
 )
 
 target_link_libraries(knowledge_tests PRIVATE wuwe)
+if(MSVC)
+    target_compile_options(knowledge_tests PRIVATE /bigobj)
+endif()
 wuwe_copy_runtime_dlls(knowledge_tests)
 
 add_test(NAME knowledge_tests COMMAND knowledge_tests)
@@ -30,6 +33,22 @@ wuwe_copy_runtime_dlls(agent_runtime_tests)
 
 add_test(NAME agent_runtime_tests COMMAND agent_runtime_tests)
 
+add_executable(runtime_tests
+    runtime_tests.cpp
+)
+
+target_link_libraries(runtime_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(runtime_tests)
+
+add_test(NAME runtime_tests COMMAND runtime_tests)
+
+add_executable(runtime_extensions_tests
+    runtime_extensions_tests.cpp
+)
+target_link_libraries(runtime_extensions_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(runtime_extensions_tests)
+add_test(NAME runtime_extensions_tests COMMAND runtime_extensions_tests)
+
 add_executable(llm_provider_tests
     llm_provider_tests.cpp
 )
@@ -38,6 +57,20 @@ target_link_libraries(llm_provider_tests PRIVATE wuwe)
 wuwe_copy_runtime_dlls(llm_provider_tests)
 
 add_test(NAME llm_provider_tests COMMAND llm_provider_tests)
+
+add_executable(p1_infrastructure_tests
+    p1_infrastructure_tests.cpp
+)
+target_link_libraries(p1_infrastructure_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(p1_infrastructure_tests)
+add_test(NAME p1_infrastructure_tests COMMAND p1_infrastructure_tests)
+
+add_executable(host_protocol_tests
+    host_protocol_tests.cpp
+)
+target_link_libraries(host_protocol_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(host_protocol_tests)
+add_test(NAME host_protocol_tests COMMAND host_protocol_tests)
 
 add_executable(net_tests
     net_tests.cpp
@@ -136,6 +169,9 @@ add_executable(best_of_n_tests
 )
 
 target_link_libraries(best_of_n_tests PRIVATE wuwe)
+if(MSVC)
+    target_compile_options(best_of_n_tests PRIVATE /bigobj)
+endif()
 wuwe_copy_runtime_dlls(best_of_n_tests)
 
 add_test(NAME best_of_n_tests COMMAND best_of_n_tests)
@@ -163,6 +199,16 @@ add_executable(header_independence_tests
     header_independence/evaluation_header.cpp
     header_independence/multi_agent_header.cpp
     header_independence/a2a_header.cpp
+    header_independence/content_header.cpp
+    header_independence/execution_context_header.cpp
+    header_independence/tool_contract_header.cpp
+    header_independence/runtime_header.cpp
+    header_independence/runtime_extensions_header.cpp
+    header_independence/p1_header.cpp
+    header_independence/host_header.cpp
+    header_independence/filesystem_header.cpp
+    header_independence/metadata_header.cpp
+    header_independence/sqlite_schema_header.cpp
 )
 
 target_link_libraries(header_independence_tests PRIVATE wuwe)
@@ -175,6 +221,9 @@ add_executable(reasoning_tests
 )
 
 target_link_libraries(reasoning_tests PRIVATE wuwe)
+if(MSVC)
+    target_compile_options(reasoning_tests PRIVATE /bigobj)
+endif()
 wuwe_copy_runtime_dlls(reasoning_tests)
 
 add_test(NAME reasoning_tests COMMAND reasoning_tests)
