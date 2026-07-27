@@ -64,7 +64,7 @@ int main() {
     .id = "wuwe-rag-mcp",
     .title = "Wuwe RAG MCP",
     .source_uri = "wuwe://examples/knowledge-mcp",
-    .metadata = { { "topic", "rag" } },
+    .metadata = { { "topic", "rag" }, { "visibility", "public" } },
   }));
 
   knowledge::knowledge_tool_provider tools(*retriever, {

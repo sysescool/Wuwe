@@ -6,6 +6,8 @@
 #include <string_view>
 #include <vector>
 
+#include <wuwe/agent/core/content.hpp>
+
 namespace wuwe::agent::knowledge {
 
 struct knowledge_document {
@@ -29,11 +31,31 @@ struct knowledge_chunk {
   std::map<std::string, std::string> metadata;
 };
 
+enum class knowledge_acl_mode {
+  permissive,
+  public_only,
+  tenant_required,
+  user_required,
+  deny_if_unlabeled,
+};
+
+[[nodiscard]] inline std::string to_string(knowledge_acl_mode mode) {
+  switch (mode) {
+    case knowledge_acl_mode::permissive: return "permissive";
+    case knowledge_acl_mode::public_only: return "public_only";
+    case knowledge_acl_mode::tenant_required: return "tenant_required";
+    case knowledge_acl_mode::user_required: return "user_required";
+    case knowledge_acl_mode::deny_if_unlabeled: return "deny_if_unlabeled";
+  }
+  return "deny_if_unlabeled";
+}
+
 struct knowledge_access_scope {
   std::string tenant_id;
   std::string user_id;
   std::vector<std::string> roles;
   bool bypass_acl {};
+  knowledge_acl_mode mode { knowledge_acl_mode::permissive };
 };
 
 struct knowledge_query {
@@ -67,6 +89,9 @@ inline bool metadata_matches(
 }
 
 inline bool csv_contains(std::string_view csv, const std::string& value) {
+  if (value.empty()) {
+    return false;
+  }
   std::size_t start = 0;
   while (start <= csv.size()) {
     const auto end = csv.find(',', start);
@@ -77,7 +102,7 @@ inline bool csv_contains(std::string_view csv, const std::string& value) {
     while (!token.empty() && token.back() == ' ') {
       token.remove_suffix(1);
     }
-    if (token == value) {
+    if (!token.empty() && token == value) {
       return true;
     }
     if (end == std::string_view::npos) {
@@ -93,6 +118,41 @@ inline bool metadata_access_matches(
   const knowledge_access_scope& access) {
   if (access.bypass_acl) {
     return true;
+  }
+
+  const auto explicit_public = [&] {
+    if (const auto visibility = metadata.find("visibility");
+        visibility != metadata.end() && visibility->second == "public") {
+      return true;
+    }
+    const auto public_flag = metadata.find("public");
+    return public_flag != metadata.end() && public_flag->second == "true";
+  }();
+  const auto has_nonempty = [&](const char* key) {
+    const auto found = metadata.find(key);
+    return found != metadata.end() && !found->second.empty();
+  };
+  const auto has_tenant = has_nonempty("tenant_id");
+  const auto has_user = has_nonempty("user_id") ||
+                        has_nonempty("allowed_users") ||
+                        has_nonempty("allowed_roles");
+  const auto labeled = explicit_public || has_tenant || has_user;
+
+  switch (access.mode) {
+    case knowledge_acl_mode::permissive:
+      break;
+    case knowledge_acl_mode::public_only:
+      if (!explicit_public) return false;
+      break;
+    case knowledge_acl_mode::tenant_required:
+      if (!explicit_public && !has_tenant) return false;
+      break;
+    case knowledge_acl_mode::user_required:
+      if (!has_user) return false;
+      break;
+    case knowledge_acl_mode::deny_if_unlabeled:
+      if (!labeled) return false;
+      break;
   }
 
   if (const auto tenant = metadata.find("tenant_id");

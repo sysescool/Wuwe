@@ -305,11 +305,17 @@ void test_hidden_secret_and_request_dedupe() {
   memory.observe({ .role = "user", .content = "current request should not repeat" });
 
   llm_request request;
+  request.messages.push_back({ .role = "system", .content = "Answer safely." });
   request.messages.push_back({ .role = "user", .content = "current request should not repeat" });
   const auto augmented = memory.augment(std::move(request), "working current request");
 
-  require(augmented.messages.size() == 2, "visible memory should inject one memory message");
-  const auto& block = augmented.messages.front().content;
+  require(augmented.messages.size() == 3, "visible memory should inject one memory message");
+  require(augmented.messages.front().role == "system",
+    "memory injection should preserve leading system instructions");
+  require(augmented.messages[1].role == "user" &&
+      contains(augmented.messages[1].content, "wuwe-context"),
+    "retrieved memory should use an untrusted data boundary by default");
+  const auto& block = augmented.messages[1].content;
   require(contains(block, "visible working item"), "visible memory should be injected");
   require(!contains(block, "hidden working item"), "hidden memory should not be injected");
   require(!contains(block, "secret working item"), "secret memory should not be injected");
@@ -1280,6 +1286,53 @@ void test_runner_observes_without_injecting_current_request_twice() {
   require(!records.empty(), "runner should observe assistant response");
 }
 
+void test_runner_execution_context_scope_semantics() {
+  memory_context memory;
+  memory.set_scope(test_scope());
+  memory.remember_working("legacy active scope fact");
+
+  capture_client legacy_client;
+  llm_agent_runner legacy_runner(legacy_client, &memory);
+  require(static_cast<bool>(legacy_runner.complete("active scope fact")),
+    "legacy runner call should complete");
+  const auto legacy_injected = std::any_of(
+    legacy_client.last_request.messages.begin(),
+    legacy_client.last_request.messages.end(),
+    [](const chat_message& message) {
+      return message.context_source == llm_context_source::memory &&
+             contains(message.content, "legacy active scope fact");
+    });
+  require(legacy_injected,
+    "an empty execution context must preserve the memory active scope");
+
+  capture_client isolated_client;
+  llm_agent_runner isolated_runner(isolated_client, &memory);
+  llm_agent_run_options options;
+  options.context.tenant_id = "tenant-b";
+  options.context.user_id = "user-b";
+  require(static_cast<bool>(isolated_runner.complete("active scope fact", options)),
+    "context-scoped runner call should complete");
+  const auto cross_scope_injected = std::any_of(
+    isolated_client.last_request.messages.begin(),
+    isolated_client.last_request.messages.end(),
+    [](const chat_message& message) {
+      return message.context_source == llm_context_source::memory &&
+             contains(message.content, "legacy active scope fact");
+    });
+  require(!cross_scope_injected,
+    "an explicit execution identity must replace, not merge with, the active scope");
+
+  memory_query isolated_query;
+  isolated_query.scope = {
+    .tenant_id = "tenant-b",
+    .user_id = "user-b",
+  };
+  isolated_query.kinds = { memory_kind::conversation };
+  isolated_query.text = "assistant response";
+  require(!memory.recall(isolated_query).empty(),
+    "messages observed under a partial execution identity must remain in that identity");
+}
+
 void run(const char* name, void (*test)()) {
   test();
   println("[PASS] {}", name);
@@ -1327,6 +1380,8 @@ int main() {
     run("memory tools review and limit", test_memory_tools_review_and_limit);
     run("runner memory tool call", test_runner_memory_tool_call);
     run("runner observes without duplicate injection", test_runner_observes_without_injecting_current_request_twice);
+    run("runner execution-context scope semantics",
+      test_runner_execution_context_scope_semantics);
   }
   catch (const std::exception& ex) {
     println("[FAIL] {}", ex.what());

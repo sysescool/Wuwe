@@ -48,6 +48,15 @@ public:
     load();
   }
 
+  [[nodiscard]] core::storage_capabilities capabilities()
+    const noexcept override {
+    return {
+      .declared = true,
+      .durable = true,
+      .coordination_scope = core::storage_coordination_scope::process_local,
+    };
+  }
+
   void upsert(const knowledge_chunk& chunk, const std::vector<float>& embedding) override {
     std::scoped_lock lock(mutex_);
     entries_[chunk.id] = entry {

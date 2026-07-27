@@ -16,6 +16,8 @@
 #include <utility>
 #include <vector>
 
+#include <wuwe/agent/core/content.hpp>
+#include <wuwe/agent/core/execution_context.hpp>
 #include <wuwe/agent/llm/llm_types.h>
 #include <wuwe/agent/memory/embedding_model.hpp>
 #include <wuwe/agent/memory/in_memory_store.hpp>
@@ -25,6 +27,29 @@
 #include <wuwe/agent/memory/vector_memory_index.hpp>
 
 namespace wuwe::agent::memory {
+
+[[nodiscard]] inline bool memory_scope_has_identity(
+  const memory_scope& scope) noexcept {
+  return !scope.tenant_id.empty() || !scope.user_id.empty() ||
+         !scope.application_id.empty() || !scope.conversation_id.empty() ||
+         !scope.agent_id.empty();
+}
+
+[[nodiscard]] inline memory_scope memory_scope_from_execution_context(
+  const core::agent_execution_context& context,
+  memory_scope fallback = {}) {
+  const memory_scope projected {
+    .tenant_id = context.tenant_id,
+    .user_id = context.user_id,
+    .application_id = context.application_id,
+    .conversation_id = context.conversation_id,
+    .agent_id = context.agent_id,
+  };
+  if (!memory_scope_has_identity(projected)) {
+    return fallback;
+  }
+  return projected;
+}
 
 namespace detail {
 
@@ -41,6 +66,34 @@ inline bool memory_record_visible_to_model(const memory_record& record) {
 
   const auto sensitivity = record.metadata.find("sensitivity");
   return sensitivity == record.metadata.end() || sensitivity->second != "secret";
+}
+
+inline core::content_trust_level default_memory_trust(
+  const memory_record& record) noexcept {
+  const auto role = record.metadata.find("message_role");
+  if (role != record.metadata.end()) {
+    if (role->second == "user") {
+      return core::content_trust_level::user_supplied;
+    }
+    if (role->second == "tool") {
+      return core::content_trust_level::tool_output;
+    }
+    if (role->second == "assistant") {
+      return core::content_trust_level::model_generated;
+    }
+  }
+  return core::content_trust_level::retrieved_untrusted;
+}
+
+inline void ensure_memory_provenance(memory_record& record) {
+  if (record.metadata.contains("wuwe.content.trust")) {
+    return;
+  }
+  core::set_content_provenance(record.metadata, {
+    .trust = default_memory_trust(record),
+    .source = core::content_source_kind::memory,
+    .source_id = record.id,
+  });
 }
 
 inline bool same_record_key(const memory_record& lhs, const memory_record& rhs) {
@@ -159,10 +212,12 @@ public:
   }
 
   memory_record remember(memory_record record) {
-    if (record.scope.application_id.empty() && !active_scope_.application_id.empty()) {
+    if (!memory_scope_has_identity(record.scope) &&
+        memory_scope_has_identity(active_scope_)) {
       record.scope = active_scope_;
     }
     apply_retention_policy(record);
+    detail::ensure_memory_provenance(record);
     enforce_privacy_policy(record, memory_audit_action::remember);
 
     if (record.kind == memory_kind::long_term || record.kind == memory_kind::retrieved) {
@@ -182,7 +237,8 @@ public:
   }
 
   bool update(memory_record record) {
-    if (record.scope.application_id.empty() && !active_scope_.application_id.empty()) {
+    if (!memory_scope_has_identity(record.scope) &&
+        memory_scope_has_identity(active_scope_)) {
       record.scope = active_scope_;
     }
 
@@ -194,6 +250,7 @@ public:
         "long-term memory requires application_id and tenant_id or user_id");
     }
     apply_retention_policy(record);
+    detail::ensure_memory_provenance(record);
     enforce_privacy_policy(record, memory_audit_action::update);
 
     auto& store = durable ? *long_term_store_ : *short_term_store_;
@@ -394,7 +451,7 @@ public:
     memory_record record;
     record.kind = memory_kind::conversation;
     record.content = message.content;
-    record.scope = scope.application_id.empty() ? active_scope_ : scope;
+    record.scope = memory_scope_has_identity(scope) ? scope : active_scope_;
     record.metadata["message_role"] = message.role;
     if (message.name) {
       record.metadata["name"] = *message.name;
@@ -405,6 +462,8 @@ public:
     if (!message.tool_calls.empty()) {
       record.metadata["tool_call_count"] = std::to_string(message.tool_calls.size());
     }
+
+    detail::ensure_memory_provenance(record);
 
     short_term_store_->add(std::move(record));
   }
@@ -610,18 +669,40 @@ public:
   }
 
   llm_request augment(llm_request request, std::string_view query_text) const {
-    const std::string memory_block = build_memory_block(std::string(query_text), &request.messages);
+    return augment(std::move(request), query_text, active_scope_);
+  }
+
+  llm_request augment(
+    llm_request request,
+    std::string_view query_text,
+    const memory_scope& scope) const {
+    auto trust = core::content_trust_level::system_trusted;
+    std::string memory_block = build_memory_block_for_scope(
+      std::string(query_text), scope, &request.messages, &trust);
     if (memory_block.empty()) {
       return request;
     }
 
+    const bool system_message = policy_.inject_as_system_message &&
+      (policy_.allow_untrusted_system_message ||
+       core::trusted_for_system_message(trust));
+    if (!system_message) {
+      memory_block = core::render_context_boundary(
+        "memory", trust, std::move(memory_block));
+    }
+
     chat_message memory_message {
-      .role = policy_.inject_as_system_message ? "system" : "user",
+      .role = system_message ? "system" : "user",
       .content = memory_block,
+      .context_source = llm_context_source::memory,
     };
 
-    if (!policy_.inject_as_system_message) {
-      request.messages.insert(request.messages.begin(), std::move(memory_message));
+    if (!system_message) {
+      auto insert_at = request.messages.begin();
+      while (insert_at != request.messages.end() && insert_at->role == "system") {
+        ++insert_at;
+      }
+      request.messages.insert(insert_at, std::move(memory_message));
       return request;
     }
 
@@ -635,11 +716,27 @@ public:
 
   std::string build_memory_block(
     const std::string& query_text,
-    const std::vector<chat_message>* request_messages = nullptr) const {
+    const std::vector<chat_message>* request_messages = nullptr,
+    core::content_trust_level* block_trust = nullptr) const {
+    return build_memory_block_for_scope(
+      query_text, active_scope_, request_messages, block_trust);
+  }
+
+  std::string build_memory_block_for_scope(
+    const std::string& query_text,
+    const memory_scope& scope,
+    const std::vector<chat_message>* request_messages = nullptr,
+    core::content_trust_level* block_trust = nullptr) const {
     std::vector<memory_record> selected;
+    auto selected_trust = core::content_trust_level::system_trusted;
     std::size_t remaining = policy_.max_memory_chars;
     if (policy_.max_memory_tokens != 0 && policy_.estimated_chars_per_token != 0) {
-      remaining = (std::min)(remaining, policy_.max_memory_tokens * policy_.estimated_chars_per_token);
+      const auto maximum = (std::numeric_limits<std::size_t>::max)();
+      const auto token_chars = policy_.max_memory_tokens >
+          maximum / policy_.estimated_chars_per_token
+        ? maximum
+        : policy_.max_memory_tokens * policy_.estimated_chars_per_token;
+      remaining = (std::min)(remaining, token_chars);
     }
 
     const auto add_kind = [&](memory_kind kind) {
@@ -649,7 +746,7 @@ public:
 
       memory_query query;
       query.text = query_text;
-      query.scope = active_scope_;
+      query.scope = scope;
       query.kinds = { kind };
       query.limit = detail::kind_limit(policy_, kind);
 
@@ -688,6 +785,10 @@ public:
 
         record.content = std::move(text);
         record.summary.clear();
+        selected_trust = core::least_trusted(
+          selected_trust,
+          core::content_trust_from_metadata(
+            record.metadata, detail::default_memory_trust(record)));
         selected.push_back(std::move(record));
         remaining -= line_size;
       }
@@ -700,6 +801,10 @@ public:
 
     if (selected.empty()) {
       return {};
+    }
+
+    if (block_trust) {
+      *block_trust = selected_trust;
     }
 
     std::ostringstream output;

@@ -457,7 +457,8 @@ private:
     return service_.upload_document(
       std::string(kGuidelinesUrl),
       {
-        .metadata = { { "collection", "cpp-core-guidelines" } },
+        .metadata = { { "collection", "cpp-core-guidelines" },
+          { "visibility", "public" } },
       });
   }
 

@@ -14,6 +14,15 @@ namespace wuwe::agent::knowledge {
 
 class in_memory_knowledge_store final : public knowledge_store {
 public:
+  [[nodiscard]] core::storage_capabilities capabilities()
+    const noexcept override {
+    return {
+      .declared = true,
+      .atomic_mutations = true,
+      .coordination_scope = core::storage_coordination_scope::process_local,
+    };
+  }
+
   void add_document(knowledge_document document) override {
     std::scoped_lock lock(mutex_);
     documents_[document.id] = std::move(document);

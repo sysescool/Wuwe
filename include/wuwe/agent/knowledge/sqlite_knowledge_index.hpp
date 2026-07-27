@@ -12,6 +12,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <wuwe/agent/core/filesystem.hpp>
+#include <wuwe/agent/core/sqlite_schema.hpp>
 #include <wuwe/agent/knowledge/file_knowledge_index.hpp>
 
 #if WUWE_HAS_SQLITE
@@ -23,9 +25,20 @@ namespace wuwe::agent::knowledge {
 class sqlite_knowledge_index final : public knowledge_index {
 public:
 #if WUWE_HAS_SQLITE
+  static constexpr int latest_schema_version = 1;
+
   explicit sqlite_knowledge_index(std::filesystem::path path) : path_(std::move(path)) {
-    open();
-    initialize_schema();
+    try {
+      open();
+      initialize_schema();
+    }
+    catch (...) {
+      if (db_) {
+        sqlite3_close(db_);
+        db_ = nullptr;
+      }
+      throw;
+    }
   }
 
   ~sqlite_knowledge_index() override {
@@ -36,6 +49,25 @@ public:
 
   sqlite_knowledge_index(const sqlite_knowledge_index&) = delete;
   sqlite_knowledge_index& operator=(const sqlite_knowledge_index&) = delete;
+
+  [[nodiscard]] core::storage_capabilities capabilities()
+    const noexcept override {
+    return {
+      .declared = true,
+      .durable = true,
+      .transactional = true,
+      .atomic_mutations = true,
+      .schema_migrations = true,
+      .multi_process_safe = true,
+      .coordination_scope = core::storage_coordination_scope::single_node,
+      .schema_version = latest_schema_version,
+    };
+  }
+
+  [[nodiscard]] int schema_version() const {
+    std::scoped_lock lock(mutex_);
+    return current_schema_version().value_or(0);
+  }
 
   void upsert(const knowledge_chunk& chunk, const std::vector<float>& embedding) override {
     std::scoped_lock lock(mutex_);
@@ -169,7 +201,8 @@ private:
       std::filesystem::create_directories(path_.parent_path());
     }
 
-    if (sqlite3_open(path_.string().c_str(), &db_) != SQLITE_OK) {
+    const auto path_utf8 = core::filesystem_path_to_utf8(path_);
+    if (sqlite3_open(path_utf8.c_str(), &db_) != SQLITE_OK) {
       const std::string message = db_ ? sqlite3_errmsg(db_) : "unknown sqlite open error";
       if (db_) {
         sqlite3_close(db_);
@@ -177,9 +210,52 @@ private:
       }
       throw std::runtime_error("failed to open sqlite knowledge index: " + message);
     }
+    exec("PRAGMA foreign_keys = ON");
+    exec("PRAGMA busy_timeout = 5000");
+    exec("PRAGMA journal_mode = WAL");
   }
 
   void initialize_schema() {
+    exec("BEGIN IMMEDIATE");
+    try {
+      exec(
+        "CREATE TABLE IF NOT EXISTS wuwe_storage_schema ("
+        "component TEXT PRIMARY KEY, version INTEGER NOT NULL)");
+      core::validate_sqlite_table(db_, "wuwe_storage_schema", {
+        { "component", "TEXT", false, 1 },
+        { "version", "INTEGER", true, 0 },
+      }, "sqlite knowledge index");
+      auto version = current_schema_version().value_or(0);
+      if (version > latest_schema_version) {
+        throw std::runtime_error(
+          "sqlite knowledge index schema version " +
+          std::to_string(version) + " is newer than supported version " +
+          std::to_string(latest_schema_version));
+      }
+      while (version < latest_schema_version) {
+        switch (version) {
+          case 0:
+            migrate_0_to_1();
+            version = 1;
+            break;
+          default:
+            throw std::runtime_error(
+              "no sqlite knowledge index migration from version " +
+              std::to_string(version));
+        }
+        set_schema_version(version);
+      }
+      validate_schema();
+      exec("COMMIT");
+    }
+    catch (...) {
+      try { exec("ROLLBACK"); }
+      catch (...) {}
+      throw;
+    }
+  }
+
+  void migrate_0_to_1() {
     exec(
       "CREATE TABLE IF NOT EXISTS knowledge_index ("
       "chunk_id TEXT PRIMARY KEY,"
@@ -192,6 +268,42 @@ private:
     exec(
       "CREATE INDEX IF NOT EXISTS idx_knowledge_index_document "
       "ON knowledge_index (document_id, start_offset)");
+  }
+
+  void validate_schema() const {
+    core::validate_sqlite_table(db_, "wuwe_storage_schema", {
+      { "component", "TEXT", false, 1 },
+      { "version", "INTEGER", true, 0 },
+    }, "sqlite knowledge index");
+    core::validate_sqlite_table(db_, "knowledge_index", {
+      { "chunk_id", "TEXT", false, 1 },
+      { "document_id", "TEXT", true, 0 },
+      { "source_uri", "TEXT", true, 0 },
+      { "start_offset", "INTEGER", true, 0 },
+      { "chunk_json", "TEXT", true, 0 },
+      { "embedding_json", "TEXT", true, 0 },
+    }, "sqlite knowledge index");
+  }
+
+  [[nodiscard]] std::optional<int> current_schema_version() const {
+    statement select(db_,
+      "SELECT version FROM wuwe_storage_schema "
+      "WHERE component = 'knowledge_index'");
+    const auto rc = sqlite3_step(select.get());
+    if (rc == SQLITE_DONE) return std::nullopt;
+    if (rc != SQLITE_ROW) {
+      throw_sqlite("read knowledge index schema version", db_);
+    }
+    return sqlite3_column_int(select.get(), 0);
+  }
+
+  void set_schema_version(int version) {
+    statement update(db_,
+      "INSERT INTO wuwe_storage_schema (component, version) "
+      "VALUES ('knowledge_index', ?) "
+      "ON CONFLICT(component) DO UPDATE SET version = excluded.version");
+    sqlite3_bind_int(update.get(), 1, version);
+    step_done(update.get(), "update knowledge index schema version");
   }
 
   void upsert_unlocked(const knowledge_chunk& chunk, const std::vector<float>& embedding) {

@@ -108,6 +108,14 @@ public:
     if (document.id.empty()) {
       document.id = "doc-" + std::to_string(++next_document_id_);
     }
+    if (!document.metadata.contains("wuwe.content.trust")) {
+      core::set_content_provenance(document.metadata, {
+        .trust = core::content_trust_level::retrieved_untrusted,
+        .source = core::content_source_kind::knowledge,
+        .source_id = document.id,
+        .source_uri = document.source_uri,
+      });
+    }
     const auto document_id = document.id;
     publish_event(trace_id, "knowledge.ingest.start", {
       { "document_id", document_id },
@@ -160,6 +168,10 @@ public:
       }
       catch (const std::exception& ex) {
         result.errors.push_back(document.id + ": " + ex.what());
+      }
+      catch (...) {
+        result.errors.push_back(
+          document.id + ": unknown exception during knowledge ingest");
       }
     }
     return result;
@@ -280,6 +292,12 @@ public:
                   return;
                 }
               }
+              catch (...) {
+                result.errors.push_back(
+                  documents[index].id +
+                  ": unknown exception during knowledge ingest");
+                break;
+              }
             }
 
             publish({
@@ -347,6 +365,10 @@ public:
       }
       catch (const std::exception& ex) {
         result.errors.push_back(document.id + ": " + ex.what());
+      }
+      catch (...) {
+        result.errors.push_back(
+          document.id + ": unknown exception during knowledge ingest");
       }
     }
 
@@ -555,6 +577,10 @@ public:
         catch (const std::exception& ex) {
           result.errors.push_back(chunk.id + ": " + ex.what());
         }
+        catch (...) {
+          result.errors.push_back(
+            chunk.id + ": unknown exception during knowledge rebuild");
+        }
       }
       publish_event(trace_id, "knowledge.rebuild.complete", {
         { "scanned", std::to_string(result.scanned) },
@@ -727,6 +753,11 @@ public:
                     promise->set_value(std::move(result));
                     return;
                   }
+                }
+                catch (...) {
+                  result.errors.push_back(
+                    chunk.id + ": unknown exception during knowledge rebuild");
+                  break;
                 }
               }
             }

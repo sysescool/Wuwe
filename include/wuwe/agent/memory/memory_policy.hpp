@@ -31,7 +31,8 @@ struct memory_policy {
   bool dedupe_request_messages { true };
   bool throw_on_vector_index_error { false };
 
-  bool inject_as_system_message { true };
+  bool inject_as_system_message { false };
+  bool allow_untrusted_system_message { false };
   std::string injection_header { "Relevant memory:" };
 };
 

@@ -137,6 +137,15 @@ public:
     load();
   }
 
+  [[nodiscard]] core::storage_capabilities capabilities()
+    const noexcept override {
+    return {
+      .declared = true,
+      .durable = true,
+      .coordination_scope = core::storage_coordination_scope::process_local,
+    };
+  }
+
   memory_record add(memory_record record) override {
     std::scoped_lock lock(mutex_);
 

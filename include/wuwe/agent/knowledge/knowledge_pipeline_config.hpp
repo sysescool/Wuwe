@@ -20,6 +20,16 @@
 
 namespace wuwe::agent::knowledge {
 
+inline knowledge_acl_mode knowledge_acl_mode_from_string(
+  const std::string& value) {
+  if (value == "permissive") return knowledge_acl_mode::permissive;
+  if (value == "public_only") return knowledge_acl_mode::public_only;
+  if (value == "tenant_required") return knowledge_acl_mode::tenant_required;
+  if (value == "user_required") return knowledge_acl_mode::user_required;
+  if (value == "deny_if_unlabeled") return knowledge_acl_mode::deny_if_unlabeled;
+  throw std::invalid_argument("invalid knowledge ACL mode: " + value);
+}
+
 inline chunking_policy chunking_policy_from_json(const nlohmann::json& json) {
   chunking_policy policy;
   if (!json.is_object()) {
@@ -55,6 +65,12 @@ inline knowledge_policy knowledge_policy_from_json(const nlohmann::json& json) {
   policy.include_citations = json.value("include_citations", policy.include_citations);
   policy.inject_as_system_message =
     json.value("inject_as_system_message", policy.inject_as_system_message);
+  policy.allow_untrusted_system_message = json.value(
+    "allow_untrusted_system_message", policy.allow_untrusted_system_message);
+  if (json.contains("acl_mode")) {
+    policy.access.mode = knowledge_acl_mode_from_string(
+      json.at("acl_mode").get<std::string>());
+  }
   policy.surrounding_chunks_before =
     json.value("surrounding_chunks_before", policy.surrounding_chunks_before);
   policy.surrounding_chunks_after =

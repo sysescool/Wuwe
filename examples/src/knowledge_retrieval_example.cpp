@@ -84,7 +84,7 @@ int main() {
       .id = "knowledge-retrieval-guide",
       .title = "Knowledge Retrieval Guide",
       .source_uri = "docs/knowledge-retrieval.md",
-      .metadata = { { "topic", "rag" } },
+      .metadata = { { "topic", "rag" }, { "visibility", "public" } },
     }));
   }
 

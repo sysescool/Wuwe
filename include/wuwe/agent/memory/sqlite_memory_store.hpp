@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
@@ -14,6 +15,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <wuwe/agent/core/filesystem.hpp>
+#include <wuwe/agent/core/sqlite_schema.hpp>
 #include <wuwe/agent/memory/in_memory_store.hpp>
 
 #if WUWE_HAS_SQLITE
@@ -25,10 +28,20 @@ namespace wuwe::agent::memory {
 class sqlite_memory_store final : public memory_store {
 public:
 #if WUWE_HAS_SQLITE
+  static constexpr int latest_schema_version = 2;
+
   explicit sqlite_memory_store(std::filesystem::path path) : path_(std::move(path)) {
-    open();
-    initialize_schema();
-    load_next_id();
+    try {
+      open();
+      initialize_schema();
+    }
+    catch (...) {
+      if (db_) {
+        sqlite3_close(db_);
+        db_ = nullptr;
+      }
+      throw;
+    }
   }
 
   ~sqlite_memory_store() override {
@@ -40,26 +53,58 @@ public:
   sqlite_memory_store(const sqlite_memory_store&) = delete;
   sqlite_memory_store& operator=(const sqlite_memory_store&) = delete;
 
+  [[nodiscard]] core::storage_capabilities capabilities()
+    const noexcept override {
+    return {
+      .declared = true,
+      .durable = true,
+      .transactional = true,
+      .atomic_mutations = true,
+      .schema_migrations = true,
+      .multi_process_safe = true,
+      .coordination_scope = core::storage_coordination_scope::single_node,
+      .schema_version = latest_schema_version,
+    };
+  }
+
+  [[nodiscard]] int schema_version() const {
+    std::scoped_lock lock(mutex_);
+    return current_schema_version().value_or(0);
+  }
+
   memory_record add(memory_record record) override {
     std::scoped_lock lock(mutex_);
 
-    const auto now = std::chrono::system_clock::now();
-    if (record.id.empty()) {
-      record.id = "mem-" + std::to_string(++next_id_);
-    }
-    if (record.created_at == std::chrono::system_clock::time_point {}) {
-      record.created_at = now;
-    }
-    record.updated_at = now;
+    exec("BEGIN IMMEDIATE");
+    try {
+      if (record.id.empty()) {
+        record.id = "mem-" + std::to_string(allocate_memory_id_unlocked());
+      }
+      else if (const auto numeric_id = parse_generated_id(record.id)) {
+        advance_memory_sequence_unlocked(*numeric_id);
+      }
 
-    statement insert(db_,
-      "INSERT INTO memory_records "
-      "(id, kind, visibility, content, summary, tenant_id, user_id, application_id, "
-      "conversation_id, agent_id, score, priority, created_at, updated_at, expires_at, metadata_json) "
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    bind_record(insert.get(), record);
-    step_done(insert.get(), "insert memory record");
-    return record;
+      const auto now = std::chrono::system_clock::now();
+      if (record.created_at == std::chrono::system_clock::time_point {}) {
+        record.created_at = now;
+      }
+      record.updated_at = now;
+
+      statement insert(db_,
+        "INSERT INTO memory_records "
+        "(id, kind, visibility, content, summary, tenant_id, user_id, application_id, "
+        "conversation_id, agent_id, score, priority, created_at, updated_at, expires_at, metadata_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      bind_record(insert.get(), record);
+      step_done(insert.get(), "insert memory record");
+      exec("COMMIT");
+      return record;
+    }
+    catch (...) {
+      try { exec("ROLLBACK"); }
+      catch (...) {}
+      throw;
+    }
   }
 
   std::optional<memory_record> get(
@@ -250,7 +295,8 @@ private:
       std::filesystem::create_directories(path_.parent_path());
     }
 
-    if (sqlite3_open(path_.string().c_str(), &db_) != SQLITE_OK) {
+    const auto path_utf8 = core::filesystem_path_to_utf8(path_);
+    if (sqlite3_open(path_utf8.c_str(), &db_) != SQLITE_OK) {
       const std::string message = db_ ? sqlite3_errmsg(db_) : "unknown sqlite open error";
       if (db_) {
         sqlite3_close(db_);
@@ -258,9 +304,56 @@ private:
       }
       throw std::runtime_error("failed to open sqlite memory store: " + message);
     }
+    exec("PRAGMA foreign_keys = ON");
+    exec("PRAGMA busy_timeout = 5000");
+    exec("PRAGMA journal_mode = WAL");
   }
 
   void initialize_schema() {
+    exec("BEGIN IMMEDIATE");
+    try {
+      exec(
+        "CREATE TABLE IF NOT EXISTS wuwe_storage_schema ("
+        "component TEXT PRIMARY KEY, version INTEGER NOT NULL)");
+      core::validate_sqlite_table(db_, "wuwe_storage_schema", {
+        { "component", "TEXT", false, 1 },
+        { "version", "INTEGER", true, 0 },
+      }, "sqlite memory store");
+      auto version = current_schema_version().value_or(0);
+      if (version > latest_schema_version) {
+        throw std::runtime_error(
+          "sqlite memory store schema version " + std::to_string(version) +
+          " is newer than supported version " +
+          std::to_string(latest_schema_version));
+      }
+      while (version < latest_schema_version) {
+        switch (version) {
+          case 0:
+            migrate_0_to_1();
+            version = 1;
+            break;
+          case 1:
+            migrate_1_to_2();
+            version = 2;
+            break;
+          default:
+            throw std::runtime_error(
+              "no sqlite memory store migration from version " +
+              std::to_string(version));
+        }
+        set_schema_version(version);
+      }
+      validate_schema();
+      exec("COMMIT");
+    }
+    catch (...) {
+      try { exec("ROLLBACK"); }
+      catch (...) {}
+      throw;
+    }
+  }
+
+  void migrate_0_to_1() {
     exec(
       "CREATE TABLE IF NOT EXISTS memory_records ("
       "id TEXT PRIMARY KEY,"
@@ -287,6 +380,91 @@ private:
     exec("CREATE INDEX IF NOT EXISTS idx_memory_expiry ON memory_records (expires_at)");
   }
 
+  void migrate_1_to_2() {
+    exec(
+      "CREATE TABLE IF NOT EXISTS wuwe_memory_sequence ("
+      "name TEXT PRIMARY KEY,"
+      "last_value INTEGER NOT NULL"
+      ")");
+
+    std::uint64_t maximum_id = 0;
+    statement select(db_, "SELECT id FROM memory_records WHERE id LIKE 'mem-%'");
+    while (true) {
+      const auto rc = sqlite3_step(select.get());
+      if (rc == SQLITE_DONE) break;
+      if (rc != SQLITE_ROW) {
+        throw_sqlite("initialize memory id sequence", db_);
+      }
+      if (const auto value = parse_generated_id(column_text(select.get(), 0))) {
+        maximum_id = (std::max)(maximum_id, *value);
+      }
+    }
+
+    statement initialize(db_,
+      "INSERT INTO wuwe_memory_sequence (name, last_value) VALUES ('memory_record', ?) "
+      "ON CONFLICT(name) DO UPDATE SET last_value = "
+      "MAX(wuwe_memory_sequence.last_value, excluded.last_value)");
+    sqlite3_bind_int64(initialize.get(), 1, static_cast<sqlite3_int64>(maximum_id));
+    step_done(initialize.get(), "initialize memory id sequence");
+  }
+
+  void validate_schema() const {
+    core::validate_sqlite_table(db_, "wuwe_storage_schema", {
+      { "component", "TEXT", false, 1 },
+      { "version", "INTEGER", true, 0 },
+    }, "sqlite memory store");
+    core::validate_sqlite_table(db_, "memory_records", {
+      { "id", "TEXT", false, 1 },
+      { "kind", "TEXT", true, 0 },
+      { "visibility", "TEXT", true, 0 },
+      { "content", "TEXT", true, 0 },
+      { "summary", "TEXT", true, 0 },
+      { "tenant_id", "TEXT", true, 0 },
+      { "user_id", "TEXT", true, 0 },
+      { "application_id", "TEXT", true, 0 },
+      { "conversation_id", "TEXT", true, 0 },
+      { "agent_id", "TEXT", true, 0 },
+      { "score", "REAL", true, 0 },
+      { "priority", "INTEGER", true, 0 },
+      { "created_at", "INTEGER", true, 0 },
+      { "updated_at", "INTEGER", true, 0 },
+      { "expires_at", "INTEGER", false, 0 },
+      { "metadata_json", "TEXT", true, 0 },
+    }, "sqlite memory store");
+    core::validate_sqlite_table(db_, "wuwe_memory_sequence", {
+      { "name", "TEXT", false, 1 },
+      { "last_value", "INTEGER", true, 0 },
+    }, "sqlite memory store");
+    statement sequence(db_,
+      "SELECT last_value FROM wuwe_memory_sequence WHERE name = 'memory_record'");
+    const auto rc = sqlite3_step(sequence.get());
+    if (rc != SQLITE_ROW || sqlite3_column_type(sequence.get(), 0) != SQLITE_INTEGER ||
+        sqlite3_column_int64(sequence.get(), 0) < 0) {
+      throw std::runtime_error("sqlite memory store has an invalid id sequence state");
+    }
+  }
+
+  [[nodiscard]] std::optional<int> current_schema_version() const {
+    statement select(db_,
+      "SELECT version FROM wuwe_storage_schema "
+      "WHERE component = 'memory_store'");
+    const auto rc = sqlite3_step(select.get());
+    if (rc == SQLITE_DONE) return std::nullopt;
+    if (rc != SQLITE_ROW) {
+      throw_sqlite("read memory store schema version", db_);
+    }
+    return sqlite3_column_int(select.get(), 0);
+  }
+
+  void set_schema_version(int version) {
+    statement update(db_,
+      "INSERT INTO wuwe_storage_schema (component, version) "
+      "VALUES ('memory_store', ?) "
+      "ON CONFLICT(component) DO UPDATE SET version = excluded.version");
+    sqlite3_bind_int(update.get(), 1, version);
+    step_done(update.get(), "update memory store schema version");
+  }
+
   void exec(const char* sql) const {
     char* error = nullptr;
     if (sqlite3_exec(db_, sql, nullptr, nullptr, &error) != SQLITE_OK) {
@@ -296,24 +474,58 @@ private:
     }
   }
 
-  void load_next_id() {
-    statement select(db_, "SELECT id FROM memory_records WHERE id LIKE 'mem-%'");
-    while (true) {
-      const int rc = sqlite3_step(select.get());
-      if (rc == SQLITE_DONE) {
-        break;
+  [[nodiscard]] static std::optional<std::uint64_t> parse_generated_id(
+    const std::string& id) noexcept {
+    if (id.size() <= 4 || id.compare(0, 4, "mem-") != 0) return std::nullopt;
+    std::uint64_t value = 0;
+    for (auto iterator = id.begin() + 4; iterator != id.end(); ++iterator) {
+      if (*iterator < '0' || *iterator > '9') return std::nullopt;
+      const auto digit = static_cast<std::uint64_t>(*iterator - '0');
+      if (value > ((std::numeric_limits<std::uint64_t>::max)() - digit) / 10) {
+        return std::nullopt;
       }
-      if (rc != SQLITE_ROW) {
-        throw_sqlite("load next memory id", db_);
-      }
+      value = value * 10 + digit;
+    }
+    if (value > static_cast<std::uint64_t>((std::numeric_limits<sqlite3_int64>::max)())) {
+      return std::nullopt;
+    }
+    return value;
+  }
 
-      const std::string id = column_text(select.get(), 0);
-      const auto numeric = id.substr(4);
-      try {
-        next_id_ = (std::max)(next_id_, static_cast<std::size_t>(std::stoull(numeric)));
+  [[nodiscard]] std::uint64_t allocate_memory_id_unlocked() {
+    statement select(db_,
+      "SELECT last_value FROM wuwe_memory_sequence WHERE name = 'memory_record'");
+    const auto rc = sqlite3_step(select.get());
+    if (rc != SQLITE_ROW) {
+      if (rc == SQLITE_DONE) {
+        throw std::runtime_error("sqlite memory store id sequence is missing");
       }
-      catch (...) {
-      }
+      throw_sqlite("read memory id sequence", db_);
+    }
+    const auto last_value = sqlite3_column_int64(select.get(), 0);
+    if (last_value < 0 ||
+        last_value == (std::numeric_limits<sqlite3_int64>::max)()) {
+      throw std::overflow_error("sqlite memory store id sequence is exhausted or invalid");
+    }
+    const auto next_value = last_value + 1;
+    statement update(db_,
+      "UPDATE wuwe_memory_sequence SET last_value = ? WHERE name = 'memory_record'");
+    sqlite3_bind_int64(update.get(), 1, next_value);
+    step_done(update.get(), "advance memory id sequence");
+    if (sqlite3_changes(db_) != 1) {
+      throw std::runtime_error("sqlite memory store failed to advance id sequence");
+    }
+    return static_cast<std::uint64_t>(next_value);
+  }
+
+  void advance_memory_sequence_unlocked(std::uint64_t value) {
+    statement update(db_,
+      "UPDATE wuwe_memory_sequence SET last_value = MAX(last_value, ?) "
+      "WHERE name = 'memory_record'");
+    sqlite3_bind_int64(update.get(), 1, static_cast<sqlite3_int64>(value));
+    step_done(update.get(), "synchronize memory id sequence");
+    if (sqlite3_changes(db_) != 1) {
+      throw std::runtime_error("sqlite memory store id sequence is missing");
     }
   }
 
@@ -488,7 +700,6 @@ private:
   std::filesystem::path path_;
   sqlite3* db_ {};
   mutable std::mutex mutex_;
-  std::size_t next_id_ { 0 };
 #else
   explicit sqlite_memory_store(std::filesystem::path) {
     throw std::runtime_error(

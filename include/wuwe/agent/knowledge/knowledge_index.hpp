@@ -6,12 +6,18 @@
 #include <vector>
 
 #include <wuwe/agent/knowledge/knowledge_record.hpp>
+#include <wuwe/agent/core/storage.hpp>
 
 namespace wuwe::agent::knowledge {
 
 class knowledge_index {
 public:
   virtual ~knowledge_index() = default;
+
+  [[nodiscard]] virtual core::storage_capabilities capabilities()
+    const noexcept {
+    return {};
+  }
 
   virtual void upsert(const knowledge_chunk& chunk, const std::vector<float>& embedding) = 0;
 

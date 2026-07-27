@@ -245,7 +245,8 @@ int main(int argc, char** argv) {
     }
     const auto upload = service.upload_document(options.docs_path,
       {
-        .metadata = { { "collection", "rag-demo" } },
+        .metadata = { { "collection", "rag-demo" },
+          { "visibility", "public" } },
         .enrichers = std::move(enrichers),
       },
       true);
