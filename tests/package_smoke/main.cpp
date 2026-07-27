@@ -5,6 +5,14 @@
 #include <wuwe/wuwe.h>
 
 int main() {
+  auto filesystem_backend =
+    wuwe::agent::filesystem::make_local_filesystem_backend();
+  auto process_backend = wuwe::agent::process::make_local_process_backend();
+  if (!filesystem_backend || !process_backend ||
+      process_backend->info().name != "local_process") {
+    return 1;
+  }
+
   wuwe::agent::execution::controlled_process_backend_config config;
   config.validate_python_on_start = false;
   config.python_startup_timeout = std::chrono::milliseconds(3000);

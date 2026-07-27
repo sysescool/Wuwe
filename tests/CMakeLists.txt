@@ -209,6 +209,8 @@ add_executable(header_independence_tests
     header_independence/filesystem_header.cpp
     header_independence/metadata_header.cpp
     header_independence/sqlite_schema_header.cpp
+    header_independence/filesystem_tools_header.cpp
+    header_independence/process_tools_header.cpp
 )
 
 target_link_libraries(header_independence_tests PRIVATE wuwe)
@@ -245,6 +247,13 @@ endif()
 wuwe_copy_runtime_dlls(execution_tests)
 
 add_test(NAME execution_tests COMMAND execution_tests)
+
+add_executable(filesystem_process_tests
+    filesystem_process_tests.cpp
+)
+target_link_libraries(filesystem_process_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(filesystem_process_tests)
+add_test(NAME filesystem_process_tests COMMAND filesystem_process_tests)
 
 add_executable(mcp_tests
     mcp_tests.cpp

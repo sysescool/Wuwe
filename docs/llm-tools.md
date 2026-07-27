@@ -155,6 +155,11 @@ capabilities.
 
 ## Security boundary
 
-Schema validation is not authorization. A tool that reads files, calls services, changes state, or starts a process should enforce host policy at invocation time. The agent runner can reject calls through `allow_tool_call`, and the execution module adds capability, approval, path, and audit checks for process tools.
+Schema validation is not authorization. A tool that reads files, calls services, changes state, or starts a process should enforce host policy at invocation time. The agent runner can reject calls through `allow_tool_call`; the Filesystem and Process modules add root or executable policy, approval, limits, and audit checks.
+
+For local operations, prefer the structured [Filesystem toolkit](filesystem-tools.md)
+and argv-first [Process toolkit](process-tools.md). Filesystem mutations do not
+pass through a shell, and the raw shell adapter is disabled unless both policy
+and provider configuration opt in.
 
 See `examples/src/example.cpp` and `examples/src/simple_example.cpp` for built examples.

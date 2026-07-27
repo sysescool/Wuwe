@@ -16,7 +16,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Models and tools',
-      items: ['llm-providers', 'resource-routing', 'llm-streaming', 'llm-tools', 'http-backends'],
+      items: ['llm-providers', 'resource-routing', 'llm-streaming', 'llm-tools', 'filesystem-tools', 'process-tools', 'http-backends'],
     },
     {
       type: 'category',

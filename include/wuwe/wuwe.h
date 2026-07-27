@@ -21,6 +21,7 @@
 #include <wuwe/agent/guardrails/guardrails.hpp>
 #include <wuwe/agent/host/host.hpp>
 #include <wuwe/agent/exploration/exploration.hpp>
+#include <wuwe/agent/filesystem/filesystem.hpp>
 #include <wuwe/agent/knowledge/knowledge.hpp>
 #include <wuwe/agent/llm/anthropic_llm_client.h>
 #include <wuwe/agent/llm/gemini_llm_client.h>
@@ -44,6 +45,7 @@
 #include <wuwe/agent/multi_agent/planning_adapter.hpp>
 #include <wuwe/agent/orchestration/orchestration.hpp>
 #include <wuwe/agent/planning/planning.hpp>
+#include <wuwe/agent/process/process.hpp>
 #include <wuwe/agent/reasoning/reasoning.hpp>
 #include <wuwe/agent/reflection/reflection.hpp>
 #include <wuwe/agent/routing/routing.hpp>

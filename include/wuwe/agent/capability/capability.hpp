@@ -42,6 +42,7 @@ struct capability_request {
 namespace names {
 
 inline constexpr const char* process_python = "process.python";
+inline constexpr const char* process_execute = "process.execute";
 inline constexpr const char* process_shell = "process.shell";
 inline constexpr const char* filesystem_read = "filesystem.read";
 inline constexpr const char* filesystem_write = "filesystem.write";

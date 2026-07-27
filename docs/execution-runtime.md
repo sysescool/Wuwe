@@ -34,6 +34,10 @@ const auto result = runtime.run({
 
 Only Python is implemented in 0.1.0.
 
+For arbitrary executables and an explicitly enabled shell adapter, use the
+separate [Process toolkit](process-tools.md). It is argv-first and does not
+overload Python code execution with command-string semantics.
+
 ## Policy
 
 `execution_policy` controls:

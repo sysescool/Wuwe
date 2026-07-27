@@ -10,7 +10,7 @@ Wuwe separates four concerns that are often conflated: declaring a sensitive cap
 
 ## Capability policy
 
-`capability_request` describes the requested action, risk, affected resources, tool, trace, subject, and host metadata. Built-in capability names cover Python and shell processes, filesystem reads and writes, outbound networking, environment access, secret access, learned-artifact activation, and effectful exploration execution.
+`capability_request` describes the requested action, risk, affected resources, tool, trace, subject, and host metadata. Built-in capability names cover Python, argv-based process and shell execution, filesystem reads and writes, outbound networking, environment access, secret access, learned-artifact activation, and effectful exploration execution.
 
 Policy evaluation returns a `capability_policy_result` with one of three decisions:
 

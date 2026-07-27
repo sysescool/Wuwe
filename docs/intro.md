@@ -10,6 +10,10 @@ description: A concise map of Wuwe 0.1.0 and its supported deployment boundary.
 
 Wuwe is a C++20 framework for building tool-using, stateful, and auditable AI agents in native applications, services, and command-line programs.
 
+Root-scoped filesystem tools and allowlisted process execution provide reusable
+local operations without making an unrestricted shell the default integration
+surface.
+
 Its modules are independently usable. A host can start with one provider client and typed tools, then add reasoning, planning, memory, retrieval, MCP, or controlled execution only where needed.
 
 ## Modules
@@ -20,6 +24,8 @@ Its modules are independently usable. A host can start with one provider client 
 | Context budget | Unified allocation across system prompts, conversation, memory, retrieval, tool schemas/results, and reserved output |
 | Resource routing | Capability-aware model profiles, token and cost budgets, and dynamic model selection |
 | Tools | Typed schemas, JSON argument parsing, dispatch, and provider composition |
+| Filesystem | Root-scoped reads, writes, exact edits, search, transfer, revisions, approvals, and audit |
+| Process | Allowlisted argv execution, bounded I/O, process-tree cleanup, and an opt-in shell adapter |
 | Reasoning | Simple, ReAct, reflect-and-retry, plan-execute, and Best-of-N runs with budgets and traces |
 | Reflection | Rule-based or model-based evaluation, revision guidance, policy, and persistence |
 | Planning | Plan generation, validation, dependency execution, retries, replanning, approvals, and checkpoints |
