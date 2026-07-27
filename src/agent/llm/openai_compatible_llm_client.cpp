@@ -289,6 +289,9 @@ llm_response openai_compatible_llm_client::complete(const llm_request& request) 
 }
 
 llm_response openai_compatible_llm_client::complete(const llm_request& request, std::stop_token stop_token) {
+  if (auto rejected = agent::llm::llm_request_rejection(request, capabilities())) {
+    return std::move(*rejected);
+  }
   if (stop_token.stop_requested()) {
     return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
   }
@@ -304,11 +307,12 @@ llm_response openai_compatible_llm_client::complete(const llm_request& request, 
     .headers = build_headers(),
     .body = payload.dump(),
     .timeout = config_.timeout,
+    .trace_id = request.execution_context
+      ? request.execution_context->trace_id
+      : std::string {},
   };
 
   const int max_retries = config_.max_retries < 0 ? 0 : config_.max_retries;
-  const int base_backoff_ms = config_.retry_backoff_ms <= 0 ? 500 : config_.retry_backoff_ms;
-
   for (int attempt = 0; attempt <= max_retries; ++attempt) {
     if (stop_token.stop_requested()) {
       return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
@@ -316,6 +320,7 @@ llm_response openai_compatible_llm_client::complete(const llm_request& request, 
 
     const auto response = http_->send(req);
     llm_response parsed = parse_openai_response(response);
+    agent::llm_detail::apply_retry_metadata(parsed, response);
     apply_reasoning_language_metadata(
       parsed,
       request.language,
@@ -333,9 +338,7 @@ llm_response openai_compatible_llm_client::complete(const llm_request& request, 
     }
     if (!agent::llm_detail::wait_for_retry(
           stop_token,
-          std::chrono::milliseconds(agent::llm_detail::compute_backoff_ms(
-            attempt,
-            base_backoff_ms)))) {
+          agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
       return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
     }
   }
@@ -348,7 +351,11 @@ llm_response openai_compatible_llm_client::complete(const llm_request& request, 
 llm_response openai_compatible_llm_client::complete_stream(
   const llm_request& request,
   const llm_stream_callbacks& callbacks,
-  std::stop_token stop_token) {
+    std::stop_token stop_token) {
+  if (auto rejected = agent::llm::llm_request_rejection(request, capabilities())) {
+    agent::llm::emit_llm_request_rejection(callbacks, *rejected);
+    return std::move(*rejected);
+  }
   if (stop_token.stop_requested()) {
     auto response = llm_response {
       .error_code = agent::make_error_code(agent::llm_error_code::cancelled),
@@ -383,10 +390,12 @@ llm_response openai_compatible_llm_client::complete_stream(
     .body = payload.dump(),
     .timeout = config_.timeout,
     .timeouts = agent::llm_detail::make_stream_http_timeouts(config_),
+    .trace_id = request.execution_context
+      ? request.execution_context->trace_id
+      : std::string {},
   };
 
   const int max_retries = config_.max_retries < 0 ? 0 : config_.max_retries;
-  const int base_backoff_ms = config_.retry_backoff_ms <= 0 ? 500 : config_.retry_backoff_ms;
 
   for (int attempt = 0; attempt <= max_retries; ++attempt) {
     if (stop_token.stop_requested()) {
@@ -472,6 +481,16 @@ llm_response openai_compatible_llm_client::complete_stream(
         result.usage.prompt_tokens = usage.value("prompt_tokens", 0);
         result.usage.completion_tokens = usage.value("completion_tokens", 0);
         result.usage.total_tokens = usage.value("total_tokens", 0);
+        if (usage.contains("prompt_tokens_details") &&
+            usage["prompt_tokens_details"].is_object()) {
+          result.usage.cached_prompt_tokens =
+            usage["prompt_tokens_details"].value("cached_tokens", 0);
+        }
+        if (usage.contains("completion_tokens_details") &&
+            usage["completion_tokens_details"].is_object()) {
+          result.usage.reasoning_tokens =
+            usage["completion_tokens_details"].value("reasoning_tokens", 0);
+        }
       }
 
       if (!data.contains("choices") || !data["choices"].is_array()) {
@@ -578,6 +597,7 @@ llm_response openai_compatible_llm_client::complete_stream(
         return parser.feed(chunk, process_event);
       },
       stop_token);
+    agent::llm_detail::apply_retry_metadata(result, response);
 
     if (!stream_parse_failed) {
       parser.finish(process_event);
@@ -616,9 +636,7 @@ llm_response openai_compatible_llm_client::complete_stream(
           agent::llm_detail::is_retryable_error(result.error_code) &&
           agent::llm_detail::wait_for_retry(
             stop_token,
-            std::chrono::milliseconds(agent::llm_detail::compute_backoff_ms(
-              attempt,
-              base_backoff_ms)))) {
+            agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
         continue;
       }
 
@@ -763,10 +781,27 @@ json openai_compatible_llm_client::build_openai_payload(const llm_request& reque
     payload["max_tokens"] = *request.max_output_tokens;
   }
 
+  if (!request.stop_sequences.empty()) {
+    payload["stop"] = request.stop_sequences;
+  }
+  if (request.seed) {
+    payload["seed"] = *request.seed;
+  }
+
   if (request.response_format.has_value()) {
     if (*request.response_format == "json_object") {
       payload["response_format"] = { { "type", "json_object" } };
     }
+  }
+  else if (request.json_schema_output) {
+    payload["response_format"] = {
+      { "type", "json_schema" },
+      { "json_schema", {
+        { "name", request.json_schema_output->name },
+        { "strict", request.json_schema_output->strict },
+        { "schema", request.json_schema_output->schema },
+      } },
+    };
   }
 
   if (!request.tools.empty()) {
@@ -883,6 +918,16 @@ llm_response openai_compatible_llm_client::parse_openai_response(const http_resp
     result.usage.prompt_tokens = usage.value("prompt_tokens", 0);
     result.usage.completion_tokens = usage.value("completion_tokens", 0);
     result.usage.total_tokens = usage.value("total_tokens", 0);
+    if (usage.contains("prompt_tokens_details") &&
+        usage["prompt_tokens_details"].is_object()) {
+      result.usage.cached_prompt_tokens =
+        usage["prompt_tokens_details"].value("cached_tokens", 0);
+    }
+    if (usage.contains("completion_tokens_details") &&
+        usage["completion_tokens_details"].is_object()) {
+      result.usage.reasoning_tokens =
+        usage["completion_tokens_details"].value("reasoning_tokens", 0);
+    }
   }
 
   return result;

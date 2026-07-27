@@ -166,6 +166,9 @@ json anthropic_llm_client::build_payload(const llm_request& request, bool stream
   if (!system.empty()) {
     payload["system"] = system;
   }
+  if (!request.stop_sequences.empty()) {
+    payload["stop_sequences"] = request.stop_sequences;
+  }
 
   if (!request.tools.empty()) {
     auto tools = json::array();
@@ -235,9 +238,14 @@ llm_response anthropic_llm_client::parse_response(const http_response& response)
 
   result.finish_reason = data.value("stop_reason", std::string {});
   if (data.contains("usage") && data["usage"].is_object()) {
-    result.usage.prompt_tokens = data["usage"].value("input_tokens", 0);
+    const auto cache_read = data["usage"].value("cache_read_input_tokens", 0);
+    const auto cache_creation = data["usage"].value("cache_creation_input_tokens", 0);
+    result.usage.prompt_tokens = data["usage"].value("input_tokens", 0) +
+      cache_read + cache_creation;
     result.usage.completion_tokens = data["usage"].value("output_tokens", 0);
     result.usage.total_tokens = result.usage.prompt_tokens + result.usage.completion_tokens;
+    result.usage.cached_prompt_tokens =
+      cache_read;
   }
 
   if (!data.contains("content") || !data["content"].is_array()) {
@@ -278,6 +286,9 @@ llm_response anthropic_llm_client::complete(const llm_request& request) {
 }
 
 llm_response anthropic_llm_client::complete(const llm_request& request, std::stop_token stop_token) {
+  if (auto rejected = agent::llm::llm_request_rejection(request, capabilities())) {
+    return std::move(*rejected);
+  }
   if (stop_token.stop_requested()) {
     return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
   }
@@ -291,14 +302,18 @@ llm_response anthropic_llm_client::complete(const llm_request& request, std::sto
     .headers = build_headers(),
     .body = build_payload(request, false).dump(),
     .timeout = config_.timeout,
+    .trace_id = request.execution_context
+      ? request.execution_context->trace_id
+      : std::string {},
   };
   const int max_retries = config_.max_retries < 0 ? 0 : config_.max_retries;
-  const int base_backoff_ms = config_.retry_backoff_ms <= 0 ? 500 : config_.retry_backoff_ms;
   for (int attempt = 0; attempt <= max_retries; ++attempt) {
     if (stop_token.stop_requested()) {
       return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
     }
-    auto result = parse_response(http_->send(req));
+    const auto response = http_->send(req);
+    auto result = parse_response(response);
+    agent::llm_detail::apply_retry_metadata(result, response);
     apply_reasoning_language_metadata(
       result,
       request.language,
@@ -314,9 +329,7 @@ llm_response anthropic_llm_client::complete(const llm_request& request, std::sto
     }
     if (!agent::llm_detail::wait_for_retry(
           stop_token,
-          std::chrono::milliseconds(agent::llm_detail::compute_backoff_ms(
-            attempt,
-            base_backoff_ms)))) {
+          agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
       return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
     }
   }
@@ -326,7 +339,11 @@ llm_response anthropic_llm_client::complete(const llm_request& request, std::sto
 llm_response anthropic_llm_client::complete_stream(
   const llm_request& request,
   const llm_stream_callbacks& callbacks,
-  std::stop_token stop_token) {
+    std::stop_token stop_token) {
+  if (auto rejected = agent::llm::llm_request_rejection(request, capabilities())) {
+    agent::llm::emit_llm_request_rejection(callbacks, *rejected);
+    return std::move(*rejected);
+  }
   if (stop_token.stop_requested()) {
     return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
   }
@@ -388,7 +405,13 @@ llm_response anthropic_llm_client::complete_stream(
     if (type == "message_start" && data.contains("message") && data["message"].is_object()) {
       const auto& message = data["message"];
       if (message.contains("usage") && message["usage"].is_object()) {
-        result.usage.prompt_tokens = message["usage"].value("input_tokens", 0);
+        const auto cache_read =
+          message["usage"].value("cache_read_input_tokens", 0);
+        const auto cache_creation =
+          message["usage"].value("cache_creation_input_tokens", 0);
+        result.usage.prompt_tokens = message["usage"].value("input_tokens", 0) +
+          cache_read + cache_creation;
+        result.usage.cached_prompt_tokens = cache_read;
       }
     }
     else if (type == "content_block_start" && data.contains("content_block") &&
@@ -467,6 +490,15 @@ llm_response anthropic_llm_client::complete_stream(
       if (data.contains("usage") && data["usage"].is_object()) {
         result.usage.completion_tokens = data["usage"].value("output_tokens", 0);
         result.usage.total_tokens = result.usage.prompt_tokens + result.usage.completion_tokens;
+        if (data["usage"].contains("cache_read_input_tokens")) {
+          const auto prior_cached = result.usage.cached_prompt_tokens;
+          const auto updated_cached = data["usage"].value(
+            "cache_read_input_tokens", prior_cached);
+          result.usage.prompt_tokens += updated_cached - prior_cached;
+          result.usage.cached_prompt_tokens = updated_cached;
+        }
+        result.usage.total_tokens =
+          result.usage.prompt_tokens + result.usage.completion_tokens;
       }
     }
     else if (type == "message_stop") {
@@ -492,9 +524,11 @@ llm_response anthropic_llm_client::complete_stream(
     .body = build_payload(request, true).dump(),
     .timeout = config_.timeout,
     .timeouts = agent::llm_detail::make_stream_http_timeouts(config_),
+    .trace_id = request.execution_context
+      ? request.execution_context->trace_id
+      : std::string {},
   };
   const int max_retries = config_.max_retries < 0 ? 0 : config_.max_retries;
-  const int base_backoff_ms = config_.retry_backoff_ms <= 0 ? 500 : config_.retry_backoff_ms;
   http_response response;
   for (int attempt = 0; attempt <= max_retries; ++attempt) {
     response = http_->send_stream(
@@ -503,6 +537,7 @@ llm_response anthropic_llm_client::complete_stream(
         return !stop_token.stop_requested() && parser.feed(chunk, process_event);
       },
       stop_token);
+    agent::llm_detail::apply_retry_metadata(result, response);
     if (!response.error_code || emitted_output || attempt >= max_retries) {
       break;
     }
@@ -515,9 +550,7 @@ llm_response anthropic_llm_client::complete_stream(
     }
     if (!agent::llm_detail::wait_for_retry(
           stop_token,
-          std::chrono::milliseconds(agent::llm_detail::compute_backoff_ms(
-            attempt,
-            base_backoff_ms)))) {
+          agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
       result.error_code = agent::make_error_code(agent::llm_error_code::cancelled);
       break;
     }

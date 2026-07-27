@@ -2,6 +2,8 @@
 #define WUWE_AGENT_LLM_TYPES_H
 
 #include <cctype>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <optional>
@@ -10,6 +12,9 @@
 #include <system_error>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
+#include <wuwe/agent/core/execution_context.hpp>
 #include <wuwe/common/wuwe_fwd.h>
 
 WUWE_NAMESPACE_BEGIN
@@ -38,6 +43,65 @@ struct llm_tool_call {
   std::string arguments_json;
 };
 
+enum class llm_context_source {
+  automatic,
+  system,
+  conversation,
+  memory,
+  knowledge,
+  tool_result,
+  other,
+};
+
+inline std::string_view to_string(llm_context_source source) noexcept {
+  switch (source) {
+    case llm_context_source::automatic: return "automatic";
+    case llm_context_source::system: return "system";
+    case llm_context_source::conversation: return "conversation";
+    case llm_context_source::memory: return "memory";
+    case llm_context_source::knowledge: return "knowledge";
+    case llm_context_source::tool_result: return "tool_result";
+    case llm_context_source::other: return "other";
+  }
+  return "automatic";
+}
+
+struct llm_context_component_limits {
+  std::size_t system { 0 };
+  std::size_t conversation { 0 };
+  std::size_t memory { 0 };
+  std::size_t knowledge { 0 };
+  std::size_t tool_schemas { 0 };
+  std::size_t tool_results { 0 };
+  std::size_t other { 0 };
+};
+
+enum class llm_context_overflow_policy {
+  reject,
+  trim_low_priority,
+};
+
+inline std::string_view to_string(
+  llm_context_overflow_policy policy) noexcept {
+  switch (policy) {
+    case llm_context_overflow_policy::reject: return "reject";
+    case llm_context_overflow_policy::trim_low_priority:
+      return "trim_low_priority";
+  }
+  return "trim_low_priority";
+}
+
+struct llm_context_budget {
+  std::size_t context_window_tokens { 0 };
+  std::size_t reserved_output_tokens { 1024 };
+  std::size_t minimum_recent_conversation_messages { 2 };
+  llm_context_component_limits limits;
+  llm_context_overflow_policy overflow {
+    llm_context_overflow_policy::trim_low_priority
+  };
+  bool allow_system_truncation { false };
+};
+
 enum class llm_reasoning_language_control {
   unsupported,
   prompt_contract,
@@ -63,6 +127,46 @@ struct llm_language_preferences {
   std::string response_language;
   std::string reasoning_language;
   std::string locale;
+};
+
+enum class llm_cache_mode {
+  provider_default,
+  disabled,
+  enabled,
+};
+
+inline std::string_view to_string(llm_cache_mode mode) noexcept {
+  switch (mode) {
+    case llm_cache_mode::provider_default: return "provider_default";
+    case llm_cache_mode::disabled: return "disabled";
+    case llm_cache_mode::enabled: return "enabled";
+  }
+  return "provider_default";
+}
+
+struct llm_json_schema_output {
+  std::string name;
+  nlohmann::json schema { nlohmann::json::object() };
+  bool strict { true };
+};
+
+struct llm_provider_capabilities {
+  bool streaming { false };
+  bool tools { false };
+  bool tool_choice { false };
+  bool json_response_format { false };
+  bool reasoning_summary { false };
+  bool streaming_reasoning_summary { false };
+  llm_reasoning_language_control reasoning_language_control {
+    llm_reasoning_language_control::unsupported
+  };
+  bool multimodal_input { false };
+  bool local_runtime { false };
+  bool stop_sequences { false };
+  bool deterministic_seed { false };
+  bool json_schema_output { false };
+  bool explicit_cache_control { false };
+  bool declared { true };
 };
 
 inline std::string effective_response_language(const llm_language_preferences& preferences) {
@@ -120,6 +224,7 @@ struct chat_message {
   std::optional<std::string> name;
   std::optional<std::string> tool_call_id;
   std::vector<llm_tool_call> tool_calls;
+  llm_context_source context_source { llm_context_source::automatic };
 };
 
 struct llm_request {
@@ -131,12 +236,28 @@ struct llm_request {
   std::optional<llm_tool_choice> tool_choice;
   llm_language_preferences language;
   std::optional<int> max_output_tokens;
+  std::vector<std::string> stop_sequences;
+  std::optional<std::int64_t> seed;
+  std::optional<llm_json_schema_output> json_schema_output;
+  llm_cache_mode cache_mode { llm_cache_mode::provider_default };
+  std::optional<agent::core::agent_execution_context> execution_context;
+  std::optional<llm_context_budget> context_budget;
 };
 
 struct llm_usage {
   int prompt_tokens { 0 };
   int completion_tokens { 0 };
   int total_tokens { 0 };
+  int cached_prompt_tokens { 0 };
+  int reasoning_tokens { 0 };
+};
+
+struct llm_cost_breakdown {
+  double input_usd { 0.0 };
+  double cached_input_usd { 0.0 };
+  double output_usd { 0.0 };
+  double reasoning_usd { 0.0 };
+  double total_usd { 0.0 };
 };
 
 struct llm_response {
@@ -144,6 +265,7 @@ struct llm_response {
   std::string reasoning_summary;
   std::error_code error_code;
   llm_usage usage;
+  std::optional<llm_cost_breakdown> cost;
   std::string finish_reason;
   std::string stop_reason;
   std::vector<llm_tool_call> tool_calls;

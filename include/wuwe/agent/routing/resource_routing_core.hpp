@@ -59,9 +59,14 @@ enum class model_route_error_code {
 
 struct model_capabilities {
   bool tools { false };
+  bool parallel_tools { false };
   bool streaming { false };
   bool reasoning { false };
   bool json_response { false };
+  bool json_schema_output { false };
+  bool stop_sequences { false };
+  bool deterministic_seed { false };
+  bool explicit_cache_control { false };
   bool local_runtime { false };
 };
 
@@ -84,9 +89,14 @@ struct model_route_requirements {
   bool allow_model_override { true };
   bool allow_unpriced_models { false };
   bool require_tools { false };
+  bool require_parallel_tools { false };
   bool require_streaming { false };
   bool require_reasoning { false };
   bool require_json_response { false };
+  bool require_json_schema_output { false };
+  bool require_stop_sequences { false };
+  bool require_deterministic_seed { false };
+  bool require_explicit_cache_control { false };
   bool require_local_runtime { false };
   double minimum_quality_score { 0.0 };
   std::map<std::string, std::string> metadata;
@@ -257,9 +267,15 @@ inline void saturating_token_add(std::size_t& target, std::size_t value) noexcep
     { "available", profile.available },
     { "capabilities", {
       { "tools", profile.capabilities.tools },
+      { "parallel_tools", profile.capabilities.parallel_tools },
       { "streaming", profile.capabilities.streaming },
       { "reasoning", profile.capabilities.reasoning },
       { "json_response", profile.capabilities.json_response },
+      { "json_schema_output", profile.capabilities.json_schema_output },
+      { "stop_sequences", profile.capabilities.stop_sequences },
+      { "deterministic_seed", profile.capabilities.deterministic_seed },
+      { "explicit_cache_control",
+        profile.capabilities.explicit_cache_control },
       { "local_runtime", profile.capabilities.local_runtime },
     } },
     { "metadata", profile.metadata },

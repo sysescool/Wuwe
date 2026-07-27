@@ -5,6 +5,7 @@
 #include <stop_token>
 
 #include <wuwe/agent/llm/llm_error.h>
+#include <wuwe/agent/llm/llm_capabilities.hpp>
 #include <wuwe/agent/llm/llm_types.h>
 #include <wuwe/common/wuwe_fwd.h>
 
@@ -29,6 +30,11 @@ public:
 
   virtual bool supports_streaming() const noexcept {
     return false;
+  }
+
+  [[nodiscard]] virtual llm_provider_capabilities capabilities()
+    const noexcept {
+    return { .declared = false };
   }
 
   virtual llm_response complete(const llm_request& request, std::stop_token stop_token) {

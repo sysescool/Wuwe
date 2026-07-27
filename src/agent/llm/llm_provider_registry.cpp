@@ -13,7 +13,15 @@ llm_provider_capabilities cloud_chat_capabilities() {
     .tools = true,
     .tool_choice = true,
     .json_response_format = true,
+    .stop_sequences = true,
   };
+}
+
+llm_provider_capabilities openai_capabilities() {
+  auto capabilities = cloud_chat_capabilities();
+  capabilities.deterministic_seed = true;
+  capabilities.json_schema_output = true;
+  return capabilities;
 }
 
 llm_provider_capabilities reasoning_openai_compatible_capabilities() {
@@ -32,6 +40,7 @@ llm_provider_capabilities anthropic_capabilities() {
     .reasoning_summary = true,
     .streaming_reasoning_summary = true,
     .reasoning_language_control = llm_reasoning_language_control::prompt_contract,
+    .stop_sequences = true,
   };
 }
 
@@ -44,6 +53,9 @@ llm_provider_capabilities gemini_capabilities() {
     .streaming_reasoning_summary = true,
     .reasoning_language_control = llm_reasoning_language_control::prompt_contract,
     .multimodal_input = true,
+    .stop_sequences = true,
+    .deterministic_seed = true,
+    .json_schema_output = true,
   };
 }
 
@@ -56,6 +68,9 @@ llm_provider_capabilities ollama_capabilities() {
     .streaming_reasoning_summary = true,
     .reasoning_language_control = llm_reasoning_language_control::prompt_contract,
     .local_runtime = true,
+    .stop_sequences = true,
+    .deterministic_seed = true,
+    .json_schema_output = true,
   };
 }
 
@@ -94,7 +109,7 @@ const std::vector<llm_provider_info>& list_llm_providers() {
       .default_base_url = "https://api.openai.com",
       .default_chat_completions_path = "/v1/chat/completions",
       .api_key_env_names = {"OPENAI_API_KEY"},
-      .capabilities = cloud_chat_capabilities(),
+      .capabilities = openai_capabilities(),
     },
     {
       .id = "OpenAICompatible",
@@ -199,6 +214,7 @@ llm_client_config make_default_llm_config(const llm_provider_info& provider) {
   config.base_url = provider.default_base_url;
   config.chat_completions_path = provider.default_chat_completions_path;
   config.require_api_key = provider.api_key_required;
+  config.capabilities_override = provider.capabilities;
   if (config.load_api_key_from_environment) {
     config.api_key = load_first_env_value(provider.api_key_env_names);
   }
@@ -227,6 +243,9 @@ llm_client_config normalize_llm_client_config(
   config.require_api_key = provider.api_key_required && config.require_api_key;
   if (config.api_key.empty() && config.load_api_key_from_environment) {
     config.api_key = load_first_env_value(provider.api_key_env_names);
+  }
+  if (!config.capabilities_override) {
+    config.capabilities_override = provider.capabilities;
   }
   return config;
 }

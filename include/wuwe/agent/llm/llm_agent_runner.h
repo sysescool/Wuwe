@@ -1,11 +1,19 @@
 #ifndef WUWE_AGENT_LLM_AGENT_RUNNER_H
 #define WUWE_AGENT_LLM_AGENT_RUNNER_H
 
+#include <algorithm>
+#include <chrono>
+#include <concepts>
 #include <exception>
 #include <functional>
 #include <future>
+#include <cstdint>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <random>
+#include <set>
 #include <stop_token>
 #include <stdexcept>
 #include <string>
@@ -13,10 +21,17 @@
 #include <thread>
 #include <utility>
 
+#include <wuwe/agent/approval/approval_service.hpp>
+#include <wuwe/agent/approval/approval_context.hpp>
+#include <wuwe/agent/core/execution_context.hpp>
 #include <wuwe/agent/llm/llm_error.h>
+#include <wuwe/agent/llm/context_budget.hpp>
+#include <wuwe/agent/llm/llm_usage.hpp>
 #include <wuwe/agent/llm/llm_client.h>
 #include <wuwe/agent/memory/memory_context.hpp>
+#include <wuwe/agent/runtime/runtime.hpp>
 #include <wuwe/agent/tools/tool.hpp>
+#include <wuwe/agent/tools/json_schema.hpp>
 #include <wuwe/common/wuwe_fwd.h>
 
 WUWE_NAMESPACE_BEGIN
@@ -30,11 +45,26 @@ enum class llm_agent_event_type {
   tool_call_building,
   tool_call_ready,
   tool_started,
+  tool_heartbeat,
   tool_completed,
+  tool_approval_required,
+  agent_resumed,
   model_completed,
   agent_completed,
   agent_failed,
   agent_cancelled,
+};
+
+enum class llm_tool_authorization_kind {
+  allow,
+  deny,
+  suspend,
+};
+
+struct llm_tool_authorization {
+  llm_tool_authorization_kind kind { llm_tool_authorization_kind::allow };
+  std::string reason;
+  std::map<std::string, std::string> metadata;
 };
 
 struct llm_agent_event {
@@ -57,6 +87,8 @@ struct llm_agent_callbacks {
   std::function<void(std::string_view)> on_reasoning_done;
   std::function<void(const llm_stream_event&)> on_stream_event;
   std::function<void(const llm_tool_call&)> on_tool_start;
+  std::function<void(const llm_tool_call&, const agent::tools::tool_heartbeat&)>
+    on_tool_heartbeat;
   std::function<void(const llm_tool_call&, const llm_tool_result&)> on_tool_result;
   std::function<void(const llm_response&)> on_done;
   std::function<void(std::error_code, std::string_view)> on_error;
@@ -66,10 +98,22 @@ struct llm_agent_callbacks {
     prepare_tool_result;
   std::function<std::optional<llm_request>(llm_request)> prepare_model_request;
   std::function<void(const llm_request&, const llm_response&)> on_model_result;
+  std::function<void(const agent::llm::context_budget_report&)> on_context_budget;
+  std::function<llm_tool_authorization(const agent::tools::tool_invocation&)>
+    authorize_tool_call;
 };
 
 struct llm_agent_run_options {
   std::stop_token stop_token;
+  agent::core::agent_execution_context context;
+  std::shared_ptr<agent::runtime::agent_run_runtime> runtime;
+  std::shared_ptr<agent::approval::approval_service> approval_service;
+  std::optional<agent::llm::llm_pricing> pricing;
+  std::shared_ptr<agent::runtime::executor> run_executor;
+  std::shared_ptr<agent::runtime::executor> tool_executor;
+  std::shared_ptr<agent::runtime::scheduler> scheduler;
+  std::shared_ptr<const agent::llm::context_token_estimator> token_estimator;
+  std::size_t max_in_flight_tool_invocations { 16 };
   llm_agent_callbacks callbacks;
   bool persist_request_messages { true };
   bool persist_assistant_messages { true };
@@ -80,33 +124,59 @@ class llm_agent_run {
 public:
   llm_agent_run() = default;
 
-  llm_agent_run(std::jthread worker, std::future<llm_response> future)
-      : worker_(std::move(worker)), future_(std::move(future)) {
+  llm_agent_run(
+    agent::runtime::scheduled_task task,
+    std::future<llm_response> future)
+      : task_(std::move(task)), future_(std::move(future)) {
   }
 
   llm_agent_run(const llm_agent_run&) = delete;
   llm_agent_run& operator=(const llm_agent_run&) = delete;
   llm_agent_run(llm_agent_run&&) noexcept = default;
-  llm_agent_run& operator=(llm_agent_run&&) noexcept = default;
+  llm_agent_run& operator=(llm_agent_run&& other) noexcept {
+    if (this != &other) {
+      stop_and_wait();
+      task_ = std::move(other.task_);
+      future_ = std::move(other.future_);
+    }
+    return *this;
+  }
+
+  ~llm_agent_run() {
+    stop_and_wait();
+  }
 
   bool valid() const noexcept {
     return future_.valid();
   }
 
   void request_stop() {
-    worker_.request_stop();
+    task_.request_stop();
   }
 
   void wait() const {
-    future_.wait();
+    task_.wait();
   }
 
   llm_response get() {
+    task_.wait();
     return future_.get();
   }
 
 private:
-  std::jthread worker_;
+  void stop_and_wait() noexcept {
+    if (!task_.valid()) return;
+    task_.request_stop();
+    if (task_.running_on_current_thread()) return;
+    try {
+      task_.wait();
+    }
+    catch (...) {
+      // Destruction is a cancellation barrier, not an exception boundary.
+    }
+  }
+
+  agent::runtime::scheduled_task task_;
   std::future<llm_response> future_;
 };
 
@@ -178,17 +248,89 @@ public:
     return complete_impl(std::move(request), std::move(options), stop_token, is_cancelled);
   }
 
+  llm_response resume(
+    const std::string& run_id,
+    std::uint64_t expected_revision,
+    const std::string& continuation_token,
+    llm_agent_run_options options = {}) const {
+    validate_run_options(options);
+    if (!options.runtime) {
+      throw std::invalid_argument("agent resume requires a durable runtime");
+    }
+    const auto stored = options.runtime->get(run_id);
+    if (!stored) {
+      throw std::invalid_argument("agent run not found: " + run_id);
+    }
+    const auto stored_continuation = stored->suspension
+      ? stored->suspension
+      : stored->active_continuation;
+    if (!stored_continuation) {
+      throw std::logic_error("agent run has no suspended continuation");
+    }
+    auto continuation = agent::runtime::llm_continuation_from_json(
+      stored_continuation->continuation);
+    if (!options.pricing) {
+      options.pricing = continuation.pricing;
+    }
+    const auto claim = options.runtime->claim_approved_continuation(
+      run_id, expected_revision, continuation_token);
+    if (!claim) {
+      llm_response response {
+        .content = "Agent run changed before its continuation could be claimed.",
+        .error_code = agent::make_error_code(
+          agent::llm_error_code::run_state_conflict),
+      };
+      response.metadata["run_id"] = run_id;
+      response.metadata["actual_revision"] = std::to_string(claim.revision);
+      return response;
+    }
+
+    options.context = stored->context;
+    options.context.run_id = run_id;
+    options.context.stop_token = options.stop_token;
+    if (std::find(
+          continuation.approved_call_ids.begin(),
+          continuation.approved_call_ids.end(),
+          claim.continuation->tool_call_id) == continuation.approved_call_ids.end()) {
+      continuation.approved_call_ids.push_back(claim.continuation->tool_call_id);
+    }
+    const auto stop_token = options.stop_token;
+    const auto is_cancelled = [stop_token] {
+      return stop_token.stop_requested();
+    };
+    return resume_impl(
+      continuation,
+      std::move(options),
+      stop_token,
+      is_cancelled,
+      claim.revision);
+  }
+
   llm_agent_run run_async(llm_request request, llm_agent_run_options options = {}) const {
+    validate_run_options(options);
     auto promise = std::make_shared<std::promise<llm_response>>();
     auto future = promise->get_future();
     auto runner = *this;
-
-    std::jthread worker(
+    auto run_executor = options.run_executor
+      ? options.run_executor
+      : agent::runtime::default_executor();
+    if (options.tool_executor &&
+        run_executor->execution_domain() ==
+          options.tool_executor->execution_domain()) {
+      throw std::invalid_argument(
+        "agent run and tool execution require independent executor domains");
+    }
+    // The selected executor is retained by the submitted closure. Keeping it
+    // out of options prevents accidental duplicate ownership and makes a
+    // temporary injected executor safe for asynchronous use.
+    options.run_executor.reset();
+    auto task = run_executor->submit(
       [runner = std::move(runner),
        request = std::move(request),
        options = std::move(options),
-       promise](
-        std::stop_token worker_stop_token) mutable {
+       promise,
+       executor_keep_alive = run_executor](
+        std::stop_token task_stop_token) mutable {
         const auto external_stop_token = options.stop_token;
         std::stop_source run_stop_source;
         std::stop_callback external_stop_callback(
@@ -196,13 +338,13 @@ public:
           [&run_stop_source] {
             run_stop_source.request_stop();
           });
-        std::stop_callback worker_stop_callback(
-          worker_stop_token,
+        std::stop_callback task_stop_callback(
+          task_stop_token,
           [&run_stop_source] {
             run_stop_source.request_stop();
           });
 
-        if (external_stop_token.stop_requested() || worker_stop_token.stop_requested()) {
+        if (external_stop_token.stop_requested() || task_stop_token.stop_requested()) {
           run_stop_source.request_stop();
         }
 
@@ -227,7 +369,7 @@ public:
         }
       });
 
-    return llm_agent_run(std::move(worker), std::move(future));
+    return llm_agent_run(std::move(task), std::move(future));
   }
 
   llm_agent_run run_async(std::string_view prompt, llm_agent_run_options options = {}) const {
@@ -245,177 +387,1498 @@ private:
 
   template<typename ToolProvider>
   void bind_invoke(std::shared_ptr<ToolProvider> tool_provider) {
+    tools_ = [tool_provider] {
+      if constexpr (requires { tool_provider->descriptors(); }) {
+        std::vector<llm_tool> output;
+        for (const auto& descriptor : tool_provider->descriptors()) {
+          output.push_back(descriptor.model_tool());
+        }
+        return output;
+      }
+      else {
+        return tool_provider->tools();
+      }
+    };
+    descriptors_ = [tool_provider] {
+      if constexpr (requires { tool_provider->descriptors(); }) {
+        return tool_provider->descriptors();
+      }
+      else {
+        std::vector<agent::tools::tool_descriptor> output;
+        for (const auto& tool : tool_provider->tools()) {
+          output.push_back(agent::tools::descriptor_from_llm_tool(tool));
+        }
+        return output;
+      }
+    };
     invoke_ =
       [tool_provider](
-        const std::string& name,
-        const std::string& arguments_json,
-        std::stop_token stop_token) {
-        if constexpr (requires {
-                        tool_provider->invoke(name, arguments_json, stop_token);
-                      }) {
-          return tool_provider->invoke(name, arguments_json, stop_token);
+        const agent::tools::tool_invocation& invocation) {
+        if constexpr (requires { tool_provider->invoke(invocation); }) {
+          return tool_provider->invoke(invocation);
+        }
+        else if constexpr (requires {
+                             tool_provider->invoke(
+                               invocation.name,
+                               invocation.arguments_json,
+                               invocation.stop_token);
+                           }) {
+          return tool_provider->invoke(
+            invocation.name,
+            invocation.arguments_json,
+            invocation.stop_token);
         }
         else {
-          return tool_provider->invoke(name, arguments_json);
+          return tool_provider->invoke(
+            invocation.name, invocation.arguments_json);
         }
+    };
+    provider_capabilities_ = [tool_provider](const std::string& name) {
+      return agent::tools::resolve_tool_provider_capabilities(
+        *tool_provider, name);
+    };
+    if constexpr (requires(
+                    const agent::tools::tool_invocation& invocation,
+                    const llm_tool_result& outcome) {
+                    { tool_provider->compensate(invocation, outcome) } ->
+                      std::convertible_to<llm_tool_result>;
+                  }) {
+      compensate_ = [tool_provider](
+        const agent::tools::tool_invocation& invocation,
+        const llm_tool_result& outcome) {
+        return tool_provider->compensate(invocation, outcome);
       };
+    }
   }
+
+  struct durable_run_state {
+    std::shared_ptr<agent::runtime::agent_run_runtime> runtime;
+    std::string run_id;
+    std::uint64_t revision { 0 };
+    std::optional<agent::llm::llm_pricing> pricing;
+  };
 
   llm_response complete_impl(
     llm_request request,
     llm_agent_run_options options,
     std::stop_token client_stop_token,
     const std::function<bool()>& is_cancelled) const {
+    validate_run_options(options);
+    if (tools_) {
+      request.tools = tools_();
+    }
+    if (auto rejected = agent::llm::llm_request_rejection(
+          request, client_.capabilities())) {
+      emit_error(options.callbacks, *rejected);
+      return std::move(*rejected);
+    }
+    options.context.stop_token = client_stop_token;
+    auto durable = begin_durable_run(options);
+    request.execution_context = options.context;
     if (is_cancelled()) {
-      return cancelled_response(options.callbacks);
+      return finalize_durable_run(
+        cancelled_response(options.callbacks), durable);
+    }
+    if (options.context.deadline_reached()) {
+      return finalize_durable_run(
+        timeout_response(options.callbacks), durable);
     }
 
     const std::string query_text = last_user_content(request);
     const llm_request request_to_observe = request;
-
-    if (tools_) {
-      request.tools = tools_();
-    }
-
     if (memory_) {
-      request = memory_->augment(std::move(request), query_text);
+      request = memory_->augment(
+        std::move(request), query_text,
+        agent::memory::memory_scope_from_execution_context(
+          options.context, memory_->scope()));
       if (options.persist_request_messages) {
-        observe_request_messages(request_to_observe);
+        observe_request_messages(request_to_observe, options.context);
       }
     }
 
-    const bool use_streaming =
-      client_.supports_streaming() &&
-      (static_cast<bool>(options.callbacks.on_delta) ||
-       static_cast<bool>(options.callbacks.on_reasoning_delta) ||
-       static_cast<bool>(options.callbacks.on_reasoning_done) ||
-       static_cast<bool>(options.callbacks.on_event) ||
-       static_cast<bool>(options.callbacks.on_stream_event));
-    llm_response response =
-      complete_model(request, options.callbacks, client_stop_token, use_streaming);
-    if (is_cancelled() || response.error_code == agent::llm_error_code::cancelled) {
-      return cancelled_response(options.callbacks);
+    const bool use_streaming = should_stream(options.callbacks);
+    auto response = complete_model(
+      request, options, client_stop_token, use_streaming);
+    llm_usage accumulated_usage;
+    agent::llm::accumulate_llm_usage(accumulated_usage, response.usage);
+    if (is_cancelled() ||
+        response.error_code == agent::llm_error_code::cancelled) {
+      auto cancelled = cancelled_response(options.callbacks);
+      cancelled.usage = accumulated_usage;
+      return finalize_durable_run(std::move(cancelled), durable);
     }
     if (response.error_code) {
       emit_error(options.callbacks, response);
-      return response;
+      return finalize_durable_run(std::move(response), durable);
     }
-    if (!use_streaming) {
-      emit_delta(options.callbacks, response);
-      emit_reasoning_done(options.callbacks, response);
+    emit_nonstreaming_content(options.callbacks, response, use_streaming);
+    return continue_tool_loop(
+      std::move(request),
+      std::move(response),
+      0,
+      accumulated_usage,
+      std::move(options),
+      client_stop_token,
+      is_cancelled,
+      durable);
+  }
+
+  llm_response resume_impl(
+    agent::runtime::llm_tool_continuation continuation,
+    llm_agent_run_options options,
+    std::stop_token client_stop_token,
+    const std::function<bool()>& is_cancelled,
+    std::uint64_t revision) const {
+    validate_run_options(options);
+    durable_run_state durable {
+      .runtime = options.runtime,
+      .run_id = options.context.run_id,
+      .revision = revision,
+      .pricing = options.pricing,
+    };
+    if (auto rejected = agent::llm::llm_request_rejection(
+          continuation.request, client_.capabilities())) {
+      emit_error(options.callbacks, *rejected);
+      return finalize_durable_run(std::move(*rejected), durable);
     }
-    if (response.tool_calls.empty()) {
-      if (options.persist_assistant_messages) {
-        observe_assistant_response(response);
-      }
-      emit_done(options.callbacks, response);
-      return response;
+    continuation.request.execution_context = options.context;
+    emit_agent_event(options.callbacks, {
+      .type = llm_agent_event_type::agent_resumed,
+      .message = durable.run_id,
+    });
+    if (is_cancelled()) {
+      auto cancelled = cancelled_response(options.callbacks);
+      cancelled.usage = continuation.accumulated_usage;
+      return finalize_durable_run(std::move(cancelled), durable);
     }
-    int used_tool_rounds = 0;
+    if (options.context.deadline_reached()) {
+      auto timed_out = timeout_response(options.callbacks);
+      timed_out.usage = continuation.accumulated_usage;
+      return finalize_durable_run(std::move(timed_out), durable);
+    }
+
+    const bool use_streaming = should_stream(options.callbacks);
+    llm_response batch_response;
+    if (auto terminal = process_tool_batch(
+          continuation.request,
+          continuation.pending_calls,
+          continuation.used_tool_rounds,
+          std::string {},
+          true,
+          continuation.assistant_persisted,
+          continuation.accumulated_usage,
+      continuation.approved_call_ids,
+          options,
+          client_stop_token,
+          is_cancelled,
+          durable)) {
+      terminal->usage = continuation.accumulated_usage;
+      return finalize_durable_run(std::move(*terminal), durable);
+    }
+
+    batch_response = complete_model(
+      continuation.request,
+      options,
+      client_stop_token,
+      use_streaming);
+    agent::llm::accumulate_llm_usage(
+      continuation.accumulated_usage, batch_response.usage);
+    batch_response.usage = continuation.accumulated_usage;
+    if (is_cancelled() ||
+        batch_response.error_code == agent::llm_error_code::cancelled) {
+      auto cancelled = cancelled_response(options.callbacks);
+      cancelled.usage = continuation.accumulated_usage;
+      return finalize_durable_run(std::move(cancelled), durable);
+    }
+    if (batch_response.error_code) {
+      emit_error(options.callbacks, batch_response);
+      return finalize_durable_run(std::move(batch_response), durable);
+    }
+    emit_nonstreaming_content(options.callbacks, batch_response, use_streaming);
+    return continue_tool_loop(
+      std::move(continuation.request),
+      std::move(batch_response),
+      continuation.used_tool_rounds,
+      continuation.accumulated_usage,
+      std::move(options),
+      client_stop_token,
+      is_cancelled,
+      durable);
+  }
+
+  llm_response continue_tool_loop(
+    llm_request request,
+    llm_response response,
+    int used_tool_rounds,
+    llm_usage accumulated_usage,
+    llm_agent_run_options options,
+    std::stop_token client_stop_token,
+    const std::function<bool()>& is_cancelled,
+    durable_run_state& durable) const {
     llm_tool_call last_tool_call;
     llm_tool_result last_tool_result;
+    std::set<std::string> seen_tool_call_ids;
+    const bool use_streaming = should_stream(options.callbacks);
 
-    for (int round = 0; round < max_tool_rounds_; ++round) {
+    while (true) {
       if (is_cancelled()) {
-        return cancelled_response(options.callbacks);
+        auto cancelled = cancelled_response(options.callbacks);
+        cancelled.usage = accumulated_usage;
+        return finalize_durable_run(std::move(cancelled), durable);
       }
-      if (response.tool_calls.empty() || !invoke_) {
+      if (options.context.deadline_reached()) {
+        auto timed_out = timeout_response(options.callbacks);
+        timed_out.usage = accumulated_usage;
+        return finalize_durable_run(std::move(timed_out), durable);
+      }
+      if (response.tool_calls.empty()) {
+        response.usage = accumulated_usage;
         if (options.persist_assistant_messages) {
-          observe_assistant_response(response);
+          observe_assistant_response(response, nullptr, options.context);
         }
         emit_done(options.callbacks, response);
-        return response;
+        return finalize_durable_run(std::move(response), durable);
+      }
+      if (used_tool_rounds >= max_tool_rounds_) {
+        response.usage = accumulated_usage;
+        response.error_code = agent::make_error_code(
+          agent::llm_error_code::agent_loop_budget_exceeded);
+        response.stop_reason = "tool_round_budget_exceeded";
+        response.metadata["stop_reason"] = response.stop_reason;
+        response.metadata["used_tool_rounds"] = std::to_string(used_tool_rounds);
+        response.metadata["max_tool_rounds"] = std::to_string(max_tool_rounds_);
+        response.metadata["last_tool_call"] = last_tool_call.name;
+        response.metadata["last_tool_call_id"] = last_tool_call.id;
+        response.metadata["last_tool_arguments"] = last_tool_call.arguments_json;
+        response.metadata["last_tool_result"] = last_tool_result.content;
+        response.metadata["last_model_response"] = response.content;
+        response.content =
+          "Agent tool round budget exceeded before producing a final answer.";
+        emit_error(options.callbacks, response);
+        return finalize_durable_run(std::move(response), durable);
+      }
+      if (!invoke_) {
+        response.usage = accumulated_usage;
+        if (options.persist_assistant_messages) {
+          observe_assistant_response(response, nullptr, options.context);
+        }
+        emit_done(options.callbacks, response);
+        return finalize_durable_run(std::move(response), durable);
       }
       ++used_tool_rounds;
 
       std::vector<llm_tool_call> prepared_calls;
       prepared_calls.reserve(response.tool_calls.size());
+      std::set<std::string> prepared_call_ids;
+      std::size_t call_index = 0;
       for (const auto& original_call : response.tool_calls) {
-        if (is_cancelled()) {
-          return cancelled_response(options.callbacks);
-        }
-
         if (!allow_tool_call(options.callbacks, original_call)) {
-          return cancelled_response(options.callbacks);
+          auto denied = denied_tool_response(original_call, "tool call rejected by host callback");
+          denied.usage = accumulated_usage;
+          emit_error(options.callbacks, denied);
+          return finalize_durable_run(std::move(denied), durable);
         }
         auto prepared_call = prepare_tool_call(options.callbacks, original_call);
         if (!prepared_call) {
-          return cancelled_response(options.callbacks);
+          auto denied = denied_tool_response(original_call, "tool call rejected during preparation");
+          denied.usage = accumulated_usage;
+          emit_error(options.callbacks, denied);
+          return finalize_durable_run(std::move(denied), durable);
+        }
+        if (prepared_call->name.empty()) {
+          auto invalid = invalid_tool_call_response(
+            *prepared_call, "model returned a tool call without a name");
+          invalid.usage = accumulated_usage;
+          emit_error(options.callbacks, invalid);
+          return finalize_durable_run(std::move(invalid), durable);
+        }
+        if (prepared_call->id.empty()) {
+          prepared_call->id = "wuwe-call-" + std::to_string(used_tool_rounds) +
+            "-" + std::to_string(call_index);
+        }
+        if (!prepared_call_ids.insert(prepared_call->id).second) {
+          auto invalid = invalid_tool_call_response(
+            *prepared_call, "model returned duplicate tool call ids");
+          invalid.usage = accumulated_usage;
+          emit_error(options.callbacks, invalid);
+          return finalize_durable_run(std::move(invalid), durable);
         }
         prepared_calls.push_back(std::move(*prepared_call));
+        ++call_index;
       }
 
-      request.messages.push_back({
-        .role = "assistant",
-        .content = response.content,
-        .tool_calls = prepared_calls,
-      });
-      if (options.persist_assistant_messages) {
-        observe_assistant_response(response, &prepared_calls);
-      }
-
-      for (auto& call : prepared_calls) {
-        emit_tool_start(options.callbacks, call);
-        last_tool_call = call;
-        auto tool_result = invoke_(call.name, call.arguments_json, client_stop_token);
-        auto prepared_result = prepare_tool_result(
-          options.callbacks,
-          call,
-          std::move(tool_result));
-        if (!prepared_result) {
-          return cancelled_response(options.callbacks);
-        }
-        tool_result = std::move(*prepared_result);
-        last_tool_result = tool_result;
-        if (is_cancelled()) {
-          return cancelled_response(options.callbacks);
-        }
-        emit_tool_result(options.callbacks, call, tool_result);
-        chat_message tool_message { .role = "tool",
-          .content =
-            tool_result.content.empty() ? tool_result.error_code.message() : tool_result.content,
-          .name = call.name,
-          .tool_call_id = call.id };
-        request.messages.push_back(tool_message);
-        if (memory_ && options.persist_tool_messages) {
-          memory_->observe(tool_message);
+      for (const auto& call : prepared_calls) {
+        if (seen_tool_call_ids.contains(call.id)) {
+          auto invalid = invalid_tool_call_response(
+            call, "model reused a tool call id from an earlier round");
+          invalid.usage = accumulated_usage;
+          emit_error(options.callbacks, invalid);
+          return finalize_durable_run(std::move(invalid), durable);
         }
       }
+      if (auto terminal = process_tool_batch(
+            request,
+            prepared_calls,
+            used_tool_rounds,
+            response.content,
+            false,
+            false,
+            accumulated_usage,
+            {},
+            options,
+            client_stop_token,
+            is_cancelled,
+            durable,
+            &last_tool_call,
+            &last_tool_result)) {
+        terminal->usage = accumulated_usage;
+        return finalize_durable_run(std::move(*terminal), durable);
+      }
+      for (const auto& call : prepared_calls) {
+        seen_tool_call_ids.insert(call.id);
+      }
 
-      response = complete_model(request, options.callbacks, client_stop_token, use_streaming);
-      if (is_cancelled() || response.error_code == agent::llm_error_code::cancelled) {
-        return cancelled_response(options.callbacks);
+      response = complete_model(
+        request, options, client_stop_token, use_streaming);
+      agent::llm::accumulate_llm_usage(accumulated_usage, response.usage);
+      if (is_cancelled() ||
+          response.error_code == agent::llm_error_code::cancelled) {
+        auto cancelled = cancelled_response(options.callbacks);
+        cancelled.usage = accumulated_usage;
+        return finalize_durable_run(std::move(cancelled), durable);
       }
       if (response.error_code) {
+        response.usage = accumulated_usage;
         emit_error(options.callbacks, response);
-        return response;
+        return finalize_durable_run(std::move(response), durable);
       }
-      if (!use_streaming) {
-        emit_delta(options.callbacks, response);
-        emit_reasoning_done(options.callbacks, response);
+      emit_nonstreaming_content(options.callbacks, response, use_streaming);
+    }
+  }
+
+  std::optional<llm_response> process_tool_batch(
+    llm_request& request,
+    const std::vector<llm_tool_call>& calls,
+    int used_tool_rounds,
+    const std::string& assistant_content,
+    bool assistant_already_in_request,
+    bool assistant_persisted,
+    const llm_usage& accumulated_usage,
+    const std::vector<std::string>& approved_tool_call_ids,
+    const llm_agent_run_options& options,
+    std::stop_token client_stop_token,
+    const std::function<bool()>& is_cancelled,
+    durable_run_state& durable,
+    llm_tool_call* last_tool_call = nullptr,
+    llm_tool_result* last_tool_result = nullptr) const {
+    if (durable.runtime && !assistant_already_in_request) {
+      const auto record = durable.runtime->get(durable.run_id);
+      if (!record) {
+        return run_state_conflict_response(durable.run_id, 0);
       }
-      if (response.tool_calls.empty() || !invoke_) {
-        if (options.persist_assistant_messages) {
-          observe_assistant_response(response);
+      for (const auto& call : calls) {
+        if (record->admitted_tool_results.contains(call.id)) {
+          return invalid_tool_call_response(
+            call, "model reused a tool call id from an earlier round");
         }
-        emit_done(options.callbacks, response);
+      }
+    }
+    for (const auto& call : calls) {
+      if (std::find(
+            approved_tool_call_ids.begin(),
+            approved_tool_call_ids.end(),
+            call.id) != approved_tool_call_ids.end()) {
+        continue;
+      }
+      const auto descriptor = descriptor_for(call.name, request);
+      if (!descriptor) {
+        return denied_tool_response(
+          call, "tool is not registered in the active tool contract");
+      }
+      const agent::tools::tool_invocation invocation {
+        .call_id = call.id,
+        .name = call.name,
+        .arguments_json = call.arguments_json,
+        .idempotency_key = make_idempotency_key(options.context, call),
+        .descriptor = *descriptor,
+        .context = options.context,
+        .stop_token = client_stop_token,
+      };
+      const auto authorization = authorize_tool(invocation, options);
+      if (authorization.kind == llm_tool_authorization_kind::deny) {
+        auto denied = denied_tool_response(call, authorization.reason);
+        emit_error(options.callbacks, denied);
+        return denied;
+      }
+      if (authorization.kind == llm_tool_authorization_kind::suspend) {
+        if (!durable.runtime) {
+          auto denied = denied_tool_response(
+            call,
+            "tool approval requires a durable runtime");
+          emit_error(options.callbacks, denied);
+          return denied;
+        }
+        if (!assistant_already_in_request) {
+          request.messages.push_back({
+            .role = "assistant",
+            .content = assistant_content,
+            .tool_calls = calls,
+            .context_source = llm_context_source::tool_result,
+          });
+          assistant_already_in_request = true;
+        }
+        agent::runtime::agent_run_suspension suspension {
+          .approval_id = agent::runtime::agent_run_runtime::make_identifier(
+            "approval"),
+          .continuation_token =
+            agent::runtime::agent_run_runtime::make_secret_token(),
+          .tool_call_id = call.id,
+          .tool_name = call.name,
+          .reason = authorization.reason.empty()
+            ? "tool call requires approval"
+            : authorization.reason,
+          .continuation = agent::runtime::llm_continuation_to_json({
+            .request = request,
+            .pending_calls = calls,
+            .approved_call_ids = approved_tool_call_ids,
+            .used_tool_rounds = used_tool_rounds,
+            .assistant_persisted = assistant_persisted,
+            .accumulated_usage = accumulated_usage,
+            .pricing = durable.pricing,
+          }),
+          .metadata = authorization.metadata,
+        };
+        const auto write = durable.runtime->suspend_for_approval(
+          durable.run_id, durable.revision, suspension);
+        if (!write) {
+          return run_state_conflict_response(durable.run_id, write.revision);
+        }
+        durable.revision = write.revision;
+        emit_agent_event(options.callbacks, {
+          .type = llm_agent_event_type::tool_approval_required,
+          .message = suspension.reason,
+          .tool_call = &call,
+        });
+        llm_response response {
+          .content = suspension.reason,
+          .error_code = agent::make_error_code(
+            agent::llm_error_code::approval_required),
+          .stop_reason = "approval_required",
+        };
+        response.metadata["run_id"] = durable.run_id;
+        response.metadata["revision"] = std::to_string(durable.revision);
+        response.metadata["approval_id"] = suspension.approval_id;
+        response.metadata["continuation_token"] = suspension.continuation_token;
+        response.metadata["tool_call_id"] = call.id;
+        response.metadata["tool_name"] = call.name;
         return response;
       }
     }
 
-    response.error_code = agent::make_error_code(agent::llm_error_code::agent_loop_budget_exceeded);
-    response.stop_reason = "tool_round_budget_exceeded";
-    response.metadata["stop_reason"] = response.stop_reason;
-    response.metadata["used_tool_rounds"] = std::to_string(used_tool_rounds);
-    response.metadata["max_tool_rounds"] = std::to_string(max_tool_rounds_);
-    response.metadata["last_tool_call"] = last_tool_call.name;
-    response.metadata["last_tool_call_id"] = last_tool_call.id;
-    response.metadata["last_tool_arguments"] = last_tool_call.arguments_json;
-    response.metadata["last_tool_result"] = last_tool_result.content;
-    response.metadata["last_model_response"] = response.content;
-    response.content = "Agent tool round budget exceeded before producing a final answer.";
-    emit_error(options.callbacks, response);
+    if (!assistant_already_in_request) {
+      request.messages.push_back({
+        .role = "assistant",
+        .content = assistant_content,
+        .tool_calls = calls,
+        .context_source = llm_context_source::tool_result,
+      });
+    }
+    if (!assistant_persisted && options.persist_assistant_messages) {
+      llm_response assistant_response {
+        .content = assistant_content,
+        .tool_calls = calls,
+      };
+      if (assistant_response.content.empty() && !request.messages.empty()) {
+        assistant_response.content = request.messages.back().content;
+      }
+      observe_assistant_response(assistant_response, &calls, options.context);
+    }
+
+    for (const auto& call : calls) {
+      if (is_cancelled()) {
+        auto cancelled = cancelled_response(options.callbacks);
+        cancelled.usage = accumulated_usage;
+        return cancelled;
+      }
+      if (options.context.deadline_reached()) {
+        auto timed_out = timeout_response(options.callbacks);
+        timed_out.usage = accumulated_usage;
+        return timed_out;
+      }
+      const auto descriptor = descriptor_for(call.name, request);
+      if (!descriptor) {
+        return denied_tool_response(
+          call, "tool is not registered in the active tool contract");
+      }
+      const auto idempotency_key = make_idempotency_key(options.context, call);
+      llm_tool_result tool_result;
+      bool reused_result = false;
+      if (durable.runtime) {
+        const auto record = durable.runtime->get(durable.run_id);
+        if (!record) {
+          return run_state_conflict_response(durable.run_id, 0);
+        }
+        const auto admitted = record->admitted_tool_results.find(call.id);
+        if (admitted != record->admitted_tool_results.end()) {
+          tool_result = admitted->second.outcome;
+          reused_result = true;
+        }
+      }
+
+      if (!reused_result) {
+        emit_tool_start(options.callbacks, call);
+        auto invocation_context = options.context;
+        if (descriptor->timeout > std::chrono::milliseconds::zero()) {
+          const auto tool_deadline =
+            std::chrono::system_clock::now() + descriptor->timeout;
+          if (!invocation_context.deadline ||
+              tool_deadline < *invocation_context.deadline) {
+            invocation_context.deadline = tool_deadline;
+          }
+        }
+        const agent::tools::tool_invocation invocation {
+          .call_id = call.id,
+          .name = call.name,
+          .arguments_json = call.arguments_json,
+          .idempotency_key = idempotency_key,
+          .descriptor = *descriptor,
+          .context = invocation_context,
+          .stop_token = client_stop_token,
+        };
+        tool_result = invoke_tool(invocation, options);
+        normalize_tool_outcome(tool_result);
+        auto prepared_result = prepare_tool_result(
+          options.callbacks, call, std::move(tool_result));
+        if (!prepared_result) {
+          return denied_tool_response(
+            call, "tool result rejected during preparation");
+        }
+        tool_result = std::move(*prepared_result);
+        normalize_tool_outcome(tool_result);
+        agent::tools::json_schema_validator output_validator;
+        validate_output(tool_result, *descriptor, output_validator);
+        populate_resource_version(tool_result, *descriptor);
+
+        if (durable.runtime) {
+          auto admission = durable.runtime->admit_tool_result(
+            durable.run_id,
+            durable.revision,
+            {
+              .tool_call_id = call.id,
+              .idempotency_key = idempotency_key,
+              .tool_name = call.name,
+              .outcome = tool_result,
+            });
+          if (!admission) {
+            return run_state_conflict_response(
+              durable.run_id, admission.revision);
+          }
+          durable.revision = admission.revision;
+          tool_result = admission.result->outcome;
+        }
+      }
+
+      if (last_tool_call) {
+        *last_tool_call = call;
+      }
+      if (last_tool_result) {
+        *last_tool_result = tool_result;
+      }
+      emit_tool_result(options.callbacks, call, tool_result);
+      chat_message tool_message {
+        .role = "tool",
+        .content = tool_result_for_model(tool_result),
+        .name = call.name,
+        .tool_call_id = call.id,
+        .context_source = llm_context_source::tool_result,
+      };
+      request.messages.push_back(tool_message);
+      if (memory_ && options.persist_tool_messages) {
+        memory_->observe(tool_message,
+          agent::memory::memory_scope_from_execution_context(
+            options.context, memory_->scope()));
+      }
+    }
+    return std::nullopt;
+  }
+
+  durable_run_state begin_durable_run(llm_agent_run_options& options) const {
+    durable_run_state durable {
+      .pricing = options.pricing,
+    };
+    if (!options.runtime) {
+      return durable;
+    }
+    auto record = options.runtime->start(options.context);
+    const auto running = options.runtime->transition(
+      record.id,
+      record.revision,
+      agent::runtime::agent_run_status::running,
+      "run_started");
+    if (!running) {
+      throw std::runtime_error("failed to start durable agent run");
+    }
+    options.context = record.context;
+    options.context.stop_token = options.stop_token;
+    durable.runtime = options.runtime;
+    durable.run_id = record.id;
+    durable.revision = running.revision;
+    return durable;
+  }
+
+  static llm_response finalize_durable_run(
+    llm_response response,
+    durable_run_state& durable) {
+    if (durable.pricing) {
+      response.cost = agent::llm::calculate_llm_cost(
+        response.usage, *durable.pricing);
+      if (response.cost) {
+        response.metadata["cost_usd"] =
+          nlohmann::json(response.cost->total_usd).dump();
+      }
+      else {
+        response.metadata["accounting_error"] =
+          "usage or pricing is invalid; cost was not calculated";
+      }
+    }
+    if (!durable.runtime) {
+      return response;
+    }
+    response.metadata["run_id"] = durable.run_id;
+    if (response.error_code == agent::llm_error_code::approval_required) {
+      response.metadata["revision"] = std::to_string(durable.revision);
+      return response;
+    }
+    auto status = agent::runtime::agent_run_status::completed;
+    std::string event = "run_completed";
+    if (response.error_code == agent::llm_error_code::cancelled) {
+      status = agent::runtime::agent_run_status::cancelled;
+      event = "run_cancelled";
+    }
+    else if (response.error_code == agent::llm_error_code::timeout) {
+      status = agent::runtime::agent_run_status::timed_out;
+      event = "run_timed_out";
+    }
+    else if (response.error_code) {
+      status = agent::runtime::agent_run_status::failed;
+      event = "run_failed";
+    }
+    nlohmann::json persisted_result {
+      { "content", response.content },
+      { "stop_reason", response.stop_reason },
+      { "metadata", response.metadata },
+      { "usage", {
+        { "prompt_tokens", response.usage.prompt_tokens },
+        { "completion_tokens", response.usage.completion_tokens },
+        { "total_tokens", response.usage.total_tokens },
+        { "cached_prompt_tokens", response.usage.cached_prompt_tokens },
+        { "reasoning_tokens", response.usage.reasoning_tokens },
+      } },
+    };
+    persisted_result["cost"] = response.cost
+      ? nlohmann::json {
+          { "input_usd", response.cost->input_usd },
+          { "cached_input_usd", response.cost->cached_input_usd },
+          { "output_usd", response.cost->output_usd },
+          { "reasoning_usd", response.cost->reasoning_usd },
+          { "total_usd", response.cost->total_usd },
+        }
+      : nlohmann::json(nullptr);
+    const auto write = durable.runtime->finish(
+      durable.run_id,
+      durable.revision,
+      status,
+      std::move(persisted_result),
+      response.error_code ? response.error_code.message() : std::string {},
+      std::move(event));
+    if (!write) {
+      auto conflict = run_state_conflict_response(
+        durable.run_id, write.revision);
+      conflict.usage = response.usage;
+      conflict.cost = response.cost;
+      conflict.metadata["original_error"] = response.error_code.message();
+      conflict.metadata["original_stop_reason"] = response.stop_reason;
+      if (const auto cost = response.metadata.find("cost_usd");
+          cost != response.metadata.end()) {
+        conflict.metadata["cost_usd"] = cost->second;
+      }
+      if (const auto accounting_error = response.metadata.find("accounting_error");
+          accounting_error != response.metadata.end()) {
+        conflict.metadata["accounting_error"] = accounting_error->second;
+      }
+      return conflict;
+    }
+    durable.revision = write.revision;
+    response.metadata["revision"] = std::to_string(durable.revision);
     return response;
+  }
+
+  std::optional<agent::tools::tool_descriptor> descriptor_for(
+    const std::string& name,
+    const llm_request& request) const {
+    if (descriptors_) {
+      for (const auto& descriptor : descriptors_()) {
+        if (descriptor.name == name) {
+          agent::tools::validate_tool_descriptor(descriptor);
+          return descriptor;
+        }
+      }
+      return std::nullopt;
+    }
+    for (const auto& tool : request.tools) {
+      if (tool.name == name) {
+        return agent::tools::descriptor_from_llm_tool(tool);
+      }
+    }
+    return std::nullopt;
+  }
+
+  struct timed_tool_execution_state {
+    std::mutex mutex;
+    std::size_t in_flight { 0 };
+  };
+
+  llm_tool_result invoke_tool(
+    const agent::tools::tool_invocation& invocation,
+    const llm_agent_run_options& options) const {
+    auto prepared = invocation;
+    const auto provider_capabilities = provider_capabilities_
+      ? provider_capabilities_(prepared.name)
+      : agent::tools::tool_provider_capabilities {};
+    if (!agent::tools::valid_tool_provider_capabilities(provider_capabilities)) {
+      return tool_configuration_result(
+        "tool provider has an inconsistent invocation capability declaration");
+    }
+    if (prepared.descriptor.heartbeat.timeout >
+          std::chrono::milliseconds::zero() &&
+        !provider_capabilities.heartbeat) {
+      return tool_configuration_result(
+        "tool heartbeat requires an invocation-aware provider");
+    }
+    if (prepared.descriptor.compensation.enabled &&
+        (!provider_capabilities.compensation || !compensate_)) {
+      return tool_configuration_result(
+        "tool compensation is enabled but the provider has no compensation handler");
+    }
+    if (prepared.descriptor.retry.max_attempts > 1 &&
+        prepared.descriptor.idempotency ==
+          agent::tools::tool_idempotency::idempotent_with_key &&
+        !provider_capabilities.idempotency_key) {
+      return tool_configuration_result(
+        "idempotency-key retries require a provider that consumes the key");
+    }
+    const auto arguments = nlohmann::json::parse(
+      prepared.arguments_json.empty() ? "{}" : prepared.arguments_json,
+      nullptr,
+      false);
+    if (arguments.is_discarded()) {
+      return invalid_tool_contract_result("tool arguments are not valid JSON");
+    }
+    agent::tools::json_schema_validator validator;
+    const auto input_validation = validator.validate(
+      arguments, prepared.descriptor.input_schema);
+    if (!input_validation) {
+      auto result = invalid_tool_contract_result(
+        "tool arguments do not satisfy the input schema");
+      result.metadata["schema_issues"] = schema_issues_json(input_validation);
+      return result;
+    }
+    if (prepared.descriptor.resource_version.require_expected_version) {
+      try {
+        const auto& value = arguments.at(nlohmann::json::json_pointer(
+          prepared.descriptor.resource_version.argument_json_pointer));
+        if (value.is_null() || value.is_array() || value.is_object()) {
+          return invalid_tool_contract_result(
+            "expected resource version must be a scalar value");
+        }
+        prepared.expected_resource_version = value.is_string()
+          ? value.get<std::string>()
+          : value.dump();
+      }
+      catch (...) {
+        return invalid_tool_contract_result(
+          "tool invocation requires an expected resource version");
+      }
+    }
+
+    auto scheduler = options.scheduler
+      ? options.scheduler
+      : agent::runtime::default_scheduler();
+    llm_tool_result result;
+    for (std::size_t attempt = 1;
+         attempt <= prepared.descriptor.retry.max_attempts;
+         ++attempt) {
+      prepared.attempt = attempt;
+      result = execute_tool_attempt(prepared, invoke_, options, true);
+      normalize_tool_outcome(result);
+      result.metadata["tool_attempt"] = std::to_string(attempt);
+      if (result.succeeded()) {
+        return result;
+      }
+
+      bool compensated = false;
+      if (result.compensation_required) {
+        compensated = compensate_failure(prepared, result, options);
+        result.metadata["compensation_succeeded"] = compensated ? "true" : "false";
+        if (!compensated) {
+          result.retryable = false;
+          return result;
+        }
+      }
+      if (attempt == prepared.descriptor.retry.max_attempts ||
+          !retryable_by_policy(result, prepared.descriptor.retry) ||
+          !retry_is_safe(prepared.descriptor, compensated)) {
+        return result;
+      }
+      const auto delay = retry_delay(prepared.descriptor.retry, attempt);
+      auto wait = delay;
+      bool deadline_will_expire = false;
+      if (const auto remaining = prepared.context.remaining_time()) {
+        if (*remaining <= std::chrono::milliseconds::zero()) {
+          return late_tool_result("tool retry exceeded its deadline",
+            std::errc::timed_out,
+            agent::tools::tool_error_category::timeout, true);
+        }
+        if (wait >= *remaining) {
+          wait = *remaining;
+          deadline_will_expire = true;
+        }
+      }
+      if (!scheduler->wait_for(wait, prepared.stop_token)) {
+        return {
+          .content = "tool retry cancelled during backoff",
+          .error_code = std::make_error_code(std::errc::operation_canceled),
+          .error_category = agent::tools::tool_error_category::cancelled,
+          .retryable = false,
+        };
+      }
+      if (deadline_will_expire) {
+        return late_tool_result("tool retry exceeded its deadline",
+          std::errc::timed_out,
+          agent::tools::tool_error_category::timeout, true);
+      }
+    }
+    return result;
+  }
+
+  using tool_callable = std::function<llm_tool_result(
+    const agent::tools::tool_invocation&)>;
+
+  struct tool_heartbeat_state {
+    std::mutex mutex;
+    bool started { false };
+    std::chrono::steady_clock::time_point last_activity {
+      std::chrono::steady_clock::now()
+    };
+    std::chrono::steady_clock::time_point last_queued {};
+    std::optional<agent::tools::tool_heartbeat> pending;
+  };
+
+  llm_tool_result execute_tool_attempt(
+    const agent::tools::tool_invocation& invocation,
+    const tool_callable& callable,
+    const llm_agent_run_options& options,
+    bool enable_heartbeat) const {
+    {
+      std::scoped_lock lock(timed_tool_execution_state_->mutex);
+      if (timed_tool_execution_state_->in_flight >=
+          options.max_in_flight_tool_invocations) {
+        return {
+          .content = "tool invocation capacity is exhausted",
+          .error_code = std::make_error_code(
+            std::errc::resource_unavailable_try_again),
+          .error_category = agent::tools::tool_error_category::unavailable,
+          .retryable = true,
+          .metadata = { { "tool_execution_capacity_exhausted", "true" } },
+        };
+      }
+      ++timed_tool_execution_state_->in_flight;
+    }
+
+    auto heartbeat = std::make_shared<tool_heartbeat_state>();
+    std::stop_source tool_stop_source;
+    std::stop_callback parent_stop_callback(invocation.stop_token,
+      [&tool_stop_source] { tool_stop_source.request_stop(); });
+    auto asynchronous_invocation = invocation;
+    asynchronous_invocation.stop_token = tool_stop_source.get_token();
+    asynchronous_invocation.context.stop_token = tool_stop_source.get_token();
+    if (enable_heartbeat &&
+        invocation.descriptor.heartbeat.timeout > std::chrono::milliseconds::zero()) {
+      asynchronous_invocation.report_heartbeat =
+        [heartbeat,
+         minimum_interval = invocation.descriptor.heartbeat.minimum_interval](
+          agent::tools::tool_heartbeat update) {
+          const auto now = std::chrono::steady_clock::now();
+          update.timestamp = now;
+          std::scoped_lock lock(heartbeat->mutex);
+          heartbeat->last_activity = now;
+          if (!update.progress || (*update.progress >= 0.0 && *update.progress <= 1.0)) {
+            if (heartbeat->last_queued.time_since_epoch().count() == 0 ||
+                now - heartbeat->last_queued >= minimum_interval) {
+              heartbeat->last_queued = now;
+              heartbeat->pending = std::move(update);
+            }
+          }
+        };
+    }
+
+    auto promise = std::make_shared<std::promise<llm_tool_result>>();
+    auto future = promise->get_future();
+    auto executor = options.tool_executor
+      ? options.tool_executor
+      : agent::runtime::default_tool_executor();
+    if (executor->owns_current_thread()) {
+      {
+        std::scoped_lock lock(timed_tool_execution_state_->mutex);
+        if (timed_tool_execution_state_->in_flight != 0) {
+          --timed_tool_execution_state_->in_flight;
+        }
+      }
+      return tool_configuration_result(
+        "tool execution cannot block on its current executor domain");
+    }
+    agent::runtime::scheduled_task task;
+    try {
+      task = executor->submit(
+        [callable,
+         invocation = std::move(asynchronous_invocation),
+         promise,
+         executor_stop_source = tool_stop_source,
+         heartbeat,
+         state = timed_tool_execution_state_,
+         executor_keep_alive = executor](std::stop_token executor_stop) mutable {
+          std::stop_callback executor_cancel(executor_stop,
+            [executor_stop_source]() mutable {
+              executor_stop_source.request_stop();
+            });
+          {
+            std::scoped_lock lock(heartbeat->mutex);
+            heartbeat->started = true;
+            heartbeat->last_activity = std::chrono::steady_clock::now();
+          }
+          llm_tool_result outcome;
+          try {
+            outcome = invoke_safely(callable, invocation);
+          }
+          catch (...) {
+            outcome = {
+              .content = "tool execution bookkeeping failed",
+              .error_code = std::make_error_code(std::errc::io_error),
+              .error_category = agent::tools::tool_error_category::internal,
+            };
+          }
+          {
+            std::scoped_lock lock(state->mutex);
+            if (state->in_flight != 0) --state->in_flight;
+          }
+          try { promise->set_value(std::move(outcome)); }
+          catch (...) {}
+        });
+    }
+    catch (const std::exception& error) {
+      {
+        std::scoped_lock lock(timed_tool_execution_state_->mutex);
+        if (timed_tool_execution_state_->in_flight != 0) {
+          --timed_tool_execution_state_->in_flight;
+        }
+      }
+      return {
+        .content = std::string("failed to schedule tool invocation: ") + error.what(),
+        .error_code = std::make_error_code(
+          std::errc::resource_unavailable_try_again),
+        .error_category = agent::tools::tool_error_category::unavailable,
+        .retryable = true,
+      };
+    }
+
+    constexpr auto poll_interval = std::chrono::milliseconds(10);
+    for (;;) {
+      emit_pending_heartbeat(invocation, options.callbacks, heartbeat);
+      if (invocation.stop_token.stop_requested()) {
+        tool_stop_source.request_stop();
+        task.request_stop();
+        return late_tool_result("tool invocation cancelled",
+          std::errc::operation_canceled,
+          agent::tools::tool_error_category::cancelled, false);
+      }
+      if (invocation.context.deadline_reached()) {
+        tool_stop_source.request_stop();
+        task.request_stop();
+        return late_tool_result("tool invocation exceeded its deadline",
+          std::errc::timed_out, agent::tools::tool_error_category::timeout, true);
+      }
+      if (enable_heartbeat &&
+          invocation.descriptor.heartbeat.timeout > std::chrono::milliseconds::zero()) {
+        std::chrono::steady_clock::time_point last_activity;
+        bool started = false;
+        {
+          std::scoped_lock lock(heartbeat->mutex);
+          started = heartbeat->started;
+          last_activity = heartbeat->last_activity;
+        }
+        if (started && std::chrono::steady_clock::now() - last_activity >=
+            invocation.descriptor.heartbeat.timeout) {
+          tool_stop_source.request_stop();
+          task.request_stop();
+          auto result = late_tool_result("tool heartbeat timed out",
+            std::errc::timed_out, agent::tools::tool_error_category::timeout, true);
+          result.metadata["heartbeat_timeout"] = "true";
+          return result;
+        }
+      }
+      if (future.wait_for(poll_interval) == std::future_status::ready) {
+        emit_pending_heartbeat(invocation, options.callbacks, heartbeat);
+        try {
+          return future.get();
+        }
+        catch (const std::exception& error) {
+          return {
+            .content = std::string("tool execution bookkeeping failed: ") + error.what(),
+            .error_code = std::make_error_code(std::errc::io_error),
+            .error_category = agent::tools::tool_error_category::internal,
+          };
+        }
+      }
+    }
+  }
+
+  static llm_tool_result invoke_safely(
+    const tool_callable& callable,
+    const agent::tools::tool_invocation& invocation) {
+    if (invocation.stop_token.stop_requested()) {
+      return {
+        .content = "tool invocation cancelled before dispatch",
+        .error_code = std::make_error_code(std::errc::operation_canceled),
+        .error_category = agent::tools::tool_error_category::cancelled,
+      };
+    }
+    try {
+      return callable(invocation);
+    }
+    catch (const std::exception& error) {
+      return {
+        .content = std::string("tool invocation failed: ") + error.what(),
+        .error_code = std::make_error_code(std::errc::io_error),
+        .error_category = agent::tools::tool_error_category::internal,
+        .metadata = { { "tool_exception", "true" } },
+      };
+    }
+    catch (...) {
+      return {
+        .content = "tool invocation failed with a non-standard exception",
+        .error_code = std::make_error_code(std::errc::io_error),
+        .error_category = agent::tools::tool_error_category::internal,
+        .metadata = { { "tool_exception", "true" } },
+      };
+    }
+  }
+
+  static llm_tool_result invalid_tool_contract_result(std::string message) {
+    return {
+      .content = std::move(message),
+      .error_code = std::make_error_code(std::errc::invalid_argument),
+      .error_category = agent::tools::tool_error_category::invalid_input,
+    };
+  }
+
+  static llm_tool_result tool_configuration_result(std::string message) {
+    return {
+      .content = std::move(message),
+      .error_code = std::make_error_code(std::errc::not_supported),
+      .error_category = agent::tools::tool_error_category::internal,
+      .metadata = { { "tool_contract_configuration_error", "true" } },
+    };
+  }
+
+  static llm_tool_result late_tool_result(
+    std::string message,
+    std::errc error,
+    agent::tools::tool_error_category category,
+    bool retryable) {
+    return {
+      .content = std::move(message),
+      .error_code = std::make_error_code(error),
+      .error_category = category,
+      .retryable = retryable,
+      .metadata = { { "late_result_discarded", "true" } },
+    };
+  }
+
+  static std::string schema_issues_json(
+    const agent::tools::json_schema_validation_result& validation) {
+    auto issues = nlohmann::json::array();
+    for (const auto& issue : validation.issues) {
+      issues.push_back({
+        { "instance_path", issue.instance_path },
+        { "schema_path", issue.schema_path },
+        { "message", issue.message },
+      });
+    }
+    return issues.dump();
+  }
+
+  static void validate_output(
+    llm_tool_result& result,
+    const agent::tools::tool_descriptor& descriptor,
+    const agent::tools::json_schema_validator& validator) {
+    if (!result.succeeded() ||
+        descriptor.output_validation ==
+          agent::tools::tool_output_validation_mode::disabled) {
+      return;
+    }
+    const auto validation = validator.validate(result.data, descriptor.output_schema);
+    if (validation) return;
+    result.metadata["output_schema_valid"] = "false";
+    result.metadata["output_schema_issues"] = schema_issues_json(validation);
+    if (descriptor.output_validation ==
+        agent::tools::tool_output_validation_mode::strict) {
+      result.content = "tool result does not satisfy its output schema";
+      result.error_code = std::make_error_code(std::errc::protocol_error);
+      result.error_category = agent::tools::tool_error_category::internal;
+      result.retryable = false;
+    }
+  }
+
+  static void populate_resource_version(
+    llm_tool_result& result,
+    const agent::tools::tool_descriptor& descriptor) {
+    if (result.resource_version ||
+        descriptor.resource_version.outcome_json_pointer.empty()) return;
+    try {
+      const auto& value = result.data.at(nlohmann::json::json_pointer(
+        descriptor.resource_version.outcome_json_pointer));
+      if (value.is_null() || value.is_array() || value.is_object()) return;
+      result.resource_version = value.is_string()
+        ? value.get<std::string>() : value.dump();
+    }
+    catch (...) {
+      // Resource version output is optional unless a tool reports it.
+    }
+  }
+
+  bool compensate_failure(
+    const agent::tools::tool_invocation& invocation,
+    llm_tool_result& failure,
+    const llm_agent_run_options& options) const {
+    if (!invocation.descriptor.compensation.enabled || !compensate_) return false;
+    auto compensation_invocation = invocation;
+    compensation_invocation.context = options.context;
+    compensation_invocation.context.stop_token = invocation.stop_token;
+    compensation_invocation.descriptor.heartbeat = {};
+    if (compensation_invocation.descriptor.compensation.timeout >
+        std::chrono::milliseconds::zero()) {
+      const auto deadline = std::chrono::system_clock::now() +
+        compensation_invocation.descriptor.compensation.timeout;
+      if (!compensation_invocation.context.deadline ||
+          deadline < *compensation_invocation.context.deadline) {
+        compensation_invocation.context.deadline = deadline;
+      }
+    }
+    const tool_callable compensate = [callback = compensate_, failure](
+      const agent::tools::tool_invocation& current) {
+      return callback(current, failure);
+    };
+    for (std::size_t attempt = 1;
+         attempt <= invocation.descriptor.compensation.max_attempts;
+         ++attempt) {
+      compensation_invocation.attempt = attempt;
+      auto result = execute_tool_attempt(
+        compensation_invocation, compensate, options, false);
+      normalize_tool_outcome(result);
+      if (result.succeeded()) {
+        failure.metadata["compensation_attempts"] = std::to_string(attempt);
+        return true;
+      }
+      failure.metadata["compensation_error"] = result.content;
+      failure.metadata["compensation_error_category"] =
+        agent::tools::to_string(result.error_category);
+    }
+    failure.metadata["compensation_attempts"] = std::to_string(
+      invocation.descriptor.compensation.max_attempts);
+    return false;
+  }
+
+  static bool retryable_by_policy(
+    const llm_tool_result& result,
+    const agent::tools::tool_retry_policy& policy) {
+    return policy.retryable_categories.empty()
+      ? result.retryable
+      : policy.retryable_categories.contains(result.error_category);
+  }
+
+  static bool retry_is_safe(
+    const agent::tools::tool_descriptor& descriptor,
+    bool compensated) {
+    return descriptor.idempotency == agent::tools::tool_idempotency::idempotent ||
+      descriptor.idempotency ==
+        agent::tools::tool_idempotency::idempotent_with_key || compensated;
+  }
+
+  static std::chrono::milliseconds retry_delay(
+    const agent::tools::tool_retry_policy& policy,
+    std::size_t completed_attempts) {
+    double delay = static_cast<double>(policy.initial_backoff.count());
+    for (std::size_t index = 1; index < completed_attempts; ++index) {
+      delay *= policy.backoff_multiplier;
+      delay = (std::min)(delay,
+        static_cast<double>(policy.maximum_backoff.count()));
+    }
+    double jitter_factor = 1.0;
+    try {
+      thread_local std::mt19937_64 random(std::random_device {}());
+      std::uniform_real_distribution<double> jitter(
+        1.0 - policy.jitter_ratio, 1.0 + policy.jitter_ratio);
+      jitter_factor = jitter(random);
+    }
+    catch (...) {
+    }
+    delay *= jitter_factor;
+    delay = (std::max)(0.0, delay);
+    const auto maximum_count = policy.maximum_backoff.count();
+    if (!std::isfinite(delay) ||
+        delay >= static_cast<double>(maximum_count)) {
+      return policy.maximum_backoff;
+    }
+    return std::chrono::milliseconds(
+      static_cast<std::chrono::milliseconds::rep>(delay));
+  }
+
+  static void emit_pending_heartbeat(
+    const agent::tools::tool_invocation& invocation,
+    const llm_agent_callbacks& callbacks,
+    const std::shared_ptr<tool_heartbeat_state>& state) {
+    std::optional<agent::tools::tool_heartbeat> heartbeat;
+    {
+      std::scoped_lock lock(state->mutex);
+      heartbeat = std::move(state->pending);
+      state->pending.reset();
+    }
+    if (!heartbeat) return;
+    const llm_tool_call call {
+      .id = invocation.call_id,
+      .name = invocation.name,
+      .arguments_json = invocation.arguments_json,
+    };
+    emit_agent_event(callbacks, {
+      .type = llm_agent_event_type::tool_heartbeat,
+      .message = heartbeat->message,
+      .tool_call = &call,
+    });
+    if (callbacks.on_tool_heartbeat) {
+      callbacks.on_tool_heartbeat(call, *heartbeat);
+    }
+  }
+
+  static void validate_run_options(const llm_agent_run_options& options) {
+    if (options.max_in_flight_tool_invocations == 0) {
+      throw std::invalid_argument(
+        "agent run max in-flight tool invocations must be greater than zero");
+    }
+    if (options.pricing && !agent::llm::valid_llm_pricing(*options.pricing)) {
+      throw std::invalid_argument("agent run pricing is invalid");
+    }
+  }
+
+  llm_tool_authorization authorize_tool(
+    const agent::tools::tool_invocation& invocation,
+    const llm_agent_run_options& options) const {
+    if (options.callbacks.authorize_tool_call) {
+      const auto decision = options.callbacks.authorize_tool_call(invocation);
+      if (decision.kind != llm_tool_authorization_kind::allow) {
+        return decision;
+      }
+    }
+    if (invocation.descriptor.approval ==
+        agent::tools::tool_approval_mode::never) {
+      return {};
+    }
+    if (!options.approval_service) {
+      return {
+        .kind = options.runtime
+          ? llm_tool_authorization_kind::suspend
+          : llm_tool_authorization_kind::deny,
+        .reason = "tool contract requires approval but no approval service is configured",
+      };
+    }
+
+    auto request = agent::approval::make_approval_request(
+      options.context,
+      options.context.run_id + ":" + invocation.call_id,
+      "Approve tool '" + invocation.name + "'",
+      {}, {
+        { "run_id", options.context.run_id },
+        { "trace_id", options.context.trace_id },
+        { "tool_call_id", invocation.call_id },
+        { "tool_version", invocation.descriptor.version },
+        { "side_effect", agent::tools::to_string(
+            invocation.descriptor.side_effect) },
+      });
+    for (const auto& requirement : invocation.descriptor.capabilities) {
+      request.capabilities.push_back({
+        .name = requirement.name,
+        .risk = requirement.risk,
+        .summary = requirement.summary,
+        .resources = requirement.resources,
+        .tool_name = invocation.name,
+        .trace_id = options.context.trace_id,
+        .subject_id = options.context.user_id,
+        .metadata = requirement.metadata,
+      });
+    }
+    const auto decision = options.approval_service->decide(request);
+    switch (decision.kind) {
+      case agent::approval::approval_decision_kind::approved:
+        return {};
+      case agent::approval::approval_decision_kind::denied:
+        return {
+          .kind = llm_tool_authorization_kind::deny,
+          .reason = decision.reason.empty() ? "tool approval denied" : decision.reason,
+          .metadata = decision.metadata,
+        };
+      case agent::approval::approval_decision_kind::needs_manual_review:
+        return {
+          .kind = llm_tool_authorization_kind::suspend,
+          .reason = decision.reason.empty()
+            ? "tool approval requires manual review"
+            : decision.reason,
+          .metadata = decision.metadata,
+        };
+    }
+    return {
+      .kind = llm_tool_authorization_kind::deny,
+      .reason = "invalid approval decision",
+    };
+  }
+
+  static std::string make_idempotency_key(
+    const agent::core::agent_execution_context& context,
+    const llm_tool_call& call) {
+    return context.run_id.empty()
+      ? call.id
+      : context.run_id + ":" + call.id;
+  }
+
+  static void normalize_tool_outcome(llm_tool_result& result) {
+    if (!result.error_code) {
+      result.error_category = agent::tools::tool_error_category::none;
+      return;
+    }
+    if (result.error_category != agent::tools::tool_error_category::none) {
+      return;
+    }
+    if (result.error_code == std::errc::invalid_argument) {
+      result.error_category = agent::tools::tool_error_category::invalid_input;
+    }
+    else if (result.error_code == std::errc::permission_denied) {
+      result.error_category = agent::tools::tool_error_category::permission_denied;
+    }
+    else if (result.error_code == std::errc::timed_out) {
+      result.error_category = agent::tools::tool_error_category::timeout;
+      result.retryable = true;
+    }
+    else if (result.error_code == std::errc::operation_canceled) {
+      result.error_category = agent::tools::tool_error_category::cancelled;
+    }
+    else {
+      result.error_category = agent::tools::tool_error_category::internal;
+    }
+  }
+
+  static std::string tool_result_for_model(const llm_tool_result& result) {
+    if (result.error_code ||
+        result.error_category != agent::tools::tool_error_category::none) {
+      return nlohmann::json({
+        { "ok", false },
+        { "error", {
+          { "category", agent::tools::to_string(result.error_category) },
+          { "code", result.error_code.value() },
+          { "message", result.content.empty()
+              ? result.error_code.message()
+              : result.content },
+          { "retryable", result.retryable },
+        } },
+      }).dump();
+    }
+    if (!result.data.is_null() && !result.data.empty()) {
+      return nlohmann::json({
+        { "ok", true },
+        { "message", result.content },
+        { "data", result.data },
+        { "artifacts", result.artifacts },
+      }).dump();
+    }
+    return result.content;
+  }
+
+  static llm_response denied_tool_response(
+    const llm_tool_call& call,
+    std::string reason) {
+    llm_response response {
+      .content = reason.empty() ? "Tool call denied." : std::move(reason),
+      .error_code = agent::make_error_code(
+        agent::llm_error_code::tool_call_denied),
+      .stop_reason = "tool_call_denied",
+    };
+    response.metadata["tool_call_id"] = call.id;
+    response.metadata["tool_name"] = call.name;
+    return response;
+  }
+
+  static llm_response invalid_tool_call_response(
+    const llm_tool_call& call,
+    std::string reason) {
+    llm_response response {
+      .content = reason.empty() ? "Invalid model tool call." : std::move(reason),
+      .error_code = agent::make_error_code(
+        agent::llm_error_code::invalid_response),
+      .stop_reason = "invalid_tool_call",
+    };
+    response.metadata["tool_call_id"] = call.id;
+    response.metadata["tool_name"] = call.name;
+    return response;
+  }
+
+  static llm_response run_state_conflict_response(
+    const std::string& run_id,
+    std::uint64_t actual_revision) {
+    llm_response response {
+      .content = "Agent run state changed concurrently.",
+      .error_code = agent::make_error_code(
+        agent::llm_error_code::run_state_conflict),
+      .stop_reason = "run_state_conflict",
+    };
+    response.metadata["run_id"] = run_id;
+    response.metadata["actual_revision"] = std::to_string(actual_revision);
+    return response;
+  }
+
+  static llm_response timeout_response(const llm_agent_callbacks& callbacks) {
+    llm_response response {
+      .content = "Agent run deadline reached.",
+      .error_code = agent::make_error_code(agent::llm_error_code::timeout),
+      .stop_reason = "deadline_reached",
+    };
+    emit_error(callbacks, response);
+    return response;
+  }
+
+  bool should_stream(const llm_agent_callbacks& callbacks) const {
+    return client_.supports_streaming() &&
+      (static_cast<bool>(callbacks.on_delta) ||
+       static_cast<bool>(callbacks.on_reasoning_delta) ||
+       static_cast<bool>(callbacks.on_reasoning_done) ||
+       static_cast<bool>(callbacks.on_event) ||
+       static_cast<bool>(callbacks.on_stream_event));
+  }
+
+  static void emit_nonstreaming_content(
+    const llm_agent_callbacks& callbacks,
+    const llm_response& response,
+    bool use_streaming) {
+    if (!use_streaming) {
+      emit_delta(callbacks, response);
+      emit_reasoning_done(callbacks, response);
+    }
   }
 
   static void emit_delta(const llm_agent_callbacks& callbacks, const llm_response& response) {
@@ -449,14 +1912,42 @@ private:
 
   llm_response complete_model(
     llm_request request,
-    const llm_agent_callbacks& callbacks,
+    const llm_agent_run_options& options,
     std::stop_token stop_token,
     bool use_streaming) const {
+    const auto& callbacks = options.callbacks;
+    const auto execution_context = request.execution_context;
     auto prepared_request = prepare_model_request(callbacks, std::move(request));
     if (!prepared_request) {
       return cancelled_response(callbacks);
     }
     request = std::move(*prepared_request);
+    if (execution_context) {
+      request.execution_context = execution_context;
+    }
+    if (request.context_budget) {
+      const auto budget = *request.context_budget;
+      agent::llm::context_budget_manager manager(options.token_estimator);
+      auto fitted = manager.fit(std::move(request), budget);
+      if (!fitted) {
+        llm_response response {
+          .content = "LLM request exceeds its configured context budget: " +
+            fitted.report.error,
+          .error_code = agent::make_error_code(
+            agent::llm_error_code::context_budget_exceeded),
+        };
+        response.metadata["context_budget_error"] = fitted.report.error;
+        response.metadata["input_tokens_before"] =
+          std::to_string(fitted.report.before.input_total());
+        response.metadata["reserved_output_tokens"] =
+          std::to_string(fitted.report.before.reserved_output);
+        return response;
+      }
+      if (callbacks.on_context_budget) {
+        callbacks.on_context_budget(fitted.report);
+      }
+      request = std::move(fitted.request);
+    }
     if (callbacks.on_model_start && !callbacks.on_model_start(request)) {
       return cancelled_response(callbacks);
     }
@@ -672,36 +2163,52 @@ private:
     return {};
   }
 
-  void observe_request_messages(const llm_request& request) const {
+  void observe_request_messages(
+    const llm_request& request,
+    const agent::core::agent_execution_context& context) const {
     if (!memory_) {
       return;
     }
 
     for (const auto& message : request.messages) {
       if (message.role != "system") {
-        memory_->observe(message);
+        memory_->observe(message,
+          agent::memory::memory_scope_from_execution_context(
+            context, memory_->scope()));
       }
     }
   }
 
   void observe_assistant_response(
     const llm_response& response,
-    const std::vector<llm_tool_call>* tool_calls = nullptr) const {
+    const std::vector<llm_tool_call>* tool_calls,
+    const agent::core::agent_execution_context& context) const {
     if (!memory_) {
       return;
     }
 
     memory_->observe({ .role = "assistant",
       .content = response.content,
-      .tool_calls = tool_calls == nullptr ? response.tool_calls : *tool_calls });
+      .tool_calls = tool_calls == nullptr ? response.tool_calls : *tool_calls },
+      agent::memory::memory_scope_from_execution_context(
+        context, memory_->scope()));
   }
 
 private:
   llm_client& client_;
   std::function<std::vector<llm_tool>()> tools_;
-  std::function<llm_tool_result(const std::string&, const std::string&, std::stop_token)> invoke_;
+  std::function<std::vector<agent::tools::tool_descriptor>()> descriptors_;
+  std::function<llm_tool_result(const agent::tools::tool_invocation&)> invoke_;
+  std::function<llm_tool_result(
+    const agent::tools::tool_invocation&,
+    const llm_tool_result&)> compensate_;
+  std::function<agent::tools::tool_provider_capabilities(const std::string&)>
+    provider_capabilities_;
   agent::memory::memory_context* memory_ {};
   int max_tool_rounds_;
+  std::shared_ptr<timed_tool_execution_state> timed_tool_execution_state_ {
+    std::make_shared<timed_tool_execution_state>()
+  };
 };
 
 template<typename... Tools>

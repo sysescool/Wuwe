@@ -221,6 +221,9 @@ private:
     if (required.require_tools && !profile.capabilities.tools) {
       reject(candidate, "tools_required");
     }
+    if (required.require_parallel_tools && !profile.capabilities.parallel_tools) {
+      reject(candidate, "parallel_tools_required");
+    }
     if (required.require_streaming && !profile.capabilities.streaming) {
       reject(candidate, "streaming_required");
     }
@@ -229,6 +232,22 @@ private:
     }
     if (required.require_json_response && !profile.capabilities.json_response) {
       reject(candidate, "json_response_required");
+    }
+    if (required.require_json_schema_output &&
+        !profile.capabilities.json_schema_output) {
+      reject(candidate, "json_schema_output_required");
+    }
+    if (required.require_stop_sequences &&
+        !profile.capabilities.stop_sequences) {
+      reject(candidate, "stop_sequences_required");
+    }
+    if (required.require_deterministic_seed &&
+        !profile.capabilities.deterministic_seed) {
+      reject(candidate, "deterministic_seed_required");
+    }
+    if (required.require_explicit_cache_control &&
+        !profile.capabilities.explicit_cache_control) {
+      reject(candidate, "explicit_cache_control_required");
     }
     if (required.require_local_runtime && !profile.capabilities.local_runtime) {
       reject(candidate, "local_runtime_required");

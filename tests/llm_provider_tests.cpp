@@ -1,3 +1,4 @@
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -184,8 +185,13 @@ void test_provider_registry_exposes_default_metadata_and_config() {
     "OpenAI metadata should expose its default chat completions path");
   require(openai->protocol == wuwe::llm_provider_protocol::openai_compatible,
     "OpenAI metadata should expose its protocol");
-  require(openai->capabilities.streaming && openai->capabilities.tools,
+  require(openai->capabilities.declared &&
+      openai->capabilities.streaming && openai->capabilities.tools,
     "OpenAI metadata should expose core chat capabilities");
+  require(openai->capabilities.stop_sequences &&
+          openai->capabilities.deterministic_seed &&
+          openai->capabilities.json_schema_output,
+    "OpenAI metadata should expose supported generation controls");
   require(!openai->capabilities.streaming_reasoning_summary,
     "OpenAI chat-completions metadata should not advertise reasoning streams by default");
   require(openai->capabilities.reasoning_language_control ==
@@ -200,6 +206,10 @@ void test_provider_registry_exposes_default_metadata_and_config() {
     "generic OpenAI-compatible metadata should not invent a default base URL");
   require(compatible->base_url_required,
     "generic OpenAI-compatible metadata should mark base URL as required");
+  require(compatible->capabilities.stop_sequences &&
+          !compatible->capabilities.deterministic_seed &&
+          !compatible->capabilities.json_schema_output,
+    "generic compatibility metadata should remain conservative");
 
   const auto* ollama = wuwe::find_llm_provider("Ollama");
   require(ollama != nullptr, "provider registry should expose Ollama");
@@ -209,6 +219,10 @@ void test_provider_registry_exposes_default_metadata_and_config() {
     "Ollama metadata should not require an API key by default");
   require(ollama->capabilities.local_runtime,
     "Ollama metadata should identify local runtime providers");
+  require(ollama->capabilities.stop_sequences &&
+          ollama->capabilities.deterministic_seed &&
+          ollama->capabilities.json_schema_output,
+    "Ollama metadata should expose supported generation controls");
   require(ollama->capabilities.streaming_reasoning_summary,
     "Ollama metadata should expose provider-native thinking streams when models return them");
   require(ollama->capabilities.reasoning_language_control ==
@@ -232,6 +246,10 @@ void test_provider_registry_exposes_default_metadata_and_config() {
     "native provider default config should not expose an OpenAI chat path");
   require(anthropic_config->require_api_key,
     "default config should carry provider API-key policy");
+  require(anthropic_config->capabilities_override &&
+          anthropic_config->capabilities_override->stop_sequences &&
+          !anthropic_config->capabilities_override->deterministic_seed,
+    "provider configuration should retain capability metadata");
 
   auto default_normalized = wuwe::normalize_llm_client_config("OpenAI", wuwe::llm_client_config {
     .api_key = "explicit",
@@ -415,7 +433,7 @@ void test_native_provider_clients_parse_text_and_tools() {
   request.messages.push_back({ .role = "user", .content = "hello" });
 
   auto anthropic_http = std::make_shared<capture_http_client>(
-    R"({"content":[{"type":"thinking","thinking":"inspect","signature":"sig-a"},{"type":"text","text":"hi"},{"type":"tool_use","id":"t1","name":"lookup","input":{"q":"x"}}],"stop_reason":"tool_use","usage":{"input_tokens":2,"output_tokens":3}})");
+    R"({"content":[{"type":"thinking","thinking":"inspect","signature":"sig-a"},{"type":"text","text":"hi"},{"type":"tool_use","id":"t1","name":"lookup","input":{"q":"x"}}],"stop_reason":"tool_use","usage":{"input_tokens":2,"cache_read_input_tokens":1,"cache_creation_input_tokens":2,"output_tokens":3}})");
   wuwe::anthropic_llm_client anthropic({
     .api_key = "",
     .require_api_key = false,
@@ -433,9 +451,13 @@ void test_native_provider_clients_parse_text_and_tools() {
     "Anthropic client should preserve thinking signatures as metadata");
   require(anthropic_response.tool_calls.size() == 1,
     "Anthropic client should parse tool_use blocks");
+  require(anthropic_response.usage.prompt_tokens == 5 &&
+      anthropic_response.usage.cached_prompt_tokens == 1 &&
+      anthropic_response.usage.total_tokens == 8,
+    "Anthropic usage should include cache read and creation input tokens");
 
   auto gemini_http = std::make_shared<capture_http_client>(
-    R"({"candidates":[{"content":{"parts":[{"text":"inspect","thought":true,"thoughtSignature":"sig-g"},{"text":"hi"},{"functionCall":{"name":"lookup","args":{"q":"x"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":3,"totalTokenCount":5}})");
+    R"({"candidates":[{"content":{"parts":[{"text":"inspect","thought":true,"thoughtSignature":"sig-g"},{"text":"hi"},{"functionCall":{"name":"lookup","args":{"q":"x"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":2,"cachedContentTokenCount":1,"candidatesTokenCount":3,"thoughtsTokenCount":1,"totalTokenCount":6}})");
   wuwe::gemini_llm_client gemini({
     .api_key = "",
     .require_api_key = false,
@@ -454,6 +476,11 @@ void test_native_provider_clients_parse_text_and_tools() {
     "Gemini client should preserve thought signatures as metadata");
   require(gemini_response.tool_calls.size() == 1,
     "Gemini client should parse functionCall parts");
+  require(gemini_response.usage.cached_prompt_tokens == 1 &&
+      gemini_response.usage.reasoning_tokens == 1 &&
+      gemini_response.usage.completion_tokens == 4 &&
+      gemini_response.usage.total_tokens == 6,
+    "Gemini usage should expose cached and thought tokens");
 
   auto ollama_http = std::make_shared<capture_http_client>(
     R"({"message":{"role":"assistant","thinking":"inspect","content":"hi","tool_calls":[{"function":{"name":"lookup","arguments":{"q":"x"}}}]},"done_reason":"stop","prompt_eval_count":2,"eval_count":3})");
@@ -470,6 +497,50 @@ void test_native_provider_clients_parse_text_and_tools() {
     "Ollama client should parse tool_calls");
 }
 
+void test_execution_context_trace_reaches_provider_http_requests() {
+  wuwe::llm_request request;
+  request.messages.push_back({ .role = "user", .content = "hello" });
+  request.execution_context = wuwe::agent::core::agent_execution_context {
+    .run_id = "run-trace",
+    .trace_id = "trace-provider",
+  };
+
+  auto openai_http = std::make_shared<capture_http_client>(
+    R"({"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]})");
+  wuwe::openai_llm_client openai({
+    .api_key = "", .require_api_key = false, .model = "gpt-test",
+  }, openai_http);
+  (void)openai.complete(request);
+
+  auto anthropic_http = std::make_shared<capture_http_client>(
+    R"({"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"})");
+  wuwe::anthropic_llm_client anthropic({
+    .api_key = "", .require_api_key = false, .model = "claude-test",
+  }, anthropic_http);
+  (void)anthropic.complete(request);
+
+  auto gemini_http = std::make_shared<capture_http_client>(
+    R"({"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]})");
+  wuwe::gemini_llm_client gemini({
+    .api_key = "", .require_api_key = false, .model = "gemini-test",
+  }, gemini_http);
+  (void)gemini.complete(request);
+
+  auto ollama_http = std::make_shared<capture_http_client>(
+    R"({"message":{"role":"assistant","content":"ok"},"done_reason":"stop"})");
+  wuwe::ollama_llm_client ollama({ .model = "llama-test" }, ollama_http);
+  (void)ollama.complete(request);
+
+  for (const auto* captured : {
+         openai_http.get(), anthropic_http.get(), gemini_http.get(),
+         ollama_http.get(),
+       }) {
+    require(captured->requests.size() == 1 &&
+        captured->requests.front().trace_id == "trace-provider",
+      "provider HTTP requests should preserve the agent execution trace id");
+  }
+}
+
 void test_reasoning_language_contract_is_mapped_to_provider_payloads() {
   wuwe::llm_request request;
   request.language = {
@@ -481,7 +552,7 @@ void test_reasoning_language_contract_is_mapped_to_provider_payloads() {
   request.messages.push_back({ .role = "user", .content = "分析一下当前应用" });
 
   auto openai_http = std::make_shared<capture_http_client>(
-    R"({"choices":[{"message":{"reasoning_content":"The user wants analysis.","content":"好的"},"finish_reason":"stop"}]})");
+    R"({"choices":[{"message":{"reasoning_content":"The user wants analysis.","content":"好的"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":6,"total_tokens":16,"prompt_tokens_details":{"cached_tokens":4},"completion_tokens_details":{"reasoning_tokens":2}}})");
   wuwe::openai_compatible_llm_client openai({
     .base_url = "https://compatible.example",
     .api_key = "",
@@ -505,6 +576,9 @@ void test_reasoning_language_contract_is_mapped_to_provider_payloads() {
     "reasoning metadata should mark requested/detected language mismatch");
   require(openai_response.reasoning_metadata.at("language_control") == "prompt_contract",
     "reasoning metadata should identify prompt-contract language control");
+  require(openai_response.usage.cached_prompt_tokens == 4 &&
+      openai_response.usage.reasoning_tokens == 2,
+    "OpenAI-compatible usage should expose cached and reasoning token details");
 
   auto anthropic_http = std::make_shared<capture_http_client>(
     R"({"content":[{"type":"text","text":"好的"}],"stop_reason":"end_turn"})");
@@ -549,6 +623,158 @@ void test_reasoning_language_contract_is_mapped_to_provider_payloads() {
     "Ollama language contract should include requested language");
   require(ollama_body["options"].value("num_predict", 0) == 321,
     "Ollama requests should carry the output token limit");
+}
+
+void test_advanced_generation_capabilities_are_mapped_or_rejected() {
+  const nlohmann::json schema {
+    { "type", "object" },
+    { "properties", { { "answer", { { "type", "string" } } } } },
+    { "required", nlohmann::json::array({ "answer" }) },
+    { "additionalProperties", false },
+  };
+  wuwe::llm_request request;
+  request.messages.push_back({ .role = "user", .content = "answer" });
+  request.stop_sequences = { "END" };
+  request.seed = 42;
+  request.json_schema_output = {
+    .name = "answer_schema",
+    .schema = schema,
+  };
+
+  auto openai_http = std::make_shared<capture_http_client>(
+    R"({"choices":[{"message":{"content":"{\"answer\":\"ok\"}"},"finish_reason":"stop"}]})");
+  wuwe::openai_compatible_llm_client openai({
+    .base_url = "https://compatible.example",
+    .api_key = "",
+    .require_api_key = false,
+    .model = "test-model",
+    .capabilities_override = wuwe::llm_provider_capabilities {
+      .streaming = true,
+      .stop_sequences = true,
+      .deterministic_seed = true,
+      .json_schema_output = true,
+    },
+  }, openai_http);
+  require(!openai.complete(request).error_code,
+    "capability-enabled OpenAI-compatible request should succeed");
+  const auto openai_body = nlohmann::json::parse(
+    openai_http->requests.front().body);
+  require(openai_body.at("stop").front() == "END" &&
+          openai_body.at("seed") == 42 &&
+          openai_body.at("response_format").at("type") == "json_schema" &&
+          openai_body.at("response_format").at("json_schema")
+            .at("schema") == schema,
+    "OpenAI-compatible payload should preserve advanced generation controls");
+
+  auto gemini_http = std::make_shared<capture_http_client>(
+    R"({"candidates":[{"content":{"parts":[{"text":"{\"answer\":\"ok\"}"}]},"finishReason":"STOP"}]})");
+  wuwe::gemini_llm_client gemini({
+    .api_key = "",
+    .require_api_key = false,
+    .model = "gemini-test",
+  }, gemini_http);
+  require(!gemini.complete(request).error_code,
+    "Gemini advanced generation request should succeed");
+  const auto gemini_config = nlohmann::json::parse(
+    gemini_http->requests.front().body).at("generationConfig");
+  require(gemini_config.at("stopSequences").front() == "END" &&
+          gemini_config.at("seed") == 42 &&
+          gemini_config.at("responseMimeType") == "application/json" &&
+          gemini_config.at("responseSchema") == schema,
+    "Gemini payload should preserve advanced generation controls");
+
+  auto ollama_http = std::make_shared<capture_http_client>(
+    R"({"message":{"role":"assistant","content":"{\"answer\":\"ok\"}"},"done_reason":"stop"})");
+  wuwe::ollama_llm_client ollama({ .model = "llama-test" }, ollama_http);
+  require(!ollama.complete(request).error_code,
+    "Ollama advanced generation request should succeed");
+  const auto ollama_body = nlohmann::json::parse(
+    ollama_http->requests.front().body);
+  require(ollama_body.at("options").at("stop").front() == "END" &&
+          ollama_body.at("options").at("seed") == 42 &&
+          ollama_body.at("format") == schema,
+    "Ollama payload should preserve advanced generation controls");
+
+  auto anthropic_http = std::make_shared<capture_http_client>(
+    R"({"content":[{"type":"text","text":"unused"}],"stop_reason":"end_turn"})");
+  wuwe::anthropic_llm_client anthropic({
+    .api_key = "",
+    .require_api_key = false,
+    .model = "claude-test",
+  }, anthropic_http);
+  const auto rejected = anthropic.complete(request);
+  require(rejected.error_code ==
+            wuwe::agent::llm_error_code::unsupported_capability &&
+          rejected.metadata.at("unsupported_capability") ==
+            "deterministic_seed" && anthropic_http->requests.empty(),
+    "provider should reject unsupported controls before network dispatch");
+
+  request.seed.reset();
+  request.json_schema_output.reset();
+  require(!anthropic.complete(request).error_code,
+    "Anthropic should accept supported stop sequences");
+  const auto anthropic_body = nlohmann::json::parse(
+    anthropic_http->requests.front().body);
+  require(anthropic_body.at("stop_sequences").front() == "END",
+    "Anthropic payload should preserve supported stop sequences");
+
+  request.cache_mode = wuwe::llm_cache_mode::enabled;
+  const auto cache_rejected = anthropic.complete(request);
+  require(cache_rejected.error_code ==
+            wuwe::agent::llm_error_code::unsupported_capability &&
+          cache_rejected.metadata.at("unsupported_capability") ==
+            "explicit_cache_control",
+    "explicit cache requests should fail instead of being silently ignored");
+
+  request.cache_mode = wuwe::llm_cache_mode::provider_default;
+  request.response_format = "json_object";
+  const auto requests_before_format = anthropic_http->requests.size();
+  const auto format_rejected = anthropic.complete(request);
+  require(format_rejected.error_code ==
+            wuwe::agent::llm_error_code::unsupported_capability &&
+          format_rejected.metadata.at("unsupported_capability") ==
+            "json_response_format" &&
+          anthropic_http->requests.size() == requests_before_format,
+    "legacy JSON response format should participate in capability validation");
+
+  request.response_format.reset();
+  request.stop_sequences.clear();
+  request.tools = {
+    { .name = "lookup", .parameters_json_schema = R"({"type":"object"})" },
+  };
+  request.tool_choice = wuwe::llm_tool_choice {
+    .mode = wuwe::llm_tool_choice_mode::named,
+    .name = "missing",
+  };
+  const auto invalid_choice =
+    wuwe::agent::llm::validate_llm_request(request, {
+      .tools = true,
+      .tool_choice = true,
+    });
+  require(!invalid_choice &&
+          invalid_choice.error_code ==
+            wuwe::agent::llm_error_code::invalid_request,
+    "named tool choice should reference a declared tool");
+
+  request.tool_choice->mode = static_cast<wuwe::llm_tool_choice_mode>(99);
+  const auto invalid_mode =
+    wuwe::agent::llm::validate_llm_request(request, {
+      .tools = true,
+      .tool_choice = true,
+    });
+  require(!invalid_mode &&
+          invalid_mode.error_code ==
+            wuwe::agent::llm_error_code::invalid_request,
+    "out-of-range tool choice modes should be rejected before provider mapping");
+
+  request.tool_choice->mode = wuwe::llm_tool_choice_mode::named;
+  request.tool_choice->name = "lookup";
+  const auto tools_rejected = openai.complete(request);
+  require(tools_rejected.error_code ==
+            wuwe::agent::llm_error_code::unsupported_capability &&
+          tools_rejected.metadata.at("unsupported_capability") == "tools" &&
+          openai_http->requests.size() == 1,
+    "tool requests should fail before dispatch when the adapter disables tools");
 }
 
 void test_native_provider_streaming_success_and_incomplete_streams() {
@@ -910,6 +1136,7 @@ void test_native_provider_retries_before_output() {
     {
       .error_code = make_error_code(wuwe::http_status_code::too_many_requests),
       .status_code = 429,
+      .headers = {{ .name = "Retry-After", .value = "1" }},
       .body = R"({"error":{"type":"rate_limit_error"}})",
     },
     {
@@ -920,11 +1147,17 @@ void test_native_provider_retries_before_output() {
     .model = "llama-test",
     .max_retries = 1,
     .retry_backoff_ms = 1,
+    .retry_max_server_delay_ms = 10,
+    .retry_jitter_ratio = 0.0,
   }, retry_http);
+  const auto started = std::chrono::steady_clock::now();
   const auto response = ollama.complete(request);
+  const auto elapsed = std::chrono::steady_clock::now() - started;
   require(!response.error_code, "Native client should retry retryable non-streaming failures");
   require(response.content == "ok", "Native retry should return the successful response");
   require(retry_http->requests.size() == 2, "Native retry should issue a second request");
+  require(elapsed >= std::chrono::milliseconds(8),
+    "native retry should honor Retry-After up to the configured server-delay cap");
 }
 
 } // namespace
@@ -936,7 +1169,9 @@ int main() {
     test_aggregate_header_preserves_tool_reflection();
     test_openai_compatible_provider_presets();
     test_native_provider_clients_parse_text_and_tools();
+    test_execution_context_trace_reaches_provider_http_requests();
     test_reasoning_language_contract_is_mapped_to_provider_payloads();
+    test_advanced_generation_capabilities_are_mapped_or_rejected();
     test_native_provider_streaming_success_and_incomplete_streams();
     test_native_provider_streaming_uses_stage_timeout_options();
     test_native_provider_streaming_sanitizes_tail_errors_after_output();

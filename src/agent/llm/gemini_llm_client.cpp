@@ -202,6 +202,17 @@ json gemini_llm_client::build_payload(const llm_request& request) const {
   if (request.max_output_tokens && *request.max_output_tokens > 0) {
     payload["generationConfig"]["maxOutputTokens"] = *request.max_output_tokens;
   }
+  if (!request.stop_sequences.empty()) {
+    payload["generationConfig"]["stopSequences"] = request.stop_sequences;
+  }
+  if (request.seed) {
+    payload["generationConfig"]["seed"] = *request.seed;
+  }
+  if (request.json_schema_output) {
+    payload["generationConfig"]["responseMimeType"] = "application/json";
+    payload["generationConfig"]["responseSchema"] =
+      request.json_schema_output->schema;
+  }
   if (!system.empty()) {
     payload["systemInstruction"] = {{"parts", json::array({{{"text", system}}})}};
   }
@@ -280,6 +291,11 @@ llm_response gemini_llm_client::parse_response(const http_response& response) co
     result.usage.prompt_tokens = data["usageMetadata"].value("promptTokenCount", 0);
     result.usage.completion_tokens = data["usageMetadata"].value("candidatesTokenCount", 0);
     result.usage.total_tokens = data["usageMetadata"].value("totalTokenCount", 0);
+    result.usage.cached_prompt_tokens =
+      data["usageMetadata"].value("cachedContentTokenCount", 0);
+    result.usage.reasoning_tokens =
+      data["usageMetadata"].value("thoughtsTokenCount", 0);
+    result.usage.completion_tokens += result.usage.reasoning_tokens;
   }
   if (!data.contains("candidates") || !data["candidates"].is_array() ||
       data["candidates"].empty()) {
@@ -296,6 +312,9 @@ llm_response gemini_llm_client::complete(const llm_request& request) {
 }
 
 llm_response gemini_llm_client::complete(const llm_request& request, std::stop_token stop_token) {
+  if (auto rejected = agent::llm::llm_request_rejection(request, capabilities())) {
+    return std::move(*rejected);
+  }
   if (stop_token.stop_requested()) {
     return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
   }
@@ -308,14 +327,18 @@ llm_response gemini_llm_client::complete(const llm_request& request, std::stop_t
     .headers = build_headers(),
     .body = build_payload(request).dump(),
     .timeout = config_.timeout,
+    .trace_id = request.execution_context
+      ? request.execution_context->trace_id
+      : std::string {},
   };
   const int max_retries = config_.max_retries < 0 ? 0 : config_.max_retries;
-  const int base_backoff_ms = config_.retry_backoff_ms <= 0 ? 500 : config_.retry_backoff_ms;
   for (int attempt = 0; attempt <= max_retries; ++attempt) {
     if (stop_token.stop_requested()) {
       return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
     }
-    auto result = parse_response(http_->send(req));
+    const auto response = http_->send(req);
+    auto result = parse_response(response);
+    agent::llm_detail::apply_retry_metadata(result, response);
     apply_reasoning_language_metadata(
       result,
       request.language,
@@ -331,9 +354,7 @@ llm_response gemini_llm_client::complete(const llm_request& request, std::stop_t
     }
     if (!agent::llm_detail::wait_for_retry(
           stop_token,
-          std::chrono::milliseconds(agent::llm_detail::compute_backoff_ms(
-            attempt,
-            base_backoff_ms)))) {
+          agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
       return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
     }
   }
@@ -343,7 +364,11 @@ llm_response gemini_llm_client::complete(const llm_request& request, std::stop_t
 llm_response gemini_llm_client::complete_stream(
   const llm_request& request,
   const llm_stream_callbacks& callbacks,
-  std::stop_token stop_token) {
+    std::stop_token stop_token) {
+  if (auto rejected = agent::llm::llm_request_rejection(request, capabilities())) {
+    agent::llm::emit_llm_request_rejection(callbacks, *rejected);
+    return std::move(*rejected);
+  }
   if (stop_token.stop_requested()) {
     return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
   }
@@ -404,6 +429,15 @@ llm_response gemini_llm_client::complete_stream(
       result.usage.prompt_tokens = data["usageMetadata"].value("promptTokenCount", result.usage.prompt_tokens);
       result.usage.completion_tokens = data["usageMetadata"].value("candidatesTokenCount", result.usage.completion_tokens);
       result.usage.total_tokens = data["usageMetadata"].value("totalTokenCount", result.usage.total_tokens);
+      result.usage.cached_prompt_tokens = data["usageMetadata"].value(
+        "cachedContentTokenCount", result.usage.cached_prompt_tokens);
+      const auto candidate_tokens = data["usageMetadata"].value(
+        "candidatesTokenCount", result.usage.completion_tokens -
+          result.usage.reasoning_tokens);
+      result.usage.reasoning_tokens = data["usageMetadata"].value(
+        "thoughtsTokenCount", result.usage.reasoning_tokens);
+      result.usage.completion_tokens =
+        candidate_tokens + result.usage.reasoning_tokens;
     }
     if (data.contains("candidates") && data["candidates"].is_array()) {
       for (const auto& candidate : data["candidates"]) {
@@ -451,9 +485,11 @@ llm_response gemini_llm_client::complete_stream(
     .body = build_payload(request).dump(),
     .timeout = config_.timeout,
     .timeouts = agent::llm_detail::make_stream_http_timeouts(config_),
+    .trace_id = request.execution_context
+      ? request.execution_context->trace_id
+      : std::string {},
   };
   const int max_retries = config_.max_retries < 0 ? 0 : config_.max_retries;
-  const int base_backoff_ms = config_.retry_backoff_ms <= 0 ? 500 : config_.retry_backoff_ms;
   http_response response;
   for (int attempt = 0; attempt <= max_retries; ++attempt) {
     response = http_->send_stream(
@@ -462,6 +498,7 @@ llm_response gemini_llm_client::complete_stream(
         return !stop_token.stop_requested() && parser.feed(chunk, process_event);
       },
       stop_token);
+    agent::llm_detail::apply_retry_metadata(result, response);
     if (!response.error_code || emitted_output || attempt >= max_retries) {
       break;
     }
@@ -474,9 +511,7 @@ llm_response gemini_llm_client::complete_stream(
     }
     if (!agent::llm_detail::wait_for_retry(
           stop_token,
-          std::chrono::milliseconds(agent::llm_detail::compute_backoff_ms(
-            attempt,
-            base_backoff_ms)))) {
+          agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
       result.error_code = agent::make_error_code(agent::llm_error_code::cancelled);
       break;
     }

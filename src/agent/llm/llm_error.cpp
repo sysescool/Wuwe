@@ -51,6 +51,22 @@ public:
         return "Timeout";
       case llm_error_code::agent_loop_budget_exceeded:
         return "Agent tool round budget exceeded before producing a final answer";
+      case llm_error_code::approval_required:
+        return "Tool approval required";
+      case llm_error_code::tool_call_denied:
+        return "Tool call denied";
+      case llm_error_code::run_state_conflict:
+        return "Agent run state conflict";
+      case llm_error_code::circuit_open:
+        return "LLM provider circuit is open";
+      case llm_error_code::rate_limit_wait_exceeded:
+        return "LLM provider rate-limit wait exceeded";
+      case llm_error_code::context_budget_exceeded:
+        return "LLM context budget exceeded";
+      case llm_error_code::invalid_request:
+        return "Invalid LLM request";
+      case llm_error_code::unsupported_capability:
+        return "LLM provider does not support a requested capability";
       default:
         return "Unknown LLM error";
     }
