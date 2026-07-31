@@ -1,18 +1,11 @@
-file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cpp")
+file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
 list(LENGTH SOURCE_FILES SRC_FILES_SIZE)
 message(STATUS "Found ${SRC_FILES_SIZE} source files")
-foreach(source_file ${SOURCE_FILES})
-    message(STATUS " ${source_file}")
-endforeach()
 
 set(PROJECT_SOURCES
     ${SOURCE_FILES}
 )
-
-if(MSVC)
-    add_compile_options(/FS)
-endif()
 
 include(FetchContent)
 
@@ -69,18 +62,18 @@ endif()
 
 if(WUWE_OPENSSL_AVAILABLE)
     set(WUWE_TLS_BACKEND_RESOLVED "openssl")
-    set(CPR_FORCE_OPENSSL_BACKEND ON CACHE BOOL "Use OpenSSL as cpr/curl TLS backend" FORCE)
-    set(CURL_USE_OPENSSL ON CACHE BOOL "Use OpenSSL for libcurl HTTPS support" FORCE)
+    set(CPR_FORCE_OPENSSL_BACKEND ON)
+    set(CURL_USE_OPENSSL ON)
     if(WIN32)
-        set(CURL_USE_SCHANNEL OFF CACHE BOOL "Disable Schannel when OpenSSL is selected" FORCE)
+        set(CURL_USE_SCHANNEL OFF)
     endif()
     message(STATUS "Wuwe TLS backend: OpenSSL")
 else()
     set(WUWE_TLS_BACKEND_RESOLVED "native")
-    set(CPR_FORCE_OPENSSL_BACKEND OFF CACHE BOOL "Do not force the OpenSSL cpr/curl backend" FORCE)
+    set(CPR_FORCE_OPENSSL_BACKEND OFF)
     if(WIN32)
-        set(CURL_USE_OPENSSL OFF CACHE BOOL "Do not use OpenSSL for the native Windows build" FORCE)
-        set(CURL_USE_SCHANNEL ON CACHE BOOL "Use Schannel for the native Windows build" FORCE)
+        set(CURL_USE_OPENSSL OFF)
+        set(CURL_USE_SCHANNEL ON)
     endif()
     message(STATUS "Wuwe TLS backend: native platform backend")
 endif()
@@ -89,25 +82,34 @@ set(WUWE_BUILT_WITH_OPENSSL ${WUWE_OPENSSL_AVAILABLE} CACHE INTERNAL
 set(WUWE_TLS_BACKEND_RESOLVED "${WUWE_TLS_BACKEND_RESOLVED}" CACHE INTERNAL
     "TLS backend used by this Wuwe build" FORCE)
 
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libraries" FORCE)
-set(BUILD_STATIC_LIBS ON CACHE BOOL "Build curl static libraries" FORCE)
-set(CPR_CURL_USE_LIBPSL OFF CACHE BOOL "Disable libpsl to avoid meson dependency on Windows" FORCE)
-# Avoid host-environment-dependent static link requirements. Wuwe does not
-# advertise Brotli or zstd content decoding in 0.1.0; gzip/deflate remain
-# available through curl's pinned zlib dependency.
-set(CURL_BROTLI OFF CACHE STRING "Disable optional Brotli support in bundled curl" FORCE)
-set(CURL_ZSTD OFF CACHE STRING "Disable optional zstd support in bundled curl" FORCE)
-# curl's find modules cache discovery results. Clear those results as well so
-# switching an existing build directory from AUTO to OFF removes stale link
-# entries instead of requiring users to delete the whole build tree.
-set(BROTLI_FOUND OFF CACHE INTERNAL "Brotli disabled for bundled curl" FORCE)
-set(ZSTD_FOUND OFF CACHE INTERNAL "zstd disabled for bundled curl" FORCE)
-FetchContent_Declare(cpr GIT_REPOSITORY https://github.com/libcpr/cpr.git
-                         GIT_TAG f091b2c061b307ee89b164c39976fc9202a1c79d)
-FetchContent_MakeAvailable(cpr)
-set_target_properties(cpr PROPERTIES
-    DEBUG_POSTFIX d
-)
+option(WUWE_FETCH_CPR
+    "Fetch the pinned CPR dependency instead of requiring an existing cpr::cpr target"
+    ${WUWE_IS_TOP_LEVEL})
+
+if(WUWE_FETCH_CPR)
+    # Keep dependency-specific policy in a function scope so source consumers do
+    # not inherit Wuwe's curl/CPR cache preferences.
+    function(wuwe_fetch_cpr_dependency)
+        set(BUILD_SHARED_LIBS OFF)
+        set(BUILD_STATIC_LIBS ON)
+        set(CPR_CURL_USE_LIBPSL OFF)
+        # Avoid host-environment-dependent static link requirements. Wuwe does
+        # not advertise Brotli or zstd content decoding; gzip/deflate remain
+        # available through curl's pinned zlib dependency.
+        set(CURL_BROTLI OFF)
+        set(CURL_ZSTD OFF)
+        set(BROTLI_FOUND OFF)
+        set(ZSTD_FOUND OFF)
+        FetchContent_Declare(cpr
+            GIT_REPOSITORY https://github.com/libcpr/cpr.git
+            GIT_TAG f091b2c061b307ee89b164c39976fc9202a1c79d)
+        FetchContent_MakeAvailable(cpr)
+    endfunction()
+    wuwe_fetch_cpr_dependency()
+    set_target_properties(cpr PROPERTIES DEBUG_POSTFIX d)
+elseif(NOT TARGET cpr::cpr)
+    find_package(cpr CONFIG REQUIRED)
+endif()
 
 set(WUWE_HTTP_BACKEND "cpr" CACHE STRING "Default HTTP backend: cpr or httplib")
 set_property(CACHE WUWE_HTTP_BACKEND PROPERTY STRINGS cpr httplib)
@@ -123,16 +125,45 @@ endif()
 add_library(${PROJECT_NAME} STATIC ${PROJECT_SOURCES})
 set_target_properties(${PROJECT_NAME} PROPERTIES
     DEBUG_POSTFIX d
+    CXX_EXTENSIONS OFF
 )
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
+
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /FS)
+endif()
+
+if(WUWE_ENABLE_STRICT_WARNINGS)
+    if(MSVC)
+        target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${PROJECT_NAME} PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Werror
+            # Public request/result aggregates intentionally use default member
+            # initializers so callers can specify only the fields they own. GCC's
+            # aggregate warning treats that API style as an error even though the
+            # omitted members are deterministically initialized.
+            -Wno-missing-field-initializers)
+    endif()
+endif()
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${WUWE_GENERATED_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/third_party>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party>
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+        cpr::cpr
+    PUBLIC
+        "$<BUILD_INTERFACE:wuwe_project_options>"
+)
 
 if(WIN32)
     target_link_libraries(${PROJECT_NAME} PUBLIC Advapi32 Userenv)
@@ -231,7 +262,7 @@ message(STATUS "  SQLite: ${WUWE_BUILT_WITH_SQLITE} (${WUWE_SQLITE_DEPENDENCY})"
 # ---------------------------------------------------------------------------------------
 # Install
 # ---------------------------------------------------------------------------------------
-include(GNUInstallDirs)
+if(WUWE_ENABLE_INSTALL)
 install(TARGETS ${PROJECT_NAME}
         EXPORT ${PROJECT_NAME}-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -240,12 +271,18 @@ install(TARGETS ${PROJECT_NAME}
 )
 
 install(
-    DIRECTORY ${CMAKE_SOURCE_DIR}/include/wuwe
+    DIRECTORY ${PROJECT_SOURCE_DIR}/include/wuwe
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    PATTERN "version.hpp.in" EXCLUDE
 )
 
 install(
-    DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/
+    FILES "${WUWE_GENERATED_INCLUDE_DIR}/wuwe/version.hpp"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/wuwe"
+)
+
+install(
+    DIRECTORY ${PROJECT_SOURCE_DIR}/third_party/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     REGEX "/runtime($|/)" EXCLUDE
 )
@@ -258,19 +295,19 @@ option(WUWE_INSTALL_BUNDLED_JRE
     "Install the platform-specific bundled JRE"
     ${WUWE_INSTALL_BUNDLED_RUNTIME})
 set(WUWE_BUNDLED_TIKA_DIR
-    "${CMAKE_SOURCE_DIR}/third_party/runtime/tika"
+    "${PROJECT_SOURCE_DIR}/third_party/runtime/tika"
     CACHE PATH "Bundled Tika runtime directory")
 
 set(WUWE_DEFAULT_BUNDLED_JRE_ARCHIVE "")
 set(WUWE_DEFAULT_BUNDLED_JAVA_RELATIVE_PATH "")
 if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(WUWE_DEFAULT_BUNDLED_JRE_ARCHIVE
-        "${CMAKE_SOURCE_DIR}/third_party/runtime/jre/temurin-21-jre-windows-x64.zip")
+        "${PROJECT_SOURCE_DIR}/third_party/runtime/jre/temurin-21-jre-windows-x64.zip")
     set(WUWE_DEFAULT_BUNDLED_JAVA_RELATIVE_PATH "bin/java.exe")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
        CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
     set(WUWE_DEFAULT_BUNDLED_JRE_ARCHIVE
-        "${CMAKE_SOURCE_DIR}/third_party/runtime/jre/temurin-21-jre-linux-x64.tar.gz")
+        "${PROJECT_SOURCE_DIR}/third_party/runtime/jre/temurin-21-jre-linux-x64.tar.gz")
     set(WUWE_DEFAULT_BUNDLED_JAVA_RELATIVE_PATH "bin/java")
 endif()
 
@@ -300,8 +337,8 @@ if(WUWE_INSTALL_TIKA_RUNTIME)
     )
     install(
         FILES
-            "${CMAKE_SOURCE_DIR}/tools/runtime/start-tika.ps1"
-            "${CMAKE_SOURCE_DIR}/tools/runtime/start-tika.sh"
+            "${PROJECT_SOURCE_DIR}/tools/runtime/start-tika.ps1"
+            "${PROJECT_SOURCE_DIR}/tools/runtime/start-tika.sh"
         DESTINATION runtime/tika
     )
 endif()
@@ -382,7 +419,7 @@ install(
 include(CMakePackageConfigHelpers)
 set(LIB_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME})
 configure_package_config_file(
-    ${CMAKE_SOURCE_DIR}/cmake/${PROJECT_NAME}-config.cmake.in
+    ${PROJECT_SOURCE_DIR}/cmake/${PROJECT_NAME}-config.cmake.in
     ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake
     INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}/cmake
     PATH_VARS LIB_INSTALL_DIR
@@ -400,5 +437,6 @@ write_basic_package_version_file(
 
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}/cmake    
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}/cmake
 )
+endif()

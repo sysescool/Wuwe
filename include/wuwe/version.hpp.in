@@ -1,0 +1,20 @@
+#ifndef WUWE_VERSION_HPP
+#define WUWE_VERSION_HPP
+
+#include <string_view>
+
+#define WUWE_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define WUWE_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define WUWE_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#define WUWE_VERSION_STRING "@PROJECT_VERSION@"
+
+namespace wuwe {
+
+inline constexpr int framework_version_major = WUWE_VERSION_MAJOR;
+inline constexpr int framework_version_minor = WUWE_VERSION_MINOR;
+inline constexpr int framework_version_patch = WUWE_VERSION_PATCH;
+inline constexpr std::string_view framework_version = WUWE_VERSION_STRING;
+
+} // namespace wuwe
+
+#endif // WUWE_VERSION_HPP

@@ -22,12 +22,14 @@ if(WUWE_PACKAGE_WITH_SQLITE)
     endif()
 endif()
 
+set(WUWE_DEPENDENCY_CMAKE_DIR "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/cmake")
+
 if(NOT TARGET CURL::libcurl_static AND NOT TARGET CURL::libcurl)
-    include("${PACKAGE_PREFIX_DIR}/lib/cmake/CURL/CURLConfig.cmake")
+    include("${WUWE_DEPENDENCY_CMAKE_DIR}/CURL/CURLConfig.cmake")
 endif()
 
 if(NOT TARGET cpr::cpr)
-    include("${PACKAGE_PREFIX_DIR}/lib/cmake/cpr/cprTargets.cmake")
+    include("${WUWE_DEPENDENCY_CMAKE_DIR}/cpr/cprTargets.cmake")
 endif()
 
 set_and_check(WUWE_LIB_DIR "@PACKAGE_LIB_INSTALL_DIR@")
