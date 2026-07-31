@@ -1,0 +1,130 @@
+name: Quality Gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - dev
+      - "release/**"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-metadata:
+    name: Release metadata
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify synchronized release identity
+        run: cmake -P cmake/check-release-metadata.cmake
+
+  format:
+    name: clang-format 15
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install pinned formatter
+        run: sudo apt-get update && sudo apt-get install -y clang-format-15
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          mapfile -t files < <(git ls-files \
+            'include/**/*.h' 'include/**/*.hpp' \
+            'include/**/*.inl' \
+            'src/**/*.h' 'src/**/*.hpp' 'src/**/*.cpp' 'src/**/*.inl' \
+            'tests/**/*.h' 'tests/**/*.hpp' 'tests/**/*.cpp' 'tests/**/*.inl' \
+            'examples/**/*.h' 'examples/**/*.hpp' 'examples/**/*.cpp' 'examples/**/*.inl')
+          clang-format-15 --dry-run --Werror --style=file "${files[@]}"
+
+  source-consumer:
+    name: Source-subdirectory consumer
+    runs-on: ubuntu-24.04
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned vcpkg
+        uses: actions/checkout@v5
+        with:
+          repository: microsoft/vcpkg
+          ref: eb35a05cc21c69ec1399f7532b7dd61d271ac0d1
+          path: vcpkg
+
+      - name: Bootstrap vcpkg
+        run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Configure source consumer
+        run: >-
+          cmake -S tests/source_subdirectory_smoke -B build-source-consumer
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake
+          -DVCPKG_TARGET_TRIPLET=x64-linux
+          -DVCPKG_INSTALLED_DIR=${{ github.workspace }}/build-source-consumer/vcpkg_installed
+
+      - name: Build and run source consumer
+        run: |
+          cmake --build build-source-consumer --parallel 2
+          ./build-source-consumer/wuwe_source_subdirectory_smoke
+
+  sanitizers:
+    name: ${{ matrix.name }} concurrency suite
+    runs-on: ubuntu-24.04
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: AddressSanitizer
+            option: WUWE_ENABLE_ADDRESS_SANITIZER
+            environment: ASAN_OPTIONS=detect_leaks=1:strict_string_checks=1
+          - name: ThreadSanitizer
+            option: WUWE_ENABLE_THREAD_SANITIZER
+            environment: TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned vcpkg
+        uses: actions/checkout@v5
+        with:
+          repository: microsoft/vcpkg
+          ref: eb35a05cc21c69ec1399f7532b7dd61d271ac0d1
+          path: vcpkg
+
+      - name: Bootstrap vcpkg
+        run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Configure sanitizer build
+        run: >-
+          cmake -S . -B build-sanitizer
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake
+          -DVCPKG_TARGET_TRIPLET=x64-linux
+          -DVCPKG_INSTALLED_DIR=${{ github.workspace }}/build-sanitizer/vcpkg_installed
+          -DWUWE_TLS_BACKEND=openssl
+          -DWUWE_SQLITE_MODE=on
+          -DWUWE_BUILD_EXAMPLES=OFF
+          -DWUWE_BUILD_TESTS=ON
+          -DWUWE_ENABLE_INSTALL=OFF
+          -DWUWE_ENABLE_STRICT_WARNINGS=ON
+          -D${{ matrix.option }}=ON
+
+      - name: Build sanitizer suite
+        run: cmake --build build-sanitizer --parallel 2
+
+      - name: Run concurrency tests
+        run: cmake -E env ${{ matrix.environment }} ctest --test-dir build-sanitizer --output-on-failure --label-regex concurrency

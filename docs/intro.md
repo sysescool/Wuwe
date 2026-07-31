@@ -3,7 +3,7 @@ id: intro
 title: Wuwe overview
 slug: /
 sidebar_position: 1
-description: A concise map of Wuwe 0.1.0 and its supported deployment boundary.
+description: A concise map of Wuwe 1.0.0 and its supported deployment boundary.
 ---
 
 # Wuwe overview
@@ -51,7 +51,7 @@ Its modules are independently usable. A host can start with one provider client 
 
 ## Release boundary
 
-Version 0.1.0 is verified on Windows x64 with Visual Studio 2022 and Ubuntu 24.04 Linux x64. macOS portability is an engineering goal, but macOS is not part of the 0.1.0 certification matrix.
+Version 1.0.0 is verified on Windows x64 with Visual Studio 2022 and Ubuntu 24.04 Linux x64. macOS portability is an engineering goal, but macOS is not part of the 1.0.0 certification matrix.
 
 The release is an SDK, not a hosted agent product. Applications retain ownership of user identity, secrets, UI, storage policy, approvals, and deployment topology.
 

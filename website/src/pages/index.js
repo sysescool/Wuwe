@@ -17,7 +17,7 @@ const content = {
     secondaryAction: 'View on GitHub',
     stats: [
       ['Language', 'C++20'],
-      ['Release', '0.1.0'],
+      ['Release', '1.0.0'],
       ['Builds', 'Windows · Linux'],
       ['Model', 'Composable · Auditable'],
     ],
@@ -90,7 +90,7 @@ const content = {
     secondaryAction: '在 GitHub 查看',
     stats: [
       ['语言', 'C++20'],
-      ['版本', '0.1.0'],
+      ['版本', '1.0.0'],
       ['构建平台', 'Windows · Linux'],
       ['模型', '可组合 · 可审计'],
     ],
@@ -195,7 +195,7 @@ function Home() {
             </div>
 
             <div className={styles.heroMark} aria-hidden="true">
-              <span>WUWE / 0.1.0</span>
+              <span>WUWE / 1.0.0</span>
               <img className={styles.markLight} src={markLight} alt="" />
               <img className={styles.markDark} src={markDark} alt="" />
             </div>

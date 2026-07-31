@@ -1,7 +1,7 @@
 {
   "name": "wuwe-documentation",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "scripts": {
     "start": "docusaurus start",
     "build": "docusaurus build",

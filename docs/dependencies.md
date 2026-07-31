@@ -2,7 +2,7 @@
 id: dependencies
 title: Dependencies
 sidebar_position: 3
-description: Build, link, and runtime dependencies for Wuwe 0.1.0.
+description: Build, link, and runtime dependencies for Wuwe 1.0.0.
 ---
 
 # Dependencies
@@ -25,7 +25,7 @@ The configure step uses `vcpkg.json` and its pinned `builtin-baseline` to restor
 | Dependency | Used for | Delivery |
 | --- | --- | --- |
 | CMake and a C++20 compiler | Building Wuwe and consumers | Build environment |
-| cpr/libcurl | Default HTTP transport | Fetched at the revision pinned in `src/CMakeLists.txt` and installed with the SDK metadata |
+| cpr/libcurl | Default HTTP transport | Fetched at the revision pinned in `src/CMakeLists.txt` for official builds; source consumers may provide an existing `cpr::cpr` target |
 | cpp-httplib | Alternate HTTP client and MCP HTTP listener | Checked-in header |
 | OpenSSL | Linux TLS and the optional Windows OpenSSL profile | vcpkg or another compatible development package |
 | SQLite3 | Durable memory and knowledge storage | vcpkg in official profiles; compatible package for SDK consumers |
@@ -70,10 +70,14 @@ SQLite provides durable local storage, not a vector database. `sqlite_knowledge_
 ## Installed-package behavior
 
 ```cmake
-find_package(wuwe CONFIG REQUIRED)
+find_package(wuwe 1 CONFIG REQUIRED)
 target_link_libraries(my_app PRIVATE wuwe::wuwe)
 ```
 
 The exported configuration exposes the resolved HTTP, TLS, OpenSSL, cpp-httplib HTTPS, and SQLite capabilities. Missing required link dependencies fail during `find_package(wuwe)` instead of appearing later as unresolved targets.
 
 The bundled curl build disables Brotli and zstd to keep the static link interface reproducible. gzip and deflate remain available through curl's zlib support.
+
+Dependency-specific CPR and curl options are scoped to the dependency fetch.
+Wuwe no longer forces global `BUILD_SHARED_LIBS`, TLS, or compression cache
+values in a parent CMake project.

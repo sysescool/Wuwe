@@ -21,14 +21,19 @@ It provides independently usable modules for model access, resource-aware routin
 
 ## Release support
 
-Version 0.1.0 is verified on:
+Version 1.0.0 is verified on:
 
 | Platform | Package | Status |
 | --- | --- | --- |
-| Windows x64 / Visual Studio 2022 | `wuwe-0.1.0-windows-x64.zip` | Certified release profile |
-| Ubuntu 24.04 Linux x64 | `wuwe-0.1.0-linux-x64.tar.gz` | Certified release profile |
+| Windows x64 / Visual Studio 2022 | `wuwe-1.0.0-windows-x64.zip` | Certified release profile |
+| Ubuntu 24.04 Linux x64 | `wuwe-1.0.0-linux-x64.tar.gz` | Certified release profile |
 
-The codebase is kept portable, but macOS is not part of the 0.1.0 certification matrix. The default `controlled_process` backend is cross-platform; the opt-in `restricted_process` backend is available only on Windows in this release.
+The codebase is kept portable, but macOS is not part of the 1.0.0 certification matrix. The default `controlled_process` backend is cross-platform; the opt-in `restricted_process` backend is available only on Windows in this release.
+
+Wuwe 1.x follows semantic versioning for its documented public C++ source API.
+Consumers should rebuild when upgrading the SDK; cross-release C++ ABI compatibility
+is not promised. See [Versioning and compatibility](docs/versioning.md), the
+[1.0 migration guide](docs/migration-1.0.md), and [CHANGELOG.md](CHANGELOG.md).
 
 ## Capabilities
 
@@ -132,7 +137,7 @@ project(my_agent LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(wuwe CONFIG REQUIRED)
+find_package(wuwe 1 CONFIG REQUIRED)
 
 add_executable(my_agent main.cpp)
 target_link_libraries(my_agent PRIVATE wuwe::wuwe)

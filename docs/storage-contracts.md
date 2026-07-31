@@ -16,10 +16,10 @@ Run, Memory, Knowledge Store, and Knowledge Index implementations. It reports:
 - process-local, single-node, or distributed coordination;
 - multi-process safety.
 
-Third-party adapters remain source-compatible after recompilation: their default
-capability contract is undeclared. Adding virtual methods changes the C++ ABI, so
-Wuwe does not promise cross-version binary compatibility unless a release states
-otherwise. New adapters should return `declared = true` and call
+Third-party adapters remain source-compatible across Wuwe 1.x after recompilation:
+their default capability contract is undeclared. Adding virtual methods changes
+the C++ ABI, so Wuwe does not promise cross-release binary compatibility unless a
+release states otherwise. New adapters should return `declared = true` and call
 `validate_storage_capabilities()` in their tests.
 Declaring distributed coordination without optimistic concurrency, migrations
 without a version, or transactions without atomic mutations fails validation.
@@ -49,3 +49,6 @@ declared version, is rejected instead of being opened with unknown semantics.
 For distributed deployments, implement the relevant abstract Store interface over
 the application's database and declare distributed coordination only when atomic
 compare-and-swap semantics are actually enforced.
+
+The general compatibility contract is documented in
+[Versioning and compatibility](versioning.md).

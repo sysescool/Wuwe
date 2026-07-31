@@ -165,7 +165,7 @@ if [[ "$keep_artifacts" != true && -e "$package_root" ]]; then
 fi
 
 cmake --install "$build_path" --config "$configuration" --prefix "$package_root"
-cp -a "$repo_root/README.md" "$repo_root/LICENSE" "$repo_root/VERSION" "$package_root/"
+cp -a "$repo_root/README.md" "$repo_root/CHANGELOG.md" "$repo_root/LICENSE" "$repo_root/VERSION" "$package_root/"
 cp -a "$repo_root/vcpkg.json" "$package_root/"
 cp -a "$repo_root/docs" "$package_root/docs"
 cp -a "$repo_root/examples" "$package_root/examples"

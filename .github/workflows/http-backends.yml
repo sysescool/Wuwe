@@ -7,10 +7,13 @@ on:
       - main
       - dev
       - memory
+      - "release/**"
+    tags:
+      - "v*"
 
 jobs:
   windows:
-    name: ${{ matrix.backend }} on Windows
+    name: ${{ matrix.backend }} Release on Windows
     runs-on: windows-2022
     env:
       VCPKG_ROOT: ${{ github.workspace }}\vcpkg
@@ -35,14 +38,69 @@ jobs:
       - name: Bootstrap vcpkg
         run: .\vcpkg\bootstrap-vcpkg.bat -disableMetrics
 
+      - name: Read package version
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath VERSION).Trim()
+          "WUWE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Configure
-        run: cmake --preset windows-vcpkg -DWUWE_HTTP_BACKEND=${{ matrix.backend }}
+        run: >-
+          cmake --preset windows-vcpkg
+          -DWUWE_HTTP_BACKEND=${{ matrix.backend }}
+          -DWUWE_ENABLE_STRICT_WARNINGS=ON
 
       - name: Build
-        run: cmake --build --preset windows-vcpkg-debug -- /m:1
+        run: cmake --build --preset windows-vcpkg-release -- /m:1
 
       - name: Test
-        run: ctest --preset windows-vcpkg-debug
+        run: ctest --preset windows-vcpkg-release
+
+      - name: Install SDK
+        if: matrix.backend == 'cpr'
+        run: cmake --install build-vcpkg --config Release --prefix install-windows
+
+      - name: Configure installed-package consumer
+        if: matrix.backend == 'cpr'
+        run: >-
+          cmake -S tests/package_smoke -B build-package-smoke
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install-windows
+          -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+          -DVCPKG_INSTALLED_DIR=${{ github.workspace }}/build-vcpkg/vcpkg_installed
+
+      - name: Build and run installed-package consumer
+        if: matrix.backend == 'cpr'
+        shell: pwsh
+        run: |
+          cmake --build build-package-smoke --config Release --parallel 1
+          .\build-package-smoke\Release\wuwe_package_smoke.exe
+
+      - name: Build Windows package
+        if: matrix.backend == 'cpr'
+        shell: pwsh
+        run: >-
+          .\tools\package-wuwe.ps1
+          -BuildDir build-vcpkg
+          -Configuration Release
+          -SkipBuild
+
+      - name: Inspect Windows package
+        if: matrix.backend == 'cpr'
+        shell: pwsh
+        run: |
+          $package = "dist/wuwe-$env:WUWE_VERSION-windows-x64.zip"
+          if (-not (Test-Path -LiteralPath $package)) {
+            throw "Missing package: $package"
+          }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $package))
+          try {
+            if ($archive.Entries.Count -eq 0) { throw "Package is empty: $package" }
+          }
+          finally {
+            $archive.Dispose()
+          }
 
   linux:
     name: Release profile on Ubuntu 24.04
@@ -64,8 +122,11 @@ jobs:
       - name: Bootstrap vcpkg
         run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
+      - name: Read package version
+        run: echo "WUWE_VERSION=$(tr -d '\r\n' < VERSION)" >> "$GITHUB_ENV"
+
       - name: Configure OpenSSL and SQLite release profile
-        run: cmake --preset linux-vcpkg
+        run: cmake --preset linux-vcpkg -DWUWE_ENABLE_STRICT_WARNINGS=ON
 
       - name: Build
         run: cmake --build --preset linux-vcpkg-release
@@ -105,5 +166,5 @@ jobs:
 
       - name: Inspect Linux package
         run: |
-          test -f dist/wuwe-0.1.0-linux-x64.tar.gz
-          tar -tzf dist/wuwe-0.1.0-linux-x64.tar.gz >/dev/null
+          test -f "dist/wuwe-${WUWE_VERSION}-linux-x64.tar.gz"
+          tar -tzf "dist/wuwe-${WUWE_VERSION}-linux-x64.tar.gz" >/dev/null

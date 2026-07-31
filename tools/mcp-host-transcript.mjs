@@ -106,7 +106,7 @@ function main() {
       method: "initialize",
       params: {
       protocolVersion: "2024-11-05",
-      clientInfo: { name: "wuwe-host-transcript", version: "0.1.0" },
+      clientInfo: { name: "wuwe-host-transcript", version: "1.0.0" },
       capabilities: {
         roots: { listChanged: true },
         sampling: {},

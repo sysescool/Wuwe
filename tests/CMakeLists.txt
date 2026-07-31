@@ -1,4 +1,4 @@
-include("${CMAKE_SOURCE_DIR}/cmake/wuwe-runtime.cmake")
+include("${PROJECT_SOURCE_DIR}/cmake/wuwe-runtime.cmake")
 
 add_executable(memory_tests
     memory_tests.cpp
@@ -21,7 +21,7 @@ wuwe_copy_runtime_dlls(knowledge_tests)
 
 add_test(NAME knowledge_tests COMMAND knowledge_tests)
 set_tests_properties(knowledge_tests PROPERTIES
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
 )
 
 add_executable(agent_runtime_tests
@@ -155,6 +155,15 @@ wuwe_copy_runtime_dlls(routing_tests)
 
 add_test(NAME routing_tests COMMAND routing_tests)
 
+add_executable(llm_dispatch_tests
+    llm_dispatch_tests.cpp
+)
+
+target_link_libraries(llm_dispatch_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(llm_dispatch_tests)
+
+add_test(NAME llm_dispatch_tests COMMAND llm_dispatch_tests)
+
 add_executable(orchestration_tests
     orchestration_tests.cpp
 )
@@ -211,9 +220,25 @@ add_executable(header_independence_tests
     header_independence/sqlite_schema_header.cpp
     header_independence/filesystem_tools_header.cpp
     header_independence/process_tools_header.cpp
+    header_independence/llm_dispatch_header.cpp
+    header_independence/version_header.cpp
+    header_independence/umbrella_header.cpp
 )
 
 target_link_libraries(header_independence_tests PRIVATE wuwe)
+
+if(WUWE_ENABLE_STRICT_WARNINGS)
+    if(MSVC)
+        target_compile_options(header_independence_tests PRIVATE /W4 /WX)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(header_independence_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Werror
+            -Wno-missing-field-initializers)
+    endif()
+endif()
 wuwe_copy_runtime_dlls(header_independence_tests)
 
 add_test(NAME header_independence_tests COMMAND header_independence_tests)
@@ -261,9 +286,20 @@ add_executable(mcp_tests
 
 target_link_libraries(mcp_tests PRIVATE wuwe)
 wuwe_copy_runtime_dlls(mcp_tests)
-add_dependencies(mcp_tests mcp_stdio_example)
+
+set(WUWE_MCP_STDIO_TEST_TARGET mcp_stdio_example)
+if(NOT TARGET ${WUWE_MCP_STDIO_TEST_TARGET})
+    set(WUWE_MCP_STDIO_TEST_TARGET wuwe_mcp_stdio_test_server)
+    add_executable(${WUWE_MCP_STDIO_TEST_TARGET}
+        "${PROJECT_SOURCE_DIR}/examples/src/mcp_stdio_example.cpp"
+    )
+    target_link_libraries(${WUWE_MCP_STDIO_TEST_TARGET} PRIVATE wuwe)
+    wuwe_copy_runtime_dlls(${WUWE_MCP_STDIO_TEST_TARGET})
+endif()
+
+add_dependencies(mcp_tests ${WUWE_MCP_STDIO_TEST_TARGET})
 target_compile_definitions(mcp_tests PRIVATE
-    WUWE_MCP_STDIO_EXAMPLE_PATH="$<TARGET_FILE:mcp_stdio_example>"
+    WUWE_MCP_STDIO_EXAMPLE_PATH="$<TARGET_FILE:${WUWE_MCP_STDIO_TEST_TARGET}>"
 )
 
 add_test(NAME mcp_tests COMMAND mcp_tests)
@@ -271,7 +307,10 @@ add_test(NAME mcp_tests COMMAND mcp_tests)
 set_tests_properties(
     knowledge_tests
     planning_tests
+    llm_dispatch_tests
     orchestration_tests
+    learning_tests
+    exploration_tests
     best_of_n_tests
     multi_agent_tests
     a2a_tests

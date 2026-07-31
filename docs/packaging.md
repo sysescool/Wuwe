@@ -9,6 +9,10 @@ description: Build and inspect the Wuwe SDK archives.
 
 Wuwe produces a platform-specific SDK archive containing the library, public headers, CMake package files, examples, documentation, release metadata, and the default document-parsing runtime.
 
+The archive version is read from the repository `VERSION` file. CMake package
+metadata, `vcpkg.json`, public `wuwe/version.hpp`, protocol defaults, CI artifact
+names, and release documentation use the same `1.0.0` release identity.
+
 ## Build an archive
 
 Windows x64:
@@ -38,7 +42,7 @@ Windows produces a `.zip`; Linux produces a `.tar.gz`. Build each archive on its
 - public headers and static libraries
 - `wuwe-config.cmake` and exported CMake targets
 - docs and example source
-- `README.md`, `LICENSE`, `VERSION`, and `vcpkg.json`
+- `README.md`, `CHANGELOG.md`, `LICENSE`, `VERSION`, and `vcpkg.json`
 - `manifest.json` with resolved build and runtime capabilities
 - `checksums.sha256`
 - `runtime/tika/tika-server-standard.jar`
@@ -53,6 +57,11 @@ cmake --install build-vcpkg --config Release --prefix install
 ```
 
 The install tree has the same SDK layout and, by default, the bundled runtime sidecars.
+
+Wuwe 1.x CMake package compatibility is major-version scoped. A consumer asking
+for Wuwe 1 can use a later 1.x package after recompilation. This is a source
+compatibility promise, not a cross-release C++ ABI promise. See
+[Versioning and compatibility](versioning.md).
 
 Tika and the JRE are independently optional:
 

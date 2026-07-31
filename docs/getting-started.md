@@ -2,7 +2,7 @@
 id: getting-started
 title: Getting started
 sidebar_position: 2
-description: Configure, build, test, and consume Wuwe 0.1.0.
+description: Configure, build, test, and consume Wuwe 1.0.0.
 ---
 
 # Getting started
@@ -77,13 +77,35 @@ project(my_agent LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(wuwe CONFIG REQUIRED)
+find_package(wuwe 1 CONFIG REQUIRED)
 
 add_executable(my_agent main.cpp)
 target_link_libraries(my_agent PRIVATE wuwe::wuwe)
 ```
 
 Add the installation prefix to `CMAKE_PREFIX_PATH` if it is not in a standard location. The exported package requests the public dependencies enabled in that Wuwe build.
+
+Within the 1.x line, the CMake package accepts later 1.x releases as source
+compatible. Rebuild consumers after every SDK upgrade; Wuwe does not promise
+drop-in C++ ABI compatibility between separately built releases. See
+[Versioning and compatibility](versioning.md).
+
+## Consume from source
+
+Wuwe is safe to add as a CMake subdirectory without building its tests,
+examples, install rules, or bundled CPR dependency by default. Provide an
+existing `cpr::cpr` target, or explicitly allow the pinned dependency fetch:
+
+```cmake
+set(WUWE_FETCH_CPR ON CACHE BOOL "")
+add_subdirectory(external/wuwe)
+target_link_libraries(my_agent PRIVATE wuwe)
+```
+
+`WUWE_BUILD_EXAMPLES`, `WUWE_BUILD_TESTS`, and `WUWE_ENABLE_INSTALL` default to
+`ON` only for a top-level Wuwe build. `WUWE_ENABLE_STRICT_WARNINGS` is intended
+for Wuwe development and CI; it does not add warning flags to installed SDK
+consumers.
 
 ## Next steps
 

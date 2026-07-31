@@ -472,6 +472,7 @@ if (-not $ExcludeTikaRuntime) {
 
 Invoke-Native cmake @("--install", $BuildPath, "--config", $Configuration, "--prefix", $PackageRoot)
 Copy-IfExists (Join-Path $RepoRoot "README.md") $PackageRoot
+Copy-IfExists (Join-Path $RepoRoot "CHANGELOG.md") $PackageRoot
 Copy-IfExists (Join-Path $RepoRoot "LICENSE") $PackageRoot
 Copy-IfExists (Join-Path $RepoRoot "VERSION") $PackageRoot
 Copy-IfExists (Join-Path $RepoRoot "vcpkg.json") $PackageRoot

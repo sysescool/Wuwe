@@ -97,6 +97,6 @@ tool arguments.
 
 Treat this contract as capability reporting, not as a guarantee inferred from a backend name. The default `controlled_process` backend bounds subprocess operation but is not a strong sandbox. The Windows-only restricted backend provides stronger controls when explicitly enabled and available.
 
-Container and WebAssembly appear as isolation categories in the public contract but are not implemented backends in version 0.1.0.
+Container and WebAssembly appear as isolation categories in the public contract but are not implemented backends in version 1.0.0.
 
 See [Controlled execution](execution-runtime.md) for policy fields, backend selection, and the verified platform boundary.

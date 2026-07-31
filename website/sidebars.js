@@ -5,7 +5,7 @@ const sidebars = {
       type: 'category',
       label: 'Start here',
       collapsed: false,
-      items: ['intro', 'getting-started', 'dependencies', 'packaging'],
+      items: ['intro', 'getting-started', 'versioning', 'migration-1.0', 'dependencies', 'packaging'],
     },
     {
       type: 'category',

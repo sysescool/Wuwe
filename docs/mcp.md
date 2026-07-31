@@ -35,7 +35,7 @@ int main() {
 
   wuwe::agent::mcp::mcp_server server({
     .name = "wuwe-example",
-    .version = "0.1.0",
+    .version = std::string(wuwe::framework_version),
   });
   server.add_tool_provider(tools);
 

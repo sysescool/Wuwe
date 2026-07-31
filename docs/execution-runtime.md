@@ -32,7 +32,7 @@ const auto result = runtime.run({
 
 `execution_request` carries code, stdin, working directory, limits, environment values, shell intent, and metadata. `execution_result` reports exit status, termination reason, timeout or cancellation, truncation, output, diagnostics, elapsed time, and backend metadata.
 
-Only Python is implemented in 0.1.0.
+Only Python is implemented in 1.0.0.
 
 For arbitrary executables and an explicitly enabled shell adapter, use the
 separate [Process toolkit](process-tools.md). It is argv-first and does not
@@ -80,7 +80,7 @@ auto registry = execution::make_execution_backend_registry(options);
 
 On Windows, an explicitly registered restricted backend is available when its configuration passes availability checks. It stages a minimal Python runtime, uses restricted process controls, limits inherited environment, applies filesystem boundaries, and denies network according to its reported enforcement contract.
 
-On non-Windows platforms it is not available in 0.1.0. The default registry publishes the descriptor but does not register the factory, so `controlled_process` remains the default selection.
+On non-Windows platforms it is not available in 1.0.0. The default registry publishes the descriptor but does not register the factory, so `controlled_process` remains the default selection.
 
 Container and WebAssembly backends are not implemented.
 
