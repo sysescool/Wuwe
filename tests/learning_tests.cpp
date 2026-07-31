@@ -2,12 +2,13 @@
 #include <chrono>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
 
-#include <wuwe/agent/learning/learning.hpp>
 #include <wuwe/agent/learning/exploration_adapter.hpp>
+#include <wuwe/agent/learning/learning.hpp>
 
 namespace {
 
@@ -18,13 +19,13 @@ namespace approval = wuwe::agent::approval;
 namespace exploration = wuwe::agent::exploration;
 
 void require(bool condition, const std::string& message) {
-  if (!condition) throw std::runtime_error(message);
+  if (!condition)
+    throw std::runtime_error(message);
 }
 
 class nonstandard_throwing_approval final : public approval::approval_service {
 public:
-  approval::approval_decision decide(
-    const approval::approval_request&) override {
+  approval::approval_decision decide(const approval::approval_request&) override {
     throw 42;
   }
 };
@@ -44,30 +45,30 @@ void stages_only_candidates_that_pass_promotion_policy() {
   learning::in_memory_learning_store store;
   int activations = 0;
   learning::learning_runner runner({
-    .proposer = [](const learning::learning_request&,
-                  const learning::learning_context&) {
-      return std::vector<learning::learning_candidate> {
-        {
-          .kind = learning::learning_change_kind::prompt,
-          .proposed_version = "prompt-v2",
-          .artifact = { { "template", "improved" }, { "score", 0.9 } },
-        },
-        {
-          .kind = learning::learning_change_kind::prompt,
-          .proposed_version = "prompt-v3",
-          .artifact = { { "template", "regressed" }, { "score", 0.6 } },
-        },
-      };
-    },
-    .evaluator = [](const learning::learning_candidate& candidate,
-                    const learning::learning_context&) {
-      return evaluation_for(candidate.artifact.at("score").get<double>());
-    },
-    .activator = [&](const learning::learning_candidate&,
-                     const learning::learning_context&) {
-      ++activations;
-      return learning::learning_activation_result { .activated = true };
-    },
+    .proposer =
+      [](const learning::learning_request&, const learning::learning_context&) {
+        return std::vector<learning::learning_candidate> {
+          {
+            .kind = learning::learning_change_kind::prompt,
+            .proposed_version = "prompt-v2",
+            .artifact = { { "template", "improved" }, { "score", 0.9 } },
+          },
+          {
+            .kind = learning::learning_change_kind::prompt,
+            .proposed_version = "prompt-v3",
+            .artifact = { { "template", "regressed" }, { "score", 0.6 } },
+          },
+        };
+      },
+    .evaluator =
+      [](const learning::learning_candidate& candidate, const learning::learning_context&) {
+        return evaluation_for(candidate.artifact.at("score").get<double>());
+      },
+    .activator =
+      [&](const learning::learning_candidate&, const learning::learning_context&) {
+        ++activations;
+        return learning::learning_activation_result { .activated = true };
+      },
     .store = &store,
   });
 
@@ -89,8 +90,8 @@ void stages_only_candidates_that_pass_promotion_policy() {
     "promotion policy separates accepted candidates from regressions");
   require(result.activated_count == 0 && activations == 0,
     "stage_only is the safe default and never invokes activation");
-  require(store.list().size() == 2,
-    "accepted and rejected learning evidence is auditable by default");
+  require(
+    store.list().size() == 2, "accepted and rejected learning evidence is auditable by default");
 }
 
 void activates_only_after_explicit_approval() {
@@ -98,30 +99,28 @@ void activates_only_after_explicit_approval() {
   learning::in_memory_learning_store store;
   int activations = 0;
   learning::learning_runner runner({
-    .proposer = [](const learning::learning_request&,
-                  const learning::learning_context&) {
-      return std::vector<learning::learning_candidate> {
-        {
-          .kind = learning::learning_change_kind::reasoning_policy,
-          .proposed_version = "policy-v2",
-          .artifact = { { "max_steps", 6 } },
-        },
-      };
-    },
+    .proposer =
+      [](const learning::learning_request&, const learning::learning_context&) {
+        return std::vector<learning::learning_candidate> {
+          {
+            .kind = learning::learning_change_kind::reasoning_policy,
+            .proposed_version = "policy-v2",
+            .artifact = { { "max_steps", 6 } },
+          },
+        };
+      },
     .evaluator = [](const learning::learning_candidate&,
-                    const learning::learning_context&) {
-      return evaluation_for(0.92);
-    },
-    .activator = [&](const learning::learning_candidate& candidate,
-                     const learning::learning_context&) {
-      ++activations;
-      return learning::learning_activation_result {
-        .activated = true,
-        .active_version = candidate.proposed_version,
-        .previous_version = candidate.parent_version,
-        .rollback_token = "rollback-policy-v1",
-      };
-    },
+                   const learning::learning_context&) { return evaluation_for(0.92); },
+    .activator =
+      [&](const learning::learning_candidate& candidate, const learning::learning_context&) {
+        ++activations;
+        return learning::learning_activation_result {
+          .activated = true,
+          .active_version = candidate.proposed_version,
+          .previous_version = candidate.parent_version,
+          .rollback_token = "rollback-policy-v1",
+        };
+      },
     .store = &store,
     .approvals = &approvals,
   });
@@ -137,26 +136,24 @@ void activates_only_after_explicit_approval() {
   require(result && result.activated_count == 1 && activations == 1,
     "approved learning candidate is activated exactly once");
   require(result.records.front().approval && result.records.front().activation &&
-      result.records.front().activation->rollback_token == "rollback-policy-v1",
+            result.records.front().activation->rollback_token == "rollback-policy-v1",
     "activation record preserves approval and rollback metadata");
 
   approval::deny_all_approval_service denied;
   learning::learning_runner denied_runner({
-    .proposer = [](const learning::learning_request&,
-                  const learning::learning_context&) {
-      return std::vector<learning::learning_candidate> {
-        { .proposed_version = "denied-v1" },
-      };
-    },
+    .proposer =
+      [](const learning::learning_request&, const learning::learning_context&) {
+        return std::vector<learning::learning_candidate> {
+          { .proposed_version = "denied-v1" },
+        };
+      },
     .evaluator = [](const learning::learning_candidate&,
-                    const learning::learning_context&) {
-      return evaluation_for(0.95);
-    },
-    .activator = [&](const learning::learning_candidate&,
-                     const learning::learning_context&) {
-      ++activations;
-      return learning::learning_activation_result { .activated = true };
-    },
+                   const learning::learning_context&) { return evaluation_for(0.95); },
+    .activator =
+      [&](const learning::learning_candidate&, const learning::learning_context&) {
+        ++activations;
+        return learning::learning_activation_result { .activated = true };
+      },
     .approvals = &denied,
   });
   const auto denied_result = denied_runner.run({ .target = "denied" }, {
@@ -165,27 +162,25 @@ void activates_only_after_explicit_approval() {
     },
   });
   require(denied_result && denied_result.approval_denied_count == 1 &&
-      denied_result.accepted_count == 1 && activations == 1,
+            denied_result.accepted_count == 1 && activations == 1,
     "denied approval prevents activation without failing the controlled run");
 }
 
 void nonstandard_approval_failures_are_contained() {
   nonstandard_throwing_approval approvals;
   learning::learning_runner runner({
-    .proposer = [](const learning::learning_request&,
-                   const learning::learning_context&) {
-      return std::vector<learning::learning_candidate> {
-        { .proposed_version = "approval-failure-v1" },
-      };
-    },
+    .proposer =
+      [](const learning::learning_request&, const learning::learning_context&) {
+        return std::vector<learning::learning_candidate> {
+          { .proposed_version = "approval-failure-v1" },
+        };
+      },
     .evaluator = [](const learning::learning_candidate&,
-                    const learning::learning_context&) {
-      return evaluation_for(0.95);
-    },
-    .activator = [](const learning::learning_candidate&,
-                    const learning::learning_context&) {
-      return learning::learning_activation_result { .activated = true };
-    },
+                   const learning::learning_context&) { return evaluation_for(0.95); },
+    .activator =
+      [](const learning::learning_candidate&, const learning::learning_context&) {
+        return learning::learning_activation_result { .activated = true };
+      },
     .approvals = &approvals,
   });
   const auto result = runner.run({ .target = "approval-failure" }, {
@@ -194,8 +189,7 @@ void nonstandard_approval_failures_are_contained() {
     },
   });
   require(result && result.approval_required_count == 1 &&
-      result.records.front().status ==
-        learning::learning_candidate_status::approval_required,
+            result.records.front().status == learning::learning_candidate_status::approval_required,
     "learning must convert non-standard approval failures into review-required state");
 }
 
@@ -217,61 +211,70 @@ void evaluation_suite_comparison_detects_regressions() {
   candidate.cases[1].passed = false;
 
   const auto compared = learning::compare_evaluation_suites(baseline, candidate);
-  require(compared.regression_count == 1 &&
-      compared.regressions.front() == "regressed" &&
-      compared.score_improvement() > 0.0 &&
-      compared.pass_rate_improvement() < 0.0,
+  require(compared.regression_count == 1 && compared.regressions.front() == "regressed" &&
+            compared.score_improvement() > 0.0 && compared.pass_rate_improvement() < 0.0,
     "suite comparison distinguishes aggregate gains from case regressions");
 }
 
 void bounds_uncooperative_evaluators() {
-  std::atomic<bool> release { false };
-  std::atomic<bool> finished { false };
+  struct callback_state {
+    std::atomic<bool> started { false };
+    std::atomic<bool> release { false };
+    std::atomic<bool> finished { false };
+  };
+  auto state = std::make_shared<callback_state>();
   learning::learning_run_result result;
   {
     learning::learning_runner runner({
-      .proposer = [](const learning::learning_request&,
-                    const learning::learning_context&) {
-        return std::vector<learning::learning_candidate> { { .target = "timeout" } };
-      },
-      .evaluator = [&](const learning::learning_candidate&,
-                       const learning::learning_context&) {
-        while (!release) std::this_thread::sleep_for(1ms);
-        finished = true;
-        return evaluation_for(0.9);
-      },
+      .proposer =
+        [](const learning::learning_request&, const learning::learning_context&) {
+          return std::vector<learning::learning_candidate> { { .target = "timeout" } };
+        },
+      .evaluator =
+        [state](const learning::learning_candidate&, const learning::learning_context&) {
+          state->started = true;
+          while (!state->release)
+            std::this_thread::sleep_for(1ms);
+          state->finished = true;
+          return evaluation_for(0.9);
+        },
     });
-    result = runner.run({ .target = "timeout" }, {
-      .policy = { .timeout = 20ms },
-    });
+    result = runner.run({ .target = "timeout" },
+      {
+        .policy = { .timeout = 1s },
+      });
+  }
+  state->release = true;
+  const auto cleanup_deadline = std::chrono::steady_clock::now() + 5s;
+  while (
+    state->started && !state->finished && std::chrono::steady_clock::now() < cleanup_deadline) {
+    std::this_thread::sleep_for(1ms);
   }
   require(!result && result.stop_reason == learning::learning_stop_reason::timed_out &&
-      result.detached_count == 1 && result.records.front().detached,
+            result.detached_count == 1 && result.records.size() == 1 &&
+            result.records.front().detached && state->started && state->finished,
     "learning timeout returns without destroying detached callback ownership");
-  release = true;
-  while (!finished) std::this_thread::sleep_for(1ms);
 }
 
 void enforces_candidate_limits_and_activation_configuration() {
   learning::learning_runner runner({
-    .proposer = [](const learning::learning_request&,
-                  const learning::learning_context&) {
-      return std::vector<learning::learning_candidate> {
-        { .proposed_version = "v1" },
-        { .proposed_version = "v2" },
-        { .proposed_version = "v3" },
-      };
-    },
+    .proposer =
+      [](const learning::learning_request&, const learning::learning_context&) {
+        return std::vector<learning::learning_candidate> {
+          { .proposed_version = "v1" },
+          { .proposed_version = "v2" },
+          { .proposed_version = "v3" },
+        };
+      },
     .evaluator = [](const learning::learning_candidate&,
-                    const learning::learning_context&) {
-      return evaluation_for(0.9);
-    },
+                   const learning::learning_context&) { return evaluation_for(0.9); },
   });
-  const auto bounded = runner.run({ .target = "bounded" }, {
-    .policy = { .max_candidates = 2 },
-  });
+  const auto bounded = runner.run({ .target = "bounded" },
+    {
+      .policy = { .max_candidates = 2 },
+    });
   require(bounded && bounded.proposed_count == 3 && bounded.truncated_count == 1 &&
-      bounded.records.size() == 2,
+            bounded.records.size() == 2,
     "learning reports proposals omitted by the evaluation budget");
 
   bool rejected_configuration = false;
@@ -285,8 +288,8 @@ void enforces_candidate_limits_and_activation_configuration() {
   catch (const std::invalid_argument&) {
     rejected_configuration = true;
   }
-  require(rejected_configuration,
-    "activation modes reject a missing activator before proposing changes");
+  require(
+    rejected_configuration, "activation modes reject a missing activator before proposing changes");
 }
 
 void stores_experiences_and_signed_rewards_safely() {
@@ -319,8 +322,8 @@ void stores_experiences_and_signed_rewards_safely() {
     .limit = 1,
     .filters = { { "locale", "en" } },
   });
-  require(queried.size() == 1 && queried.front().id == second.id &&
-      experiences.get(first.id).has_value(),
+  require(
+    queried.size() == 1 && queried.front().id == second.id && experiences.get(first.id).has_value(),
     "experience store filters by target and metadata in newest-first order");
 
   learning::in_memory_reward_store rewards;
@@ -341,9 +344,8 @@ void stores_experiences_and_signed_rewards_safely() {
   require(rewards.query({ .experience_id = first.id }).front().id == penalty.id,
     "reward ledger accepts signed rewards and queries their provenance");
 
-  for (const auto invalid : {
-         std::numeric_limits<double>::quiet_NaN(),
-         std::numeric_limits<double>::infinity() }) {
+  for (const auto invalid :
+    { std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity() }) {
     bool rejected = false;
     try {
       rewards.add({ .target = "support.prompt", .value = invalid });
@@ -386,16 +388,16 @@ void registry_tracks_activation_lineage_and_rollback() {
     .artifact = { { "template", "candidate" } },
   });
   const auto promoted = registry.activate("support.prompt", "v2");
-  require(promoted.previous && promoted.previous->version == "v1" &&
-      registry.get("support.prompt", "v1")->status ==
-        learning::artifact_version_status::retired,
+  require(
+    promoted.previous && promoted.previous->version == "v1" &&
+      registry.get("support.prompt", "v1")->status == learning::artifact_version_status::retired,
     "promotion retires the previous version while preserving lineage");
 
   const auto rolled_back = registry.rollback("support.prompt", "v1");
   require(rolled_back.active.version == "v1" && rolled_back.previous &&
-      rolled_back.previous->version == "v2" &&
-      registry.get("support.prompt", "v2")->status ==
-        learning::artifact_version_status::rolled_back,
+            rolled_back.previous->version == "v2" &&
+            registry.get("support.prompt", "v2")->status ==
+              learning::artifact_version_status::rolled_back,
     "rollback activates its explicit target and marks the replaced version");
 
   bool rejected_duplicate = false;
@@ -409,8 +411,8 @@ void registry_tracks_activation_lineage_and_rollback() {
   catch (const std::invalid_argument&) {
     rejected_duplicate = true;
   }
-  require(rejected_duplicate,
-    "registry rejects reusing a version identifier for different content");
+  require(
+    rejected_duplicate, "registry rejects reusing a version identifier for different content");
 }
 
 void offline_optimizer_receives_scoped_adaptation_data() {
@@ -437,14 +439,11 @@ void offline_optimizer_receives_scoped_adaptation_data() {
 
   bool received_scoped_data = false;
   auto optimizer = std::make_shared<learning::function_offline_optimizer>(
-    [&](const learning::optimization_request& request,
-        const learning::learning_context&) {
-      received_scoped_data = request.baseline &&
-        request.baseline->version == "v1" &&
-        request.request.baseline_version == "v1" &&
-        request.experiences.size() == 1 &&
-        request.rewards.size() == 1 &&
-        request.max_candidates == 2;
+    [&](const learning::optimization_request& request, const learning::learning_context&) {
+      received_scoped_data = request.baseline && request.baseline->version == "v1" &&
+                             request.request.baseline_version == "v1" &&
+                             request.experiences.size() == 1 && request.rewards.size() == 1 &&
+                             request.max_candidates == 2;
       return std::vector<learning::learning_candidate> {
         { .proposed_version = "v2" },
         { .proposed_version = "v3" },
@@ -452,13 +451,11 @@ void offline_optimizer_receives_scoped_adaptation_data() {
       };
     });
   const auto proposer = learning::make_offline_optimizer_proposer(
-    optimizer, experiences, &rewards, &registry,
-    { .max_candidates = 2 });
-  const auto candidates = proposer(
-    { .target = "support.prompt" }, learning::learning_context {});
+    optimizer, experiences, &rewards, &registry, { .max_candidates = 2 });
+  const auto candidates = proposer({ .target = "support.prompt" }, learning::learning_context {});
   require(received_scoped_data && candidates.size() == 2 &&
-      candidates.front().target == "support.prompt" &&
-      candidates.front().parent_version == "v1",
+            candidates.front().target == "support.prompt" &&
+            candidates.front().parent_version == "v1",
     "offline optimizer receives only target-scoped data and bounded lineage-aware output");
 }
 
@@ -489,10 +486,8 @@ void promotes_an_offline_candidate_through_the_complete_gate() {
   });
 
   auto optimizer = std::make_shared<learning::function_offline_optimizer>(
-    [](const learning::optimization_request& request,
-       const learning::learning_context&) {
-      require(request.baseline && request.experiences.size() == 1 &&
-          request.rewards.size() == 1,
+    [](const learning::optimization_request& request, const learning::learning_context&) {
+      require(request.baseline && request.experiences.size() == 1 && request.rewards.size() == 1,
         "complete loop supplies baseline, experience, and reward to optimizer");
       return std::vector<learning::learning_candidate> {
         {
@@ -505,12 +500,10 @@ void promotes_an_offline_candidate_through_the_complete_gate() {
     });
   approval::allow_all_approval_service approvals;
   learning::learning_runner runner({
-    .proposer = learning::make_offline_optimizer_proposer(
-      optimizer, experiences, &rewards, &registry),
+    .proposer =
+      learning::make_offline_optimizer_proposer(optimizer, experiences, &rewards, &registry),
     .evaluator = [](const learning::learning_candidate&,
-                    const learning::learning_context&) {
-      return evaluation_for(0.95);
-    },
+                   const learning::learning_context&) { return evaluation_for(0.95); },
     .activator = learning::make_registry_only_activator(registry),
     .approvals = &approvals,
   });
@@ -521,50 +514,49 @@ void promotes_an_offline_candidate_through_the_complete_gate() {
     },
   });
   require(result && result.activated_count == 1 &&
-      registry.active("support.prompt")->version == "v2" &&
-      result.records.front().activation->previous_version == "v1" &&
-      result.records.front().activation->rollback_token == "v1",
+            registry.active("support.prompt")->version == "v2" &&
+            result.records.front().activation->previous_version == "v1" &&
+            result.records.front().activation->rollback_token == "v1",
     "offline candidate passes evaluation and approval before reversible activation");
 }
 
 void activates_one_winner_per_target_and_isolates_telemetry() {
   std::vector<std::string> activated_versions;
   learning::learning_runner runner({
-    .proposer = [](const learning::learning_request&,
-                  const learning::learning_context&) {
-      return std::vector<learning::learning_candidate> {
-        {
-          .target = "support.prompt",
-          .proposed_version = "v2",
-          .artifact = { { "score", 0.85 } },
-        },
-        {
-          .target = "support.prompt",
-          .proposed_version = "v3",
-          .artifact = { { "score", 0.95 } },
-        },
-        {
-          .target = "routing.policy",
-          .proposed_version = "r2",
-          .artifact = { { "score", 0.9 } },
-        },
-      };
-    },
-    .evaluator = [](const learning::learning_candidate& candidate,
-                    const learning::learning_context&) {
-      return evaluation_for(candidate.artifact.at("score").get<double>());
-    },
-    .activator = [&](const learning::learning_candidate& candidate,
-                     const learning::learning_context&) {
-      activated_versions.push_back(candidate.proposed_version);
-      return learning::learning_activation_result {
-        .activated = true,
-        .active_version = candidate.proposed_version,
-      };
-    },
-    .observer = [](const learning::learning_record&) {
-      throw std::runtime_error("observer unavailable");
-    },
+    .proposer =
+      [](const learning::learning_request&, const learning::learning_context&) {
+        return std::vector<learning::learning_candidate> {
+          {
+            .target = "support.prompt",
+            .proposed_version = "v2",
+            .artifact = { { "score", 0.85 } },
+          },
+          {
+            .target = "support.prompt",
+            .proposed_version = "v3",
+            .artifact = { { "score", 0.95 } },
+          },
+          {
+            .target = "routing.policy",
+            .proposed_version = "r2",
+            .artifact = { { "score", 0.9 } },
+          },
+        };
+      },
+    .evaluator =
+      [](const learning::learning_candidate& candidate, const learning::learning_context&) {
+        return evaluation_for(candidate.artifact.at("score").get<double>());
+      },
+    .activator =
+      [&](const learning::learning_candidate& candidate, const learning::learning_context&) {
+        activated_versions.push_back(candidate.proposed_version);
+        return learning::learning_activation_result {
+          .activated = true,
+          .active_version = candidate.proposed_version,
+        };
+      },
+    .observer =
+      [](const learning::learning_record&) { throw std::runtime_error("observer unavailable"); },
   });
 
   const auto result = runner.run({ .target = "support.prompt" }, {
@@ -573,11 +565,10 @@ void activates_one_winner_per_target_and_isolates_telemetry() {
     },
   });
   require(result && result.activated_count == 2 &&
-      activated_versions == std::vector<std::string>({ "v3", "r2" }),
+            activated_versions == std::vector<std::string>({ "v3", "r2" }),
     "learning activates exactly one highest-ranked candidate per target");
-  require(result.records[0].status ==
-      learning::learning_candidate_status::not_selected &&
-      result.telemetry_error_count == result.records.size(),
+  require(result.records[0].status == learning::learning_candidate_status::not_selected &&
+            result.telemetry_error_count == result.records.size(),
     "non-winning accepted candidates are explicit and telemetry cannot undo activation");
 }
 
@@ -621,34 +612,32 @@ void imports_exploration_evidence_only_through_the_explicit_adapter() {
   const auto record = completed_exploration_record();
   const auto without_rewards = learning::persist_exploration_experiences(
     record, { .target = "routing.cache-policy" }, experiences, &rewards);
-  require(without_rewards.experiences.size() == 1 &&
-      without_rewards.rewards.empty() && rewards.query({}).empty(),
+  require(without_rewards.experiences.size() == 1 && without_rewards.rewards.empty() &&
+            rewards.query({}).empty(),
     "exploration evidence becomes experience without inventing an implicit reward");
   const auto& imported = without_rewards.experiences.front();
-  require(imported.source == "exploration" &&
-      imported.source_run_id == record.id &&
-      imported.output == "latency improved" &&
-      imported.feedback.at("hypothesis_verdict") == "supported" &&
-      imported.trajectory.at("id") == "experiment-1",
+  require(imported.source == "exploration" && imported.source_run_id == record.id &&
+            imported.output == "latency improved" &&
+            imported.feedback.at("hypothesis_verdict") == "supported" &&
+            imported.trajectory.at("id") == "experiment-1",
     "explicit adapter preserves evidence, verdict, trajectory, and provenance");
 
-  const auto with_rewards = learning::persist_exploration_experiences(
-    record, { .target = "routing.cache-policy" }, experiences, &rewards,
+  const auto with_rewards = learning::persist_exploration_experiences(record,
+    { .target = "routing.cache-policy" },
+    experiences,
+    &rewards,
     [](const exploration::exploration_record&,
-       const exploration::hypothesis_record& hypothesis,
-       const exploration::experiment_record&,
-       const learning::experience_record&) -> std::optional<learning::reward_record> {
+      const exploration::hypothesis_record& hypothesis,
+      const exploration::experiment_record&,
+      const learning::experience_record&) -> std::optional<learning::reward_record> {
       return learning::reward_record {
         .objective = "latency",
-        .value = hypothesis.verdict == exploration::hypothesis_verdict::supported
-                   ? 1.0 : 0.0,
+        .value = hypothesis.verdict == exploration::hypothesis_verdict::supported ? 1.0 : 0.0,
       };
     });
-  require(with_rewards.experiences.size() == 1 &&
-      with_rewards.rewards.size() == 1 &&
-      with_rewards.rewards.front().experience_id ==
-        with_rewards.experiences.front().id &&
-      with_rewards.rewards.front().target == "routing.cache-policy",
+  require(with_rewards.experiences.size() == 1 && with_rewards.rewards.size() == 1 &&
+            with_rewards.rewards.front().experience_id == with_rewards.experiences.front().id &&
+            with_rewards.rewards.front().target == "routing.cache-policy",
     "application-supplied mapper creates an attributable reward explicitly");
 }
 
@@ -663,8 +652,7 @@ int main() {
   try {
     run("stages candidates", stages_only_candidates_that_pass_promotion_policy);
     run("approval activation", activates_only_after_explicit_approval);
-    run("non-standard approval failure",
-      nonstandard_approval_failures_are_contained);
+    run("non-standard approval failure", nonstandard_approval_failures_are_contained);
     run("suite comparison", evaluation_suite_comparison_detects_regressions);
     run("bounded evaluator", bounds_uncooperative_evaluators);
     run("limits and configuration", enforces_candidate_limits_and_activation_configuration);

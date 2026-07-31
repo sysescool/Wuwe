@@ -39,11 +39,16 @@ enum class fan_out_item_status {
 
 [[nodiscard]] inline std::string to_string(fan_out_item_status value) {
   switch (value) {
-    case fan_out_item_status::completed: return "completed";
-    case fan_out_item_status::failed: return "failed";
-    case fan_out_item_status::cancelled: return "cancelled";
-    case fan_out_item_status::timed_out: return "timed_out";
-    case fan_out_item_status::skipped: return "skipped";
+    case fan_out_item_status::completed:
+      return "completed";
+    case fan_out_item_status::failed:
+      return "failed";
+    case fan_out_item_status::cancelled:
+      return "cancelled";
+    case fan_out_item_status::timed_out:
+      return "timed_out";
+    case fan_out_item_status::skipped:
+      return "skipped";
   }
   return "unknown";
 }
@@ -57,10 +62,14 @@ enum class fan_out_stop_reason {
 
 [[nodiscard]] inline std::string to_string(fan_out_stop_reason value) {
   switch (value) {
-    case fan_out_stop_reason::none: return "none";
-    case fan_out_stop_reason::cancelled: return "cancelled";
-    case fan_out_stop_reason::timed_out: return "timed_out";
-    case fan_out_stop_reason::fail_fast: return "fail_fast";
+    case fan_out_stop_reason::none:
+      return "none";
+    case fan_out_stop_reason::cancelled:
+      return "cancelled";
+    case fan_out_stop_reason::timed_out:
+      return "timed_out";
+    case fan_out_stop_reason::fail_fast:
+      return "fail_fast";
   }
   return "unknown";
 }
@@ -69,6 +78,7 @@ struct fan_out_options {
   std::size_t max_concurrency { 4 };
   fan_out_failure_mode failure_mode { fan_out_failure_mode::collect_all };
   std::chrono::milliseconds timeout { 0 };
+  std::optional<std::chrono::steady_clock::time_point> deadline;
 };
 
 struct fan_out_context {
@@ -124,8 +134,7 @@ struct fan_out_result {
   std::size_t detached_count { 0 };
 
   [[nodiscard]] explicit operator bool() const noexcept {
-    return stop_reason == fan_out_stop_reason::none &&
-           completed_count == items.size();
+    return stop_reason == fan_out_stop_reason::none && completed_count == items.size();
   }
 
   [[nodiscard]] bool partial_success() const noexcept {
@@ -143,9 +152,7 @@ namespace detail {
 
 template<typename Branch, typename Input>
 decltype(auto) invoke_fan_out_branch(
-  const Branch& branch,
-  const Input& input,
-  const fan_out_context& context) {
+  const Branch& branch, const Input& input, const fan_out_context& context) {
   if constexpr (std::is_invocable_v<const Branch&, const Input&, const fan_out_context&>) {
     return std::invoke(branch, input, context);
   }
@@ -161,21 +168,15 @@ decltype(auto) invoke_fan_out_branch(
 }
 
 template<typename Branch, typename Input>
-using fan_out_raw_result_t = decltype(invoke_fan_out_branch(
-  std::declval<const Branch&>(),
-  std::declval<const Input&>(),
-  std::declval<const fan_out_context&>()));
+using fan_out_raw_result_t = decltype(invoke_fan_out_branch(std::declval<const Branch&>(),
+  std::declval<const Input&>(), std::declval<const fan_out_context&>()));
 
 template<typename T>
-using fan_out_value_t = std::conditional_t<
-  std::is_void_v<T>, std::monostate, std::decay_t<T>>;
+using fan_out_value_t = std::conditional_t<std::is_void_v<T>, std::monostate, std::decay_t<T>>;
 
 template<typename Result, std::size_t I = 0, typename Tuple, typename Input>
 Result invoke_fan_out_branch_at(
-  std::size_t index,
-  const Tuple& branches,
-  const Input& input,
-  const fan_out_context& context) {
+  std::size_t index, const Tuple& branches, const Input& input, const fan_out_context& context) {
   if constexpr (I < std::tuple_size_v<Tuple>) {
     if (index == I) {
       using branch_type = std::tuple_element_t<I, Tuple>;
@@ -190,8 +191,7 @@ Result invoke_fan_out_branch_at(
         return invoke_fan_out_branch(std::get<I>(branches), input, context);
       }
     }
-    return invoke_fan_out_branch_at<Result, I + 1>(
-      index, branches, input, context);
+    return invoke_fan_out_branch_at<Result, I + 1>(index, branches, input, context);
   }
   else {
     throw std::out_of_range("fan_out branch index is out of range");
@@ -211,10 +211,7 @@ struct fan_out_internal_item {
 template<typename T>
 struct fan_out_execution_state {
   fan_out_execution_state(std::size_t count, fan_out_options value)
-      : options(std::move(value)),
-        items(count),
-        launched(count, false),
-        finished(count, false) {
+      : options(std::move(value)), items(count), launched(count, false), finished(count, false) {
     for (std::size_t index = 0; index < count; ++index) {
       items[index].index = index;
     }
@@ -233,8 +230,7 @@ struct fan_out_execution_state {
 };
 
 template<typename T>
-void record_fan_out_item(
-  const std::shared_ptr<fan_out_execution_state<T>>& state,
+void record_fan_out_item(const std::shared_ptr<fan_out_execution_state<T>>& state,
   fan_out_internal_item<T> item) noexcept {
   bool request_stop = false;
   {
@@ -252,9 +248,8 @@ void record_fan_out_item(
       state->stop_reason = fan_out_stop_reason::timed_out;
       request_stop = true;
     }
-    else if (failed &&
-        state->options.failure_mode == fan_out_failure_mode::fail_fast &&
-        state->stop_reason == fan_out_stop_reason::none) {
+    else if (failed && state->options.failure_mode == fan_out_failure_mode::fail_fast &&
+             state->stop_reason == fan_out_stop_reason::none) {
       state->stop_reason = fan_out_stop_reason::fail_fast;
       request_stop = true;
     }
@@ -266,10 +261,8 @@ void record_fan_out_item(
 }
 
 template<typename T, typename Invoker>
-void execute_fan_out_item(
-  const std::shared_ptr<fan_out_execution_state<T>>& state,
-  const std::shared_ptr<const Invoker>& invoker,
-  std::size_t index,
+void execute_fan_out_item(const std::shared_ptr<fan_out_execution_state<T>>& state,
+  const std::shared_ptr<const Invoker>& invoker, std::size_t index,
   const std::optional<std::chrono::steady_clock::time_point>& deadline) noexcept {
   const auto started = std::chrono::steady_clock::now();
   fan_out_internal_item<T> item { .index = index };
@@ -299,8 +292,7 @@ void execute_fan_out_item(
     item.error = "fan_out branch failed with an unknown exception";
   }
   const auto finished_at = std::chrono::steady_clock::now();
-  item.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-    finished_at - started);
+  item.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(finished_at - started);
   if (deadline && finished_at >= *deadline) {
     item.status = fan_out_item_status::timed_out;
     item.value.reset();
@@ -313,37 +305,30 @@ void execute_fan_out_item(
 
 template<typename T>
 fan_out_item_result<T> interrupted_fan_out_item(
-  std::size_t index,
-  fan_out_stop_reason reason,
-  bool detached) {
+  std::size_t index, fan_out_stop_reason reason, bool detached) {
   fan_out_item_result<T> item {
     .index = index,
-    .status = reason == fan_out_stop_reason::timed_out
-                ? fan_out_item_status::timed_out
-                : fan_out_item_status::cancelled,
+    .status = reason == fan_out_stop_reason::timed_out ? fan_out_item_status::timed_out
+                                                       : fan_out_item_status::cancelled,
     .detached = detached,
   };
   if (reason == fan_out_stop_reason::timed_out) {
-    item.error = detached
-                   ? "fan_out branch exceeded the operation timeout and remains detached"
-                   : "fan_out branch exceeded the operation timeout";
+    item.error = detached ? "fan_out branch exceeded the operation timeout and remains detached"
+                          : "fan_out branch exceeded the operation timeout";
   }
   else if (reason == fan_out_stop_reason::fail_fast) {
-    item.error = detached
-                   ? "fan_out branch cancelled after fail-fast and remains detached"
-                   : "fan_out branch cancelled after fail-fast";
+    item.error = detached ? "fan_out branch cancelled after fail-fast and remains detached"
+                          : "fan_out branch cancelled after fail-fast";
   }
   else {
-    item.error = detached
-                   ? "fan_out branch cancelled and remains detached"
-                   : "fan_out branch cancelled";
+    item.error =
+      detached ? "fan_out branch cancelled and remains detached" : "fan_out branch cancelled";
   }
   return item;
 }
 
 template<typename T, typename Invoker>
-void run_fan_out_worker(
-  const std::shared_ptr<fan_out_execution_state<T>>& state,
+void run_fan_out_worker(const std::shared_ptr<fan_out_execution_state<T>>& state,
   const std::shared_ptr<const Invoker>& invoker,
   const std::optional<std::chrono::steady_clock::time_point>& deadline) noexcept {
   for (;;) {
@@ -374,11 +359,8 @@ void run_fan_out_worker(
 }
 
 template<typename T, typename Invoker>
-fan_out_result<T> run_fan_out(
-  std::size_t count,
-  fan_out_options options,
-  const std::shared_ptr<const Invoker>& invoker,
-  std::stop_token external_stop_token) {
+fan_out_result<T> run_fan_out(std::size_t count, fan_out_options options,
+  const std::shared_ptr<const Invoker>& invoker, std::stop_token external_stop_token) {
   if (options.max_concurrency == 0) {
     throw std::invalid_argument("fan_out max_concurrency must be greater than zero");
   }
@@ -387,29 +369,31 @@ fan_out_result<T> run_fan_out(
   }
 
   const auto started = std::chrono::steady_clock::now();
-  const auto deadline = options.timeout.count() == 0
-                          ? std::optional<std::chrono::steady_clock::time_point> {}
-                          : std::optional(started + options.timeout);
+  auto deadline = options.deadline;
+  if (options.timeout.count() > 0) {
+    const auto relative_deadline = started + options.timeout;
+    if (!deadline || relative_deadline < *deadline) {
+      deadline = relative_deadline;
+    }
+  }
   auto state = std::make_shared<fan_out_execution_state<T>>(count, std::move(options));
   std::optional<std::stop_callback<std::function<void()>>> external_stop;
   if (external_stop_token.stop_possible()) {
-    external_stop.emplace(
-      external_stop_token,
-      std::function<void()>([state] {
-        bool request_stop = false;
-        {
-          std::scoped_lock lock(state->mutex);
-          if (state->stop_reason == fan_out_stop_reason::none &&
-              state->finished_count != state->items.size()) {
-            state->stop_reason = fan_out_stop_reason::cancelled;
-            request_stop = true;
-          }
+    external_stop.emplace(external_stop_token, std::function<void()>([state] {
+      bool request_stop = false;
+      {
+        std::scoped_lock lock(state->mutex);
+        if (state->stop_reason == fan_out_stop_reason::none &&
+            state->finished_count != state->items.size()) {
+          state->stop_reason = fan_out_stop_reason::cancelled;
+          request_stop = true;
         }
-        if (request_stop) {
-          state->stop_source.request_stop();
-        }
-        state->condition.notify_all();
-      }));
+      }
+      if (request_stop) {
+        state->stop_source.request_stop();
+      }
+      state->condition.notify_all();
+    }));
   }
 
   std::size_t workers_started = 0;
@@ -419,14 +403,13 @@ fan_out_result<T> run_fan_out(
   for (std::size_t index = 0; index < worker_count; ++index) {
     try {
       std::thread worker(
-        [state, invoker, deadline] {
-          run_fan_out_worker(state, invoker, deadline);
-        });
+        [state, invoker, deadline] { run_fan_out_worker(state, invoker, deadline); });
       try {
         worker.detach();
       }
       catch (...) {
-        if (worker.joinable()) worker.join();
+        if (worker.joinable())
+          worker.join();
       }
       ++workers_started;
     }
@@ -457,14 +440,12 @@ fan_out_result<T> run_fan_out(
   {
     std::unique_lock lock(state->mutex);
     const auto finished = [&] {
-      return state->finished_count == count ||
-             (state->stop_reason != fan_out_stop_reason::none &&
-              state->stop_source.stop_requested());
+      return state->finished_count == count || (state->stop_reason != fan_out_stop_reason::none &&
+                                                 state->stop_source.stop_requested());
     };
     if (deadline) {
       if (!state->condition.wait_until(lock, *deadline, finished) &&
-          state->finished_count != count &&
-          state->stop_reason == fan_out_stop_reason::none) {
+          state->finished_count != count && state->stop_reason == fan_out_stop_reason::none) {
         state->stop_reason = fan_out_stop_reason::timed_out;
         request_timeout_stop = true;
       }
@@ -511,15 +492,13 @@ fan_out_result<T> run_fan_out(
         output.items.push_back(std::move(item));
       }
       else if (state->launched[index]) {
-        output.items.push_back(interrupted_fan_out_item<T>(
-          index, state->stop_reason, true));
+        output.items.push_back(interrupted_fan_out_item<T>(index, state->stop_reason, true));
       }
       else {
         output.items.push_back({
           .index = index,
           .status = fan_out_item_status::skipped,
-          .error = "fan_out branch was not started after " +
-                   to_string(state->stop_reason),
+          .error = "fan_out branch was not started after " + to_string(state->stop_reason),
         });
       }
     }
@@ -528,11 +507,21 @@ fan_out_result<T> run_fan_out(
     std::chrono::steady_clock::now() - started);
   for (const auto& item : output.items) {
     switch (item.status) {
-      case fan_out_item_status::completed: ++output.completed_count; break;
-      case fan_out_item_status::failed: ++output.failed_count; break;
-      case fan_out_item_status::cancelled: ++output.cancelled_count; break;
-      case fan_out_item_status::timed_out: ++output.timed_out_count; break;
-      case fan_out_item_status::skipped: ++output.skipped_count; break;
+      case fan_out_item_status::completed:
+        ++output.completed_count;
+        break;
+      case fan_out_item_status::failed:
+        ++output.failed_count;
+        break;
+      case fan_out_item_status::cancelled:
+        ++output.cancelled_count;
+        break;
+      case fan_out_item_status::timed_out:
+        ++output.timed_out_count;
+        break;
+      case fan_out_item_status::skipped:
+        ++output.skipped_count;
+        break;
     }
     if (item.detached) {
       ++output.detached_count;
@@ -548,8 +537,7 @@ class fan_out_step {
 public:
   fan_out_step(fan_out_options options, Branches... branches)
       : options_(std::move(options)),
-        branches_(std::make_shared<const std::tuple<Branches...>>(
-          std::move(branches)...)) {
+        branches_(std::make_shared<const std::tuple<Branches...>>(std::move(branches)...)) {
     static_assert(sizeof...(Branches) != 0, "fan_out requires at least one branch");
     if (options_.max_concurrency == 0) {
       throw std::invalid_argument("fan_out max_concurrency must be greater than zero");
@@ -574,28 +562,24 @@ public:
     using input_type = std::decay_t<T>;
     using tuple_type = std::tuple<Branches...>;
     using first_branch = std::tuple_element_t<0, tuple_type>;
-    using result_type = detail::fan_out_value_t<
-      detail::fan_out_raw_result_t<first_branch, input_type>>;
-    static_assert((std::is_same_v<
-                    result_type,
-                    detail::fan_out_value_t<
-                      detail::fan_out_raw_result_t<Branches, input_type>>> && ...),
+    using result_type =
+      detail::fan_out_value_t<detail::fan_out_raw_result_t<first_branch, input_type>>;
+    static_assert((std::is_same_v<result_type,
+                     detail::fan_out_value_t<detail::fan_out_raw_result_t<Branches, input_type>>> &&
+                    ...),
       "all fan_out branches must return the same value type");
     static_assert(std::is_move_constructible_v<result_type>,
       "fan_out result values must be move constructible");
 
     auto stable_input = std::make_shared<const input_type>(std::forward<T>(input));
-    using invoker_type =
-      std::function<result_type(std::size_t, const fan_out_context&)>;
-    auto invoker = std::make_shared<const invoker_type>(
-      [branches = branches_, stable_input](
-        std::size_t index,
-        const fan_out_context& context) -> result_type {
+    using invoker_type = std::function<result_type(std::size_t, const fan_out_context&)>;
+    auto invoker =
+      std::make_shared<const invoker_type>([branches = branches_, stable_input](std::size_t index,
+                                             const fan_out_context& context) -> result_type {
         return detail::invoke_fan_out_branch_at<result_type>(
           index, *branches, *stable_input, context);
       });
-    return detail::run_fan_out<result_type>(
-      sizeof...(Branches), options_, invoker, stop_token);
+    return detail::run_fan_out<result_type>(sizeof...(Branches), options_, invoker, stop_token);
   }
 
 private:
@@ -613,18 +597,14 @@ auto fan_out(fan_out_options options, Branches&&... branches) {
 template<typename First, typename... Rest>
   requires(!std::is_same_v<std::decay_t<First>, fan_out_options>)
 auto fan_out(First&& first, Rest&&... rest) {
-  return fan_out(
-    fan_out_options {},
-    std::forward<First>(first),
-    std::forward<Rest>(rest)...);
+  return fan_out(fan_out_options {}, std::forward<First>(first), std::forward<Rest>(rest)...);
 }
 
 template<typename Worker>
 class fan_out_each_step {
 public:
   fan_out_each_step(fan_out_options options, Worker worker)
-      : options_(std::move(options)),
-        worker_(std::make_shared<const Worker>(std::move(worker))) {
+      : options_(std::move(options)), worker_(std::make_shared<const Worker>(std::move(worker))) {
     if (options_.max_concurrency == 0) {
       throw std::invalid_argument("fan_out_each max_concurrency must be greater than zero");
     }
@@ -646,37 +626,32 @@ public:
   template<typename Range>
   auto run(Range&& input, std::stop_token stop_token = {}) const {
     using range_type = std::decay_t<Range>;
-    static_assert(requires(const range_type& value, std::size_t index) {
-      value.size();
-      value[index];
-    }, "fan_out_each input must be a sized random-access range");
-    using item_type = std::remove_cvref_t<decltype(
-      std::declval<const range_type&>()[std::declval<std::size_t>()])>;
-    using result_type = detail::fan_out_value_t<
-      detail::fan_out_raw_result_t<Worker, item_type>>;
+    static_assert(
+      requires(const range_type& value, std::size_t index) {
+        value.size();
+        value[index];
+      }, "fan_out_each input must be a sized random-access range");
+    using item_type =
+      std::remove_cvref_t<decltype(std::declval<const range_type&>()[std::declval<std::size_t>()])>;
+    using result_type = detail::fan_out_value_t<detail::fan_out_raw_result_t<Worker, item_type>>;
     static_assert(std::is_move_constructible_v<result_type>,
       "fan_out_each result values must be move constructible");
 
     auto stable_input = std::make_shared<const range_type>(std::forward<Range>(input));
-    using invoker_type =
-      std::function<result_type(std::size_t, const fan_out_context&)>;
-    auto invoker = std::make_shared<const invoker_type>(
-      [worker = worker_, stable_input](
-        std::size_t index,
-        const fan_out_context& context) -> result_type {
+    using invoker_type = std::function<result_type(std::size_t, const fan_out_context&)>;
+    auto invoker =
+      std::make_shared<const invoker_type>([worker = worker_, stable_input](std::size_t index,
+                                             const fan_out_context& context) -> result_type {
         using raw_result = detail::fan_out_raw_result_t<Worker, item_type>;
         if constexpr (std::is_void_v<raw_result>) {
-          detail::invoke_fan_out_branch(
-            *worker, (*stable_input)[index], context);
+          detail::invoke_fan_out_branch(*worker, (*stable_input)[index], context);
           return {};
         }
         else {
-          return detail::invoke_fan_out_branch(
-            *worker, (*stable_input)[index], context);
+          return detail::invoke_fan_out_branch(*worker, (*stable_input)[index], context);
         }
       });
-    return detail::run_fan_out<result_type>(
-      stable_input->size(), options_, invoker, stop_token);
+    return detail::run_fan_out<result_type>(stable_input->size(), options_, invoker, stop_token);
   }
 
 private:
@@ -686,14 +661,12 @@ private:
 
 template<typename Worker>
 auto fan_out_each(fan_out_options options, Worker&& worker) {
-  return fan_out_each_step<std::decay_t<Worker>>(
-    std::move(options), std::forward<Worker>(worker));
+  return fan_out_each_step<std::decay_t<Worker>>(std::move(options), std::forward<Worker>(worker));
 }
 
 template<typename Worker>
 auto fan_out_each(Worker&& worker) {
-  return fan_out_each(
-    fan_out_options {}, std::forward<Worker>(worker));
+  return fan_out_each(fan_out_options {}, std::forward<Worker>(worker));
 }
 
 template<typename Reducer>
@@ -723,12 +696,11 @@ public:
     if (!result) {
       throw fan_out_error(
         "fan_in_all requires every fan_out branch to complete successfully; stop_reason=" +
-        to_string(result.stop_reason) + ", completed=" +
-        std::to_string(result.completed_count) + ", failed=" +
-        std::to_string(result.failed_count) + ", cancelled=" +
-        std::to_string(result.cancelled_count) + ", timed_out=" +
-        std::to_string(result.timed_out_count) + ", skipped=" +
-        std::to_string(result.skipped_count));
+        to_string(result.stop_reason) + ", completed=" + std::to_string(result.completed_count) +
+        ", failed=" + std::to_string(result.failed_count) +
+        ", cancelled=" + std::to_string(result.cancelled_count) +
+        ", timed_out=" + std::to_string(result.timed_out_count) +
+        ", skipped=" + std::to_string(result.skipped_count));
     }
     std::vector<T> output;
     output.reserve(result.items.size());

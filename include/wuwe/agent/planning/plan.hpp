@@ -1,10 +1,10 @@
 #ifndef WUWE_AGENT_PLANNING_PLAN_HPP
 #define WUWE_AGENT_PLANNING_PLAN_HPP
 
-#include <cstddef>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <map>
 #include <optional>
 #include <set>
@@ -31,18 +31,18 @@ enum class plan_step_status {
 
 inline std::string to_string(plan_step_status status) {
   switch (status) {
-  case plan_step_status::pending:
-    return "pending";
-  case plan_step_status::running:
-    return "running";
-  case plan_step_status::completed:
-    return "completed";
-  case plan_step_status::failed:
-    return "failed";
-  case plan_step_status::skipped:
-    return "skipped";
-  case plan_step_status::blocked:
-    return "blocked";
+    case plan_step_status::pending:
+      return "pending";
+    case plan_step_status::running:
+      return "running";
+    case plan_step_status::completed:
+      return "completed";
+    case plan_step_status::failed:
+      return "failed";
+    case plan_step_status::skipped:
+      return "skipped";
+    case plan_step_status::blocked:
+      return "blocked";
   }
   return "unknown";
 }
@@ -89,26 +89,26 @@ enum class plan_run_stop_reason {
 
 inline std::string to_string(plan_run_stop_reason reason) {
   switch (reason) {
-  case plan_run_stop_reason::none:
-    return "none";
-  case plan_run_stop_reason::completed:
-    return "completed";
-  case plan_run_stop_reason::failed:
-    return "failed";
-  case plan_run_stop_reason::blocked:
-    return "blocked";
-  case plan_run_stop_reason::approval_required:
-    return "approval_required";
-  case plan_run_stop_reason::no_ready_step:
-    return "no_ready_step";
-  case plan_run_stop_reason::max_iterations:
-    return "max_iterations";
-  case plan_run_stop_reason::step_budget_exhausted:
-    return "step_budget_exhausted";
-  case plan_run_stop_reason::run_timeout:
-    return "run_timeout";
-  case plan_run_stop_reason::cancelled:
-    return "cancelled";
+    case plan_run_stop_reason::none:
+      return "none";
+    case plan_run_stop_reason::completed:
+      return "completed";
+    case plan_run_stop_reason::failed:
+      return "failed";
+    case plan_run_stop_reason::blocked:
+      return "blocked";
+    case plan_run_stop_reason::approval_required:
+      return "approval_required";
+    case plan_run_stop_reason::no_ready_step:
+      return "no_ready_step";
+    case plan_run_stop_reason::max_iterations:
+      return "max_iterations";
+    case plan_run_stop_reason::step_budget_exhausted:
+      return "step_budget_exhausted";
+    case plan_run_stop_reason::run_timeout:
+      return "run_timeout";
+    case plan_run_stop_reason::cancelled:
+      return "cancelled";
   }
   return "unknown";
 }
@@ -313,9 +313,8 @@ struct plan_repair_options {
 namespace detail {
 
 inline bool contains_tool(const std::vector<llm_tool>& tools, const std::string& name) {
-  return std::any_of(tools.begin(), tools.end(), [&](const llm_tool& tool) {
-    return tool.name == name;
-  });
+  return std::any_of(
+    tools.begin(), tools.end(), [&](const llm_tool& tool) { return tool.name == name; });
 }
 
 inline bool contains_agent(const std::vector<std::string>& agents, const std::string& name) {
@@ -335,10 +334,8 @@ inline bool looks_like_json_object(const std::string& value) {
   }
 }
 
-inline bool has_dependency_cycle_from(
-  const std::string& id,
-  const std::map<std::string, std::vector<std::string>>& graph,
-  std::set<std::string>& visiting,
+inline bool has_dependency_cycle_from(const std::string& id,
+  const std::map<std::string, std::vector<std::string>>& graph, std::set<std::string>& visiting,
   std::set<std::string>& visited) {
   if (visited.contains(id)) {
     return false;
@@ -407,15 +404,14 @@ public:
         add_error("empty_step", "step must have a title or description", step.id);
       }
       if (step.approved && !step.requires_approval) {
-        add_error("approval_without_gate", "step approval is set but approval is not required", step.id);
+        add_error(
+          "approval_without_gate", "step approval is set but approval is not required", step.id);
       }
       if (!std::isfinite(step.priority) || !std::isfinite(step.urgency) ||
           !std::isfinite(step.expected_value) || !std::isfinite(step.estimated_cost)) {
-        add_error("invalid_priority_signal",
-          "step priority signals must be finite", step.id);
+        add_error("invalid_priority_signal", "step priority signals must be finite", step.id);
       }
-      if (step.urgency < 0.0 || step.expected_value < 0.0 ||
-          step.estimated_cost < 0.0) {
+      if (step.urgency < 0.0 || step.expected_value < 0.0 || step.estimated_cost < 0.0) {
         add_error("negative_priority_signal",
           "step urgency, expected value, and estimated cost must not be negative",
           step.id);
@@ -440,7 +436,8 @@ public:
         add_error("unknown_tool", "step assigned unknown tool: " + *step.assigned_tool, step.id);
       }
 
-      if (step.assigned_agent && options_.require_known_agents && !options_.available_agents.empty() &&
+      if (step.assigned_agent && options_.require_known_agents &&
+          !options_.available_agents.empty() &&
           !detail::contains_agent(options_.available_agents, *step.assigned_agent)) {
         add_error("unknown_agent", "step assigned unknown agent: " + *step.assigned_agent, step.id);
       }
@@ -512,7 +509,8 @@ public:
           !detail::contains_tool(options_.available_tools, *step.assigned_tool)) {
         step.assigned_tool.reset();
       }
-      if (options_.clear_unknown_agents && step.assigned_agent && !options_.available_agents.empty() &&
+      if (options_.clear_unknown_agents && step.assigned_agent &&
+          !options_.available_agents.empty() &&
           !detail::contains_agent(options_.available_agents, *step.assigned_agent)) {
         step.assigned_agent.reset();
       }
@@ -524,8 +522,7 @@ private:
 };
 
 inline plan_validation_result validate_plan(
-  const plan& value,
-  plan_validation_options options = {}) {
+  const plan& value, plan_validation_options options = {}) {
   return plan_validator(std::move(options)).validate(value);
 }
 
@@ -574,7 +571,8 @@ public:
       { "input", step.input },
       { "input_json", step.input_json.is_discarded() ? nlohmann::json(nullptr) : step.input_json },
       { "output", step.output },
-      { "output_json", step.output_json.is_discarded() ? nlohmann::json(nullptr) : step.output_json },
+      { "output_json",
+        step.output_json.is_discarded() ? nlohmann::json(nullptr) : step.output_json },
       { "error", step.error },
       { "attempts", step.attempts },
       { "produced_artifacts", step.produced_artifacts },
@@ -584,10 +582,11 @@ public:
       step.assigned_tool ? nlohmann::json(*step.assigned_tool) : nlohmann::json(nullptr);
     item["assigned_agent"] =
       step.assigned_agent ? nlohmann::json(*step.assigned_agent) : nlohmann::json(nullptr);
-    item["deadline_unix_ms"] = step.deadline
-      ? nlohmann::json(std::chrono::duration_cast<std::chrono::milliseconds>(
-          step.deadline->time_since_epoch()).count())
-      : nlohmann::json(nullptr);
+    item["deadline_unix_ms"] =
+      step.deadline ? nlohmann::json(std::chrono::duration_cast<std::chrono::milliseconds>(
+                        step.deadline->time_since_epoch())
+                                       .count())
+                    : nlohmann::json(nullptr);
     return item;
   }
 
@@ -629,8 +628,8 @@ public:
       step.assigned_agent = item.at("assigned_agent").get<std::string>();
     }
     if (item.contains("status") && item.at("status").is_string()) {
-      step.status =
-        plan_step_status_from_string(item.at("status").get<std::string>()).value_or(plan_step_status::pending);
+      step.status = plan_step_status_from_string(item.at("status").get<std::string>())
+                      .value_or(plan_step_status::pending);
     }
     step.input = item.value("input", std::string {});
     if (item.contains("input_json") && !item.at("input_json").is_null()) {
@@ -647,11 +646,8 @@ public:
     return step;
   }
 
-  static plan from_json(
-    const nlohmann::json& json,
-    std::string fallback_goal = {},
-    std::size_t max_steps = 0,
-    std::map<std::string, std::string> fallback_metadata = {}) {
+  static plan from_json(const nlohmann::json& json, std::string fallback_goal = {},
+    std::size_t max_steps = 0, std::map<std::string, std::string> fallback_metadata = {}) {
     plan output;
     output.id = json.value("id", std::string("plan-1"));
     output.goal = json.value("goal", std::move(fallback_goal));
@@ -672,11 +668,8 @@ public:
     return output;
   }
 
-  static plan from_json_string(
-    const std::string& content,
-    std::string fallback_goal = {},
-    std::size_t max_steps = 0,
-    std::map<std::string, std::string> fallback_metadata = {}) {
+  static plan from_json_string(const std::string& content, std::string fallback_goal = {},
+    std::size_t max_steps = 0, std::map<std::string, std::string> fallback_metadata = {}) {
     return from_json(nlohmann::json::parse(extract_json_object(content)),
       std::move(fallback_goal),
       max_steps,
@@ -700,20 +693,16 @@ inline plan_step plan_step_from_json(const nlohmann::json& item, std::size_t ind
   return plan_codec::step_from_json(item, index);
 }
 
-inline plan plan_from_json(
-  const nlohmann::json& json,
-  std::string fallback_goal = {},
-  std::size_t max_steps = 0,
-  std::map<std::string, std::string> fallback_metadata = {}) {
-  return plan_codec::from_json(json, std::move(fallback_goal), max_steps, std::move(fallback_metadata));
+inline plan plan_from_json(const nlohmann::json& json, std::string fallback_goal = {},
+  std::size_t max_steps = 0, std::map<std::string, std::string> fallback_metadata = {}) {
+  return plan_codec::from_json(
+    json, std::move(fallback_goal), max_steps, std::move(fallback_metadata));
 }
 
-inline plan plan_from_json_string(
-  const std::string& content,
-  std::string fallback_goal = {},
-  std::size_t max_steps = 0,
-  std::map<std::string, std::string> fallback_metadata = {}) {
-  return plan_codec::from_json_string(content, std::move(fallback_goal), max_steps, std::move(fallback_metadata));
+inline plan plan_from_json_string(const std::string& content, std::string fallback_goal = {},
+  std::size_t max_steps = 0, std::map<std::string, std::string> fallback_metadata = {}) {
+  return plan_codec::from_json_string(
+    content, std::move(fallback_goal), max_steps, std::move(fallback_metadata));
 }
 
 } // namespace wuwe::agent::planning

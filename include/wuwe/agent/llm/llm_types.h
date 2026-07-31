@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -19,18 +20,17 @@
 
 WUWE_NAMESPACE_BEGIN
 
+namespace agent::llm::detail {
+struct llm_request_runtime_context;
+}
+
 struct llm_tool {
   std::string name;
   std::string description;
   std::string parameters_json_schema { "{}" };
 };
 
-enum class llm_tool_choice_mode {
-  auto_,
-  none,
-  required,
-  named
-};
+enum class llm_tool_choice_mode { auto_, none, required, named };
 
 struct llm_tool_choice {
   llm_tool_choice_mode mode { llm_tool_choice_mode::auto_ };
@@ -55,13 +55,20 @@ enum class llm_context_source {
 
 inline std::string_view to_string(llm_context_source source) noexcept {
   switch (source) {
-    case llm_context_source::automatic: return "automatic";
-    case llm_context_source::system: return "system";
-    case llm_context_source::conversation: return "conversation";
-    case llm_context_source::memory: return "memory";
-    case llm_context_source::knowledge: return "knowledge";
-    case llm_context_source::tool_result: return "tool_result";
-    case llm_context_source::other: return "other";
+    case llm_context_source::automatic:
+      return "automatic";
+    case llm_context_source::system:
+      return "system";
+    case llm_context_source::conversation:
+      return "conversation";
+    case llm_context_source::memory:
+      return "memory";
+    case llm_context_source::knowledge:
+      return "knowledge";
+    case llm_context_source::tool_result:
+      return "tool_result";
+    case llm_context_source::other:
+      return "other";
   }
   return "automatic";
 }
@@ -81,10 +88,10 @@ enum class llm_context_overflow_policy {
   trim_low_priority,
 };
 
-inline std::string_view to_string(
-  llm_context_overflow_policy policy) noexcept {
+inline std::string_view to_string(llm_context_overflow_policy policy) noexcept {
   switch (policy) {
-    case llm_context_overflow_policy::reject: return "reject";
+    case llm_context_overflow_policy::reject:
+      return "reject";
     case llm_context_overflow_policy::trim_low_priority:
       return "trim_low_priority";
   }
@@ -96,9 +103,7 @@ struct llm_context_budget {
   std::size_t reserved_output_tokens { 1024 };
   std::size_t minimum_recent_conversation_messages { 2 };
   llm_context_component_limits limits;
-  llm_context_overflow_policy overflow {
-    llm_context_overflow_policy::trim_low_priority
-  };
+  llm_context_overflow_policy overflow { llm_context_overflow_policy::trim_low_priority };
   bool allow_system_truncation { false };
 };
 
@@ -137,9 +142,12 @@ enum class llm_cache_mode {
 
 inline std::string_view to_string(llm_cache_mode mode) noexcept {
   switch (mode) {
-    case llm_cache_mode::provider_default: return "provider_default";
-    case llm_cache_mode::disabled: return "disabled";
-    case llm_cache_mode::enabled: return "enabled";
+    case llm_cache_mode::provider_default:
+      return "provider_default";
+    case llm_cache_mode::disabled:
+      return "disabled";
+    case llm_cache_mode::enabled:
+      return "enabled";
   }
   return "provider_default";
 }
@@ -187,8 +195,7 @@ inline std::string effective_reasoning_language(const llm_language_preferences& 
 }
 
 inline bool has_language_preferences(const llm_language_preferences& preferences) {
-  return !preferences.response_language.empty() ||
-         !preferences.reasoning_language.empty() ||
+  return !preferences.response_language.empty() || !preferences.reasoning_language.empty() ||
          !preferences.locale.empty();
 }
 
@@ -242,6 +249,10 @@ struct llm_request {
   llm_cache_mode cache_mode { llm_cache_mode::provider_default };
   std::optional<agent::core::agent_execution_context> execution_context;
   std::optional<llm_context_budget> context_budget;
+  std::string provider;
+  // Opaque framework-owned, request-scoped state. It is intentionally not
+  // serialized and must not be used as application metadata.
+  std::shared_ptr<const agent::llm::detail::llm_request_runtime_context> runtime_context;
 };
 
 struct llm_usage {
@@ -319,13 +330,13 @@ inline std::string primary_language_subtag(std::string_view language) {
     if (ch == '-' || ch == '_') {
       break;
     }
-    output.push_back(static_cast<char>(
-      std::tolower(static_cast<unsigned char>(ch))));
+    output.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
   }
   return output;
 }
 
-inline bool utf8_next_codepoint(std::string_view text, std::size_t& index, unsigned int& codepoint) {
+inline bool utf8_next_codepoint(
+  std::string_view text, std::size_t& index, unsigned int& codepoint) {
   const auto first = static_cast<unsigned char>(text[index]);
   if (first < 0x80) {
     codepoint = first;
@@ -395,8 +406,7 @@ inline std::string detect_reasoning_language(std::string_view text) {
     if (is_cjk_codepoint(codepoint)) {
       has_cjk = true;
     }
-    if (codepoint < 0x80 &&
-        std::isalpha(static_cast<unsigned char>(codepoint))) {
+    if (codepoint < 0x80 && std::isalpha(static_cast<unsigned char>(codepoint))) {
       ++ascii_letters;
       if (!in_ascii_word) {
         ++ascii_words;
@@ -424,8 +434,7 @@ inline bool language_tags_match(std::string_view requested, std::string_view det
 }
 
 inline std::map<std::string, std::string> make_reasoning_language_metadata(
-  const llm_language_preferences& preferences,
-  llm_reasoning_language_control control,
+  const llm_language_preferences& preferences, llm_reasoning_language_control control,
   std::string_view sample) {
   std::map<std::string, std::string> metadata;
   const auto response_language = effective_response_language(preferences);
@@ -456,29 +465,21 @@ inline std::map<std::string, std::string> make_reasoning_language_metadata(
   return metadata;
 }
 
-inline void merge_reasoning_language_metadata(
-  std::map<std::string, std::string>& destination,
-  const llm_language_preferences& preferences,
-  llm_reasoning_language_control control,
+inline void merge_reasoning_language_metadata(std::map<std::string, std::string>& destination,
+  const llm_language_preferences& preferences, llm_reasoning_language_control control,
   std::string_view sample) {
-  for (const auto& [key, value] :
-       make_reasoning_language_metadata(preferences, control, sample)) {
+  for (const auto& [key, value] : make_reasoning_language_metadata(preferences, control, sample)) {
     destination[key] = value;
   }
 }
 
-inline void apply_reasoning_language_metadata(
-  llm_response& response,
-  const llm_language_preferences& preferences,
-  llm_reasoning_language_control control) {
+inline void apply_reasoning_language_metadata(llm_response& response,
+  const llm_language_preferences& preferences, llm_reasoning_language_control control) {
   if (response.reasoning_summary.empty()) {
     return;
   }
   merge_reasoning_language_metadata(
-    response.reasoning_metadata,
-    preferences,
-    control,
-    response.reasoning_summary);
+    response.reasoning_metadata, preferences, control, response.reasoning_summary);
 }
 
 WUWE_NAMESPACE_END

@@ -65,8 +65,7 @@ struct http_knowledge_query_rewriter_config {
 
 class http_knowledge_query_rewriter final : public knowledge_query_rewriter {
 public:
-  http_knowledge_query_rewriter(
-    http_knowledge_query_rewriter_config config,
+  http_knowledge_query_rewriter(http_knowledge_query_rewriter_config config,
     std::shared_ptr<::wuwe::http_client> http = std::make_shared<::wuwe::default_http_client>())
       : config_(std::move(config)), http_(std::move(http)) {
     if (config_.endpoint_url.empty()) {
@@ -105,9 +104,9 @@ public:
       throw std::runtime_error("http knowledge query rewriter received invalid JSON");
     }
 
-    const auto& items = data.is_array()
-                          ? data
-                          : data.contains("rewrites") ? data["rewrites"] : nlohmann::json::array();
+    const auto& items = data.is_array()             ? data
+                        : data.contains("rewrites") ? data["rewrites"]
+                                                    : nlohmann::json::array();
     if (!items.is_array()) {
       throw std::runtime_error("http knowledge query rewriter expected rewrites array");
     }
@@ -141,13 +140,13 @@ struct llm_knowledge_query_rewriter_config {
     "Rewrite the user's retrieval query into short alternative search queries. "
     "Return only a JSON array of strings. Do not include explanations."
   };
+  std::string provider;
 };
 
 class llm_knowledge_query_rewriter final : public knowledge_query_rewriter {
 public:
   llm_knowledge_query_rewriter(
-    std::shared_ptr<::wuwe::llm_client> client,
-    llm_knowledge_query_rewriter_config config = {})
+    std::shared_ptr<::wuwe::llm_client> client, llm_knowledge_query_rewriter_config config = {})
       : client_(std::move(client)), config_(std::move(config)) {
     if (!client_) {
       throw std::invalid_argument("llm_knowledge_query_rewriter requires llm_client");
@@ -155,12 +154,12 @@ public:
   }
 
   std::vector<std::string> rewrite(const std::string& query) const override {
-    auto request =
-      ::wuwe::make_message()
-      << ("system" < ::wuwe::says > config_.system_prompt)
-      << ("user" < ::wuwe::says >
-            ("Query: " + query + "\nMax rewrites: " + std::to_string(config_.max_rewrites)));
+    auto request = ::wuwe::make_message()
+                   << ("system" < ::wuwe::says > config_.system_prompt)
+                   << ("user" < ::wuwe::says > ("Query: " + query + "\nMax rewrites: " +
+                                                 std::to_string(config_.max_rewrites)));
     request.model = config_.model;
+    request.provider = config_.provider;
     request.temperature = config_.temperature;
 
     auto response = client_->complete(request);
@@ -174,8 +173,7 @@ public:
 
 private:
   static std::vector<std::string> parse_rewrites(
-    std::string_view content,
-    std::size_t max_rewrites) {
+    std::string_view content, std::size_t max_rewrites) {
     auto json_start = content.find('[');
     auto json_end = content.rfind(']');
     if (json_start == std::string_view::npos || json_end == std::string_view::npos ||

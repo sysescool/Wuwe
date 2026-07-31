@@ -7,9 +7,9 @@
 #include <string>
 #include <utility>
 
-#include <wuwe/agent/runtime/run_store.hpp>
 #include <wuwe/agent/core/filesystem.hpp>
 #include <wuwe/agent/core/sqlite_schema.hpp>
+#include <wuwe/agent/runtime/run_store.hpp>
 
 #if WUWE_HAS_SQLITE
 #include <sqlite3.h>
@@ -22,8 +22,7 @@ public:
 #if WUWE_HAS_SQLITE
   static constexpr int latest_schema_version = 1;
 
-  explicit sqlite_agent_run_store(std::filesystem::path path)
-      : path_(std::move(path)) {
+  explicit sqlite_agent_run_store(std::filesystem::path path) : path_(std::move(path)) {
     try {
       open();
       initialize_schema();
@@ -46,8 +45,7 @@ public:
   sqlite_agent_run_store(const sqlite_agent_run_store&) = delete;
   sqlite_agent_run_store& operator=(const sqlite_agent_run_store&) = delete;
 
-  [[nodiscard]] agent_run_store_capabilities capabilities()
-    const noexcept override {
+  [[nodiscard]] agent_run_store_capabilities capabilities() const noexcept override {
     return {
       .declared = true,
       .durable = true,
@@ -67,9 +65,7 @@ public:
     return current_schema_version().value_or(0);
   }
 
-  run_store_write_result create(
-    agent_run_record record,
-    agent_run_event event) override {
+  run_store_write_result create(agent_run_record record, agent_run_event event) override {
     if (record.id.empty()) {
       throw std::invalid_argument("agent run store requires a run id");
     }
@@ -92,11 +88,10 @@ public:
     event.sequence = record.revision;
     event.status = record.status;
     const auto document = agent_run_record_to_json(record).dump();
-    statement insert_run(db_,
-      "INSERT INTO agent_runs (id, revision, document_json) VALUES (?, ?, ?)");
+    statement insert_run(
+      db_, "INSERT INTO agent_runs (id, revision, document_json) VALUES (?, ?, ?)");
     bind_text(insert_run.get(), 1, record.id);
-    sqlite3_bind_int64(insert_run.get(), 2,
-      static_cast<sqlite3_int64>(record.revision));
+    sqlite3_bind_int64(insert_run.get(), 2, static_cast<sqlite3_int64>(record.revision));
     bind_text(insert_run.get(), 3, document);
     step_done(insert_run.get(), "create agent run");
     insert_event(event);
@@ -104,11 +99,9 @@ public:
     return { .revision = record.revision };
   }
 
-  std::optional<agent_run_record> load(
-    const std::string& run_id) const override {
+  std::optional<agent_run_record> load(const std::string& run_id) const override {
     std::scoped_lock lock(mutex_);
-    statement select(db_,
-      "SELECT document_json FROM agent_runs WHERE id = ?");
+    statement select(db_, "SELECT document_json FROM agent_runs WHERE id = ?");
     bind_text(select.get(), 1, run_id);
     const auto rc = sqlite3_step(select.get());
     if (rc == SQLITE_DONE) {
@@ -121,9 +114,7 @@ public:
   }
 
   run_store_write_result update(
-    std::uint64_t expected_revision,
-    agent_run_record record,
-    agent_run_event event) override {
+    std::uint64_t expected_revision, agent_run_record record, agent_run_event event) override {
     if (record.id.empty()) {
       throw std::invalid_argument("agent run store requires a run id");
     }
@@ -152,12 +143,10 @@ public:
     statement update_run(db_,
       "UPDATE agent_runs SET revision = ?, document_json = ? "
       "WHERE id = ? AND revision = ?");
-    sqlite3_bind_int64(update_run.get(), 1,
-      static_cast<sqlite3_int64>(record.revision));
+    sqlite3_bind_int64(update_run.get(), 1, static_cast<sqlite3_int64>(record.revision));
     bind_text(update_run.get(), 2, agent_run_record_to_json(record).dump());
     bind_text(update_run.get(), 3, record.id);
-    sqlite3_bind_int64(update_run.get(), 4,
-      static_cast<sqlite3_int64>(expected_revision));
+    sqlite3_bind_int64(update_run.get(), 4, static_cast<sqlite3_int64>(expected_revision));
     step_done(update_run.get(), "update agent run");
     if (sqlite3_changes(db_) != 1) {
       tx.rollback();
@@ -172,15 +161,13 @@ public:
   }
 
   std::vector<agent_run_event> list_events(
-    const std::string& run_id,
-    std::uint64_t after_sequence = 0) const override {
+    const std::string& run_id, std::uint64_t after_sequence = 0) const override {
     std::scoped_lock lock(mutex_);
     statement select(db_,
       "SELECT document_json FROM agent_run_events "
       "WHERE run_id = ? AND sequence > ? ORDER BY sequence ASC");
     bind_text(select.get(), 1, run_id);
-    sqlite3_bind_int64(select.get(), 2,
-      static_cast<sqlite3_int64>(after_sequence));
+    sqlite3_bind_int64(select.get(), 2, static_cast<sqlite3_int64>(after_sequence));
     std::vector<agent_run_event> output;
     while (true) {
       const auto rc = sqlite3_step(select.get());
@@ -202,8 +189,7 @@ private:
     statement(sqlite3* db, const char* sql) : db_(db) {
       if (sqlite3_prepare_v2(db_, sql, -1, &statement_, nullptr) != SQLITE_OK) {
         throw std::runtime_error(
-          "prepare sqlite agent run statement failed: " +
-          std::string(sqlite3_errmsg(db_)));
+          "prepare sqlite agent run statement failed: " + std::string(sqlite3_errmsg(db_)));
       }
     }
 
@@ -268,8 +254,7 @@ private:
         sqlite3_close(db_);
         db_ = nullptr;
       }
-      throw std::runtime_error(
-        "failed to open sqlite agent run store: " + owned_message);
+      throw std::runtime_error("failed to open sqlite agent run store: " + owned_message);
     }
     exec("PRAGMA foreign_keys = ON");
     exec("PRAGMA busy_timeout = 5000");
@@ -278,19 +263,20 @@ private:
 
   void initialize_schema() {
     transaction tx(*this);
-    exec(
-      "CREATE TABLE IF NOT EXISTS agent_runtime_schema ("
-      "component TEXT PRIMARY KEY, version INTEGER NOT NULL)");
-    core::validate_sqlite_table(db_, "agent_runtime_schema", {
-      { "component", "TEXT", false, 1 },
-      { "version", "INTEGER", true, 0 },
-    }, "sqlite agent run store");
+    exec("CREATE TABLE IF NOT EXISTS agent_runtime_schema ("
+         "component TEXT PRIMARY KEY, version INTEGER NOT NULL)");
+    core::validate_sqlite_table(db_,
+      "agent_runtime_schema",
+      {
+        { "component", "TEXT", false, 1 },
+        { "version", "INTEGER", true, 0 },
+      },
+      "sqlite agent run store");
     auto version = current_schema_version().value_or(0);
     if (version > latest_schema_version) {
-      throw std::runtime_error(
-        "sqlite agent run store schema version " + std::to_string(version) +
-        " is newer than supported version " +
-        std::to_string(latest_schema_version));
+      throw std::runtime_error("sqlite agent run store schema version " + std::to_string(version) +
+                               " is newer than supported version " +
+                               std::to_string(latest_schema_version));
     }
     while (version < latest_schema_version) {
       switch (version) {
@@ -300,8 +286,7 @@ private:
           break;
         default:
           throw std::runtime_error(
-            "no sqlite agent run store migration from version " +
-            std::to_string(version));
+            "no sqlite agent run store migration from version " + std::to_string(version));
       }
       set_schema_version(version);
     }
@@ -310,43 +295,52 @@ private:
   }
 
   void migrate_0_to_1() {
-    exec(
-      "CREATE TABLE IF NOT EXISTS agent_runs ("
-      "id TEXT PRIMARY KEY,"
-      "revision INTEGER NOT NULL,"
-      "document_json TEXT NOT NULL)");
-    exec(
-      "CREATE TABLE IF NOT EXISTS agent_run_events ("
-      "run_id TEXT NOT NULL,"
-      "sequence INTEGER NOT NULL,"
-      "document_json TEXT NOT NULL,"
-      "PRIMARY KEY (run_id, sequence),"
-      "FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE)");
+    exec("CREATE TABLE IF NOT EXISTS agent_runs ("
+         "id TEXT PRIMARY KEY,"
+         "revision INTEGER NOT NULL,"
+         "document_json TEXT NOT NULL)");
+    exec("CREATE TABLE IF NOT EXISTS agent_run_events ("
+         "run_id TEXT NOT NULL,"
+         "sequence INTEGER NOT NULL,"
+         "document_json TEXT NOT NULL,"
+         "PRIMARY KEY (run_id, sequence),"
+         "FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE)");
   }
 
   void validate_schema() const {
-    core::validate_sqlite_table(db_, "agent_runtime_schema", {
-      { "component", "TEXT", false, 1 },
-      { "version", "INTEGER", true, 0 },
-    }, "sqlite agent run store");
-    core::validate_sqlite_table(db_, "agent_runs", {
-      { "id", "TEXT", false, 1 },
-      { "revision", "INTEGER", true, 0 },
-      { "document_json", "TEXT", true, 0 },
-    }, "sqlite agent run store");
-    core::validate_sqlite_table(db_, "agent_run_events", {
-      { "run_id", "TEXT", true, 1 },
-      { "sequence", "INTEGER", true, 2 },
-      { "document_json", "TEXT", true, 0 },
-    }, "sqlite agent run store");
+    core::validate_sqlite_table(db_,
+      "agent_runtime_schema",
+      {
+        { "component", "TEXT", false, 1 },
+        { "version", "INTEGER", true, 0 },
+      },
+      "sqlite agent run store");
+    core::validate_sqlite_table(db_,
+      "agent_runs",
+      {
+        { "id", "TEXT", false, 1 },
+        { "revision", "INTEGER", true, 0 },
+        { "document_json", "TEXT", true, 0 },
+      },
+      "sqlite agent run store");
+    core::validate_sqlite_table(db_,
+      "agent_run_events",
+      {
+        { "run_id", "TEXT", true, 1 },
+        { "sequence", "INTEGER", true, 2 },
+        { "document_json", "TEXT", true, 0 },
+      },
+      "sqlite agent run store");
   }
 
   [[nodiscard]] std::optional<int> current_schema_version() const {
-    statement version(db_,
-      "SELECT version FROM agent_runtime_schema WHERE component = 'run_store'");
+    statement version(
+      db_, "SELECT version FROM agent_runtime_schema WHERE component = 'run_store'");
     const auto rc = sqlite3_step(version.get());
-    if (rc == SQLITE_DONE) return std::nullopt;
-    if (rc != SQLITE_ROW) throw_sqlite("read agent run schema version");
+    if (rc == SQLITE_DONE)
+      return std::nullopt;
+    if (rc != SQLITE_ROW)
+      throw_sqlite("read agent run schema version");
     return sqlite3_column_int(version.get(), 0);
   }
 
@@ -363,14 +357,12 @@ private:
       "INSERT INTO agent_run_events (run_id, sequence, document_json) "
       "VALUES (?, ?, ?)");
     bind_text(insert.get(), 1, event.run_id);
-    sqlite3_bind_int64(insert.get(), 2,
-      static_cast<sqlite3_int64>(event.sequence));
+    sqlite3_bind_int64(insert.get(), 2, static_cast<sqlite3_int64>(event.sequence));
     bind_text(insert.get(), 3, agent_run_event_to_json(event).dump());
     step_done(insert.get(), "insert agent run event");
   }
 
-  [[nodiscard]] std::optional<std::uint64_t> current_revision(
-    const std::string& run_id) const {
+  [[nodiscard]] std::optional<std::uint64_t> current_revision(const std::string& run_id) const {
     statement select(db_, "SELECT revision FROM agent_runs WHERE id = ?");
     bind_text(select.get(), 1, run_id);
     const auto rc = sqlite3_step(select.get());
@@ -397,8 +389,7 @@ private:
   }
 
   void throw_sqlite(const char* operation) const {
-    throw std::runtime_error(
-      std::string(operation) + " failed: " + sqlite3_errmsg(db_));
+    throw std::runtime_error(std::string(operation) + " failed: " + sqlite3_errmsg(db_));
   }
 
   void step_done(sqlite3_stmt* statement, const char* operation) const {
@@ -407,10 +398,9 @@ private:
     }
   }
 
-  static void bind_text(sqlite3_stmt* statement, int index,
-    const std::string& value) {
-    sqlite3_bind_text(statement, index, value.c_str(),
-      static_cast<int>(value.size()), SQLITE_TRANSIENT);
+  static void bind_text(sqlite3_stmt* statement, int index, const std::string& value) {
+    sqlite3_bind_text(
+      statement, index, value.c_str(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
   }
 
   static std::string column_text(sqlite3_stmt* statement, int column) {
@@ -423,18 +413,14 @@ private:
   mutable std::mutex mutex_;
 #else
   explicit sqlite_agent_run_store(std::filesystem::path) {
-    throw std::runtime_error(
-      "sqlite_agent_run_store requires WUWE_HAS_SQLITE=1");
+    throw std::runtime_error("sqlite_agent_run_store requires WUWE_HAS_SQLITE=1");
   }
 
-  [[nodiscard]] agent_run_store_capabilities capabilities()
-    const noexcept override {
+  [[nodiscard]] agent_run_store_capabilities capabilities() const noexcept override {
     return {};
   }
 
-  run_store_write_result create(
-    agent_run_record,
-    agent_run_event) override {
+  run_store_write_result create(agent_run_record, agent_run_event) override {
     return { .status = run_store_write_status::not_found };
   }
 
@@ -442,16 +428,11 @@ private:
     return std::nullopt;
   }
 
-  run_store_write_result update(
-    std::uint64_t,
-    agent_run_record,
-    agent_run_event) override {
+  run_store_write_result update(std::uint64_t, agent_run_record, agent_run_event) override {
     return { .status = run_store_write_status::not_found };
   }
 
-  std::vector<agent_run_event> list_events(
-    const std::string&,
-    std::uint64_t = 0) const override {
+  std::vector<agent_run_event> list_events(const std::string&, std::uint64_t = 0) const override {
     return {};
   }
 #endif

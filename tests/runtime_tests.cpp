@@ -20,8 +20,7 @@ namespace runtime_test_tools {
 inline std::atomic<int> executions { 0 };
 
 struct guarded_write {
-  static constexpr std::string_view description =
-    "Write a named value after explicit approval.";
+  static constexpr std::string_view description = "Write a named value after explicit approval.";
 
   std::string name;
   std::string value;
@@ -58,7 +57,9 @@ struct slow_read {
 struct invalid_contract_tool {
   static constexpr std::string_view description = "Invalid contract fixture.";
 
-  std::string invoke() const { return "unused"; }
+  std::string invoke() const {
+    return "unused";
+  }
 };
 
 } // namespace runtime_test_tools
@@ -68,8 +69,8 @@ namespace wuwe {
 template<>
 struct tool_contract<runtime_test_tools::guarded_write> {
   static agent::tools::tool_descriptor descriptor() {
-    auto value = agent::tools::descriptor_from_llm_tool(
-      make_llm_tool<runtime_test_tools::guarded_write>());
+    auto value =
+      agent::tools::descriptor_from_llm_tool(make_llm_tool<runtime_test_tools::guarded_write>());
     value.version = "2";
     value.side_effect = agent::tools::tool_side_effect::write;
     value.idempotency = agent::tools::tool_idempotency::idempotent_with_key;
@@ -86,8 +87,8 @@ struct tool_contract<runtime_test_tools::guarded_write> {
 template<>
 struct tool_contract<runtime_test_tools::slow_read> {
   static agent::tools::tool_descriptor descriptor() {
-    auto value = agent::tools::descriptor_from_llm_tool(
-      make_llm_tool<runtime_test_tools::slow_read>());
+    auto value =
+      agent::tools::descriptor_from_llm_tool(make_llm_tool<runtime_test_tools::slow_read>());
     value.timeout = std::chrono::milliseconds(20);
     return value;
   }
@@ -124,8 +125,7 @@ public:
     if (requests.size() == 1) {
       return {
         .content = "I will update the value.",
-        .usage = { .prompt_tokens = 8, .completion_tokens = 2,
-          .total_tokens = 10 },
+        .usage = { .prompt_tokens = 8, .completion_tokens = 2, .total_tokens = 10 },
         .tool_calls = { {
           .id = "write-1",
           .name = "guarded_write",
@@ -135,8 +135,7 @@ public:
     }
     return {
       .content = "Update completed.",
-      .usage = { .prompt_tokens = 5, .completion_tokens = 1,
-        .total_tokens = 6 },
+      .usage = { .prompt_tokens = 5, .completion_tokens = 1, .total_tokens = 6 },
     };
   }
 
@@ -172,8 +171,7 @@ public:
 
 class manual_approval_service final : public approval::approval_service {
 public:
-  approval::approval_decision decide(
-    const approval::approval_request& request) override {
+  approval::approval_decision decide(const approval::approval_request& request) override {
     last_request = request;
     return {
       .kind = approval::approval_decision_kind::needs_manual_review,
@@ -187,17 +185,19 @@ public:
 class metered_tool_loop_client final : public llm_client {
 public:
   explicit metered_tool_loop_client(
-    std::string tool_name = "read_value",
-    std::string call_id = "read-1")
-      : tool_name_(std::move(tool_name)), call_id_(std::move(call_id)) {}
+    std::string tool_name = "read_value", std::string call_id = "read-1")
+      : tool_name_(std::move(tool_name)), call_id_(std::move(call_id)) {
+  }
 
   llm_response complete(const llm_request& request) override {
     requests.push_back(request);
     if (requests.size() % 2 == 1) {
       return {
         .content = "reading",
-        .usage = { .prompt_tokens = 10, .completion_tokens = 4,
-          .total_tokens = 14, .cached_prompt_tokens = 2,
+        .usage = { .prompt_tokens = 10,
+          .completion_tokens = 4,
+          .total_tokens = 14,
+          .cached_prompt_tokens = 2,
           .reasoning_tokens = 1 },
         .tool_calls = { {
           .id = call_id_,
@@ -208,8 +208,10 @@ public:
     }
     return {
       .content = "done",
-      .usage = { .prompt_tokens = 6, .completion_tokens = 2,
-        .total_tokens = 8, .cached_prompt_tokens = 1 },
+      .usage = { .prompt_tokens = 6,
+        .completion_tokens = 2,
+        .total_tokens = 8,
+        .cached_prompt_tokens = 1 },
     };
   }
 
@@ -265,13 +267,10 @@ void execution_context_round_trips_without_runtime_only_state() {
     .deadline = std::chrono::system_clock::now() + std::chrono::minutes(1),
     .metadata = { { "region", "cn" } },
   };
-  const auto restored = core::execution_context_from_json(
-    core::execution_context_to_json(context));
-  require(restored.run_id == context.run_id &&
-      restored.trace_id == context.trace_id &&
-      restored.tenant_id == context.tenant_id &&
-      restored.metadata == context.metadata &&
-      restored.deadline.has_value(),
+  const auto restored = core::execution_context_from_json(core::execution_context_to_json(context));
+  require(restored.run_id == context.run_id && restored.trace_id == context.trace_id &&
+            restored.tenant_id == context.tenant_id && restored.metadata == context.metadata &&
+            restored.deadline.has_value(),
     "execution context should preserve durable identity and deadline fields");
   require(!restored.stop_token.stop_possible(),
     "serialized execution contexts must not pretend to persist cancellation tokens");
@@ -283,64 +282,65 @@ void run_store_enforces_optimistic_concurrency_and_idempotency() {
   auto record = runtime.start({ .run_id = "optimistic-run" });
   const auto running = runtime.transition(
     record.id, record.revision, runtime::agent_run_status::running, "run_started");
-  require(running && running.revision == 2,
-    "starting a run should advance its revision");
+  require(running && running.revision == 2, "starting a run should advance its revision");
   const auto stale = runtime.transition(
     record.id, record.revision, runtime::agent_run_status::cancelled, "stale_cancel");
-  require(stale.status == runtime::run_store_write_status::conflict &&
-      stale.revision == running.revision,
+  require(
+    stale.status == runtime::run_store_write_status::conflict && stale.revision == running.revision,
     "stale writes should return the current revision without mutation");
 
-  auto admitted = runtime.admit_tool_result(record.id, running.revision, {
-    .tool_call_id = "call-1",
-    .idempotency_key = "key-1",
-    .tool_name = "write",
-    .outcome = { .content = "ok" },
-  });
-  require(admitted && !admitted.duplicate,
-    "the first tool result should be admitted");
-  auto duplicate = runtime.admit_tool_result(record.id, running.revision, {
-    .tool_call_id = "call-1",
-    .idempotency_key = "key-1",
-    .tool_name = "write",
-    .outcome = { .content = "different" },
-  });
-  require(duplicate && duplicate.duplicate &&
-      duplicate.revision == admitted.revision &&
-      duplicate.result->outcome.content == "ok",
+  auto admitted = runtime.admit_tool_result(record.id,
+    running.revision,
+    {
+      .tool_call_id = "call-1",
+      .idempotency_key = "key-1",
+      .tool_name = "write",
+      .outcome = { .content = "ok" },
+    });
+  require(admitted && !admitted.duplicate, "the first tool result should be admitted");
+  auto duplicate = runtime.admit_tool_result(record.id,
+    running.revision,
+    {
+      .tool_call_id = "call-1",
+      .idempotency_key = "key-1",
+      .tool_name = "write",
+      .outcome = { .content = "different" },
+    });
+  require(duplicate && duplicate.duplicate && duplicate.revision == admitted.revision &&
+            duplicate.result->outcome.content == "ok",
     "a stale duplicate admission should return the original result without a new event");
 
-  const auto cancelled = runtime.cancel(
-    record.id, admitted.revision, "cancelled by operator");
-  require(cancelled &&
-      runtime.get(record.id)->status == runtime::agent_run_status::cancelled,
+  const auto cancelled = runtime.cancel(record.id, admitted.revision, "cancelled by operator");
+  require(cancelled && runtime.get(record.id)->status == runtime::agent_run_status::cancelled,
     "the runtime should expose an optimistic durable cancellation operation");
 
   bool repeated_finish_rejected = false;
   try {
-    (void)runtime.finish(record.id, cancelled.revision,
-      runtime::agent_run_status::cancelled, nlohmann::json::object());
+    (void)runtime.finish(record.id,
+      cancelled.revision,
+      runtime::agent_run_status::cancelled,
+      nlohmann::json::object());
   }
   catch (const std::logic_error&) {
     repeated_finish_rejected = true;
   }
-  require(repeated_finish_rejected,
-    "terminal runs must reject repeated terminal writes");
+  require(repeated_finish_rejected, "terminal runs must reject repeated terminal writes");
 
   bool late_result_rejected = false;
   try {
-    (void)runtime.admit_tool_result(record.id, cancelled.revision, {
-      .tool_call_id = "call-2",
-      .idempotency_key = "key-2",
-      .tool_name = "write",
-      .outcome = { .content = "late" },
-    });
+    (void)runtime.admit_tool_result(record.id,
+      cancelled.revision,
+      {
+        .tool_call_id = "call-2",
+        .idempotency_key = "key-2",
+        .tool_name = "write",
+        .outcome = { .content = "late" },
+      });
   }
   catch (const std::logic_error&) {
     late_result_rejected = true;
   }
-  require(late_result_rejected,
-    "terminal runs must reject newly arriving tool results");
+  require(late_result_rejected, "terminal runs must reject newly arriving tool results");
 }
 
 void persisted_run_payloads_validate_schema_and_error_codes() {
@@ -360,10 +360,9 @@ void persisted_run_payloads_validate_schema_and_error_codes() {
       },
     } },
   };
-  const auto restored = runtime::agent_run_record_from_json(
-    runtime::agent_run_record_to_json(record));
-  require(restored.admitted_tool_results.at("call-1").outcome.error_code ==
-      std::errc::timed_out,
+  const auto restored =
+    runtime::agent_run_record_from_json(runtime::agent_run_record_to_json(record));
+  require(restored.admitted_tool_results.at("call-1").outcome.error_code == std::errc::timed_out,
     "standard tool error codes should survive durable round trips");
 
   auto unsupported = runtime::agent_run_record_to_json(record);
@@ -380,8 +379,12 @@ void persisted_run_payloads_validate_schema_and_error_codes() {
   auto invalid_status = runtime::agent_run_record_to_json(record);
   invalid_status["status"] = "future_status";
   rejected = false;
-  try { (void)runtime::agent_run_record_from_json(invalid_status); }
-  catch (const std::invalid_argument&) { rejected = true; }
+  try {
+    (void)runtime::agent_run_record_from_json(invalid_status);
+  }
+  catch (const std::invalid_argument&) {
+    rejected = true;
+  }
   require(rejected, "unknown durable run statuses should fail explicitly");
 
   const auto suspension_json = nlohmann::json {
@@ -395,23 +398,32 @@ void persisted_run_payloads_validate_schema_and_error_codes() {
     { "resolved_at_unix_ms", nullptr },
   };
   rejected = false;
-  try { (void)runtime::run_suspension_from_json(suspension_json); }
-  catch (const std::invalid_argument&) { rejected = true; }
-  require(rejected,
-    "resolved durable suspensions should require a resolution timestamp");
+  try {
+    (void)runtime::run_suspension_from_json(suspension_json);
+  }
+  catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected, "resolved durable suspensions should require a resolution timestamp");
 
   rejected = false;
   try {
     (void)runtime::agent_run_event_from_json({
-      { "schema_version", 1 }, { "run_id", "serialized-run" },
-      { "sequence", 0 }, { "type", "run_created" },
-      { "status", "created" }, { "timestamp_unix_ms", 1 },
+      { "schema_version", 1 },
+      { "run_id", "serialized-run" },
+      { "sequence", 0 },
+      { "type", "run_created" },
+      { "status", "created" },
+      { "timestamp_unix_ms", 1 },
     });
   }
-  catch (const std::invalid_argument&) { rejected = true; }
+  catch (const std::invalid_argument&) {
+    rejected = true;
+  }
   require(rejected, "durable events should require a positive replay sequence");
 
   runtime::llm_tool_continuation advanced_continuation;
+  advanced_continuation.request.provider = "premium-provider";
   advanced_continuation.request.stop_sequences = { "END" };
   advanced_continuation.request.seed = 77;
   advanced_continuation.request.json_schema_output = {
@@ -419,27 +431,32 @@ void persisted_run_payloads_validate_schema_and_error_codes() {
     .schema = { { "type", "object" } },
   };
   advanced_continuation.request.cache_mode = wuwe::llm_cache_mode::enabled;
-  const auto restored_continuation = runtime::llm_continuation_from_json(
-    runtime::llm_continuation_to_json(advanced_continuation));
-  require(restored_continuation.request.stop_sequences ==
-            std::vector<std::string> { "END" } &&
-          restored_continuation.request.seed == 77 &&
-          restored_continuation.request.json_schema_output &&
-          restored_continuation.request.json_schema_output->name == "result" &&
-          restored_continuation.request.cache_mode == wuwe::llm_cache_mode::enabled,
+  const auto restored_continuation =
+    runtime::llm_continuation_from_json(runtime::llm_continuation_to_json(advanced_continuation));
+  require(restored_continuation.request.provider == "premium-provider" &&
+            restored_continuation.request.stop_sequences == std::vector<std::string> { "END" } &&
+            restored_continuation.request.seed == 77 &&
+            restored_continuation.request.json_schema_output &&
+            restored_continuation.request.json_schema_output->name == "result" &&
+            restored_continuation.request.cache_mode == wuwe::llm_cache_mode::enabled,
     "durable continuations should preserve advanced generation controls");
 
   auto invalid_continuation = runtime::llm_continuation_to_json({
     .pending_calls = { {
-      .id = "pending-1", .name = "read_value", .arguments_json = "{}",
+      .id = "pending-1",
+      .name = "read_value",
+      .arguments_json = "{}",
     } },
     .approved_call_ids = { "not-pending" },
   });
   rejected = false;
-  try { (void)runtime::llm_continuation_from_json(invalid_continuation); }
-  catch (const std::invalid_argument&) { rejected = true; }
-  require(rejected,
-    "durable continuations should reject approvals outside the pending batch");
+  try {
+    (void)runtime::llm_continuation_from_json(invalid_continuation);
+  }
+  catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected, "durable continuations should reject approvals outside the pending batch");
 
   auto invalid_pricing = runtime::llm_continuation_to_json({});
   invalid_pricing["pricing"] = {
@@ -447,17 +464,25 @@ void persisted_run_payloads_validate_schema_and_error_codes() {
     { "output_per_million_tokens_usd", 1.0 },
   };
   rejected = false;
-  try { (void)runtime::llm_continuation_from_json(invalid_pricing); }
-  catch (const std::invalid_argument&) { rejected = true; }
+  try {
+    (void)runtime::llm_continuation_from_json(invalid_pricing);
+  }
+  catch (const std::invalid_argument&) {
+    rejected = true;
+  }
   require(rejected, "durable continuations should reject invalid pricing");
 }
 
 void tool_contracts_reject_invalid_descriptors() {
   bool rejected = false;
-  try { (void)make_tool_descriptor<invalid_contract_tool>(); }
-  catch (const std::invalid_argument&) { rejected = true; }
-  require(rejected,
-    "invalid contract schemas must not be silently replaced by reflection defaults");
+  try {
+    (void)make_tool_descriptor<invalid_contract_tool>();
+  }
+  catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(
+    rejected, "invalid contract schemas must not be silently replaced by reflection defaults");
 
   rejected = false;
   try {
@@ -466,7 +491,9 @@ void tool_contracts_reject_invalid_descriptors() {
       .parameters_json_schema = "{not-json}",
     });
   }
-  catch (const std::invalid_argument&) { rejected = true; }
+  catch (const std::invalid_argument&) {
+    rejected = true;
+  }
   require(rejected, "invalid model-facing JSON schemas should fail explicitly");
 }
 
@@ -484,15 +511,14 @@ void runner_rejects_unregistered_and_reused_tool_calls() {
     return std::optional<llm_request>(std::move(request));
   };
   const auto unknown = unknown_runner.complete("run unknown", options);
-  require(unknown.error_code == agent::llm_error_code::tool_call_denied &&
-      executions == 0,
+  require(unknown.error_code == agent::llm_error_code::tool_call_denied && executions == 0,
     "the provider descriptor registry must remain authoritative after request preparation");
 
   repeated_call_id_client repeated_client;
   llm_agent_runner repeated_runner(repeated_client, provider, 3);
   const auto repeated = repeated_runner.complete("read twice");
   require(repeated.error_code == agent::llm_error_code::invalid_response &&
-      repeated.stop_reason == "invalid_tool_call" && executions == 1,
+            repeated.stop_reason == "invalid_tool_call" && executions == 1,
     "tool call ids must not be reusable across non-durable model rounds");
 }
 
@@ -506,19 +532,20 @@ void runner_enforces_tool_deadlines_without_admitting_late_results() {
   const auto started = std::chrono::steady_clock::now();
   const auto response = runner.complete("read slowly", options);
   const auto elapsed = std::chrono::steady_clock::now() - started;
-  require(!response.error_code && response.content == "done" &&
-      elapsed < std::chrono::milliseconds(150),
+  require(
+    !response.error_code && response.content == "done" && elapsed < std::chrono::milliseconds(150),
     "tool descriptor deadlines should return control before a non-cooperative tool finishes");
   require(client.requests.size() == 2 &&
-      nlohmann::json::parse(client.requests.back().messages.back().content)
-        ["error"]["category"] == "timeout",
+            nlohmann::json::parse(
+              client.requests.back().messages.back().content)["error"]["category"] == "timeout",
     "late tool output must be discarded and represented as a timeout outcome");
 
   const auto saturated = runner.complete("read slowly again", options);
-  require(!saturated.error_code && saturated.content == "done" &&
-      client.requests.size() == 4 &&
-      nlohmann::json::parse(client.requests.back().messages.back().content)
-        ["error"]["category"] == "unavailable" && executions == 1,
+  require(
+    !saturated.error_code && saturated.content == "done" && client.requests.size() == 4 &&
+      nlohmann::json::parse(client.requests.back().messages.back().content)["error"]["category"] ==
+        "unavailable" &&
+      executions == 1,
     "unfinished timed-out tools should retain a shared capacity slot and bound detachment");
   std::this_thread::sleep_for(std::chrono::milliseconds(210));
 }
@@ -545,24 +572,20 @@ void runner_aggregates_usage_cost_and_preserves_execution_context() {
   };
   const auto response = runner.complete("metered read", options);
   require(!response.error_code && response.usage.prompt_tokens == 16 &&
-      response.usage.completion_tokens == 6 &&
-      response.usage.total_tokens == 22 &&
-      response.usage.cached_prompt_tokens == 3 &&
-      response.usage.reasoning_tokens == 1,
+            response.usage.completion_tokens == 6 && response.usage.total_tokens == 22 &&
+            response.usage.cached_prompt_tokens == 3 && response.usage.reasoning_tokens == 1,
     "agent usage should aggregate every model call in the tool loop");
-  require(response.cost &&
-      std::abs(response.cost->total_usd - 0.0000275) < 1e-12,
+  require(response.cost && std::abs(response.cost->total_usd - 0.0000275) < 1e-12,
     "agent cost should be calculated once from aggregate usage");
-  require(client.requests.size() == 2 &&
-      client.requests.front().execution_context &&
-      client.requests.back().execution_context &&
-      client.requests.front().execution_context->trace_id == "trace-metered" &&
-      client.requests.back().execution_context->run_id == "metered-run",
+  require(client.requests.size() == 2 && client.requests.front().execution_context &&
+            client.requests.back().execution_context &&
+            client.requests.front().execution_context->trace_id == "trace-metered" &&
+            client.requests.back().execution_context->run_id == "metered-run",
     "host request preparation must not erase framework execution correlation");
   const auto record = durable_runtime->get("metered-run");
   require(record && record->result["usage"]["total_tokens"] == 22 &&
-      std::abs(record->result["cost"]["total_usd"].get<double>() -
-        response.cost->total_usd) < 1e-12,
+            std::abs(record->result["cost"]["total_usd"].get<double>() - response.cost->total_usd) <
+              1e-12,
     "durable terminal results should persist aggregate usage and cost");
 }
 
@@ -597,43 +620,37 @@ void runner_suspends_and_resumes_exact_tool_call_once() {
     "approval suspension should expose the usage and cost already incurred");
   require(executions == 0 && client.requests.size() == 1,
     "no tool in the batch should execute before approval");
-  require(approvals->last_request.capabilities.size() == 1 &&
-      approvals->last_request.capabilities.front().name ==
-        capability::names::filesystem_write,
+  require(
+    approvals->last_request.capabilities.size() == 1 &&
+      approvals->last_request.capabilities.front().name == capability::names::filesystem_write,
     "tool contract capabilities should reach the approval boundary");
 
   const auto run_id = suspended.metadata.at("run_id");
   const auto token = suspended.metadata.at("continuation_token");
   auto waiting = durable_runtime->get(run_id);
-  require(waiting &&
-      waiting->status == runtime::agent_run_status::waiting_for_approval &&
-      waiting->suspension &&
-      waiting->suspension->tool_call_id == "write-1",
+  require(waiting && waiting->status == runtime::agent_run_status::waiting_for_approval &&
+            waiting->suspension && waiting->suspension->tool_call_id == "write-1",
     "durable runtime should persist the exact pending tool call");
 
-  const auto approved = durable_runtime->resolve_approval(
-    run_id,
+  const auto approved = durable_runtime->resolve_approval(run_id,
     waiting->revision,
     token,
     runtime::approval_resolution::approved,
     "approved by operator");
-  require(static_cast<bool>(approved),
-    "approval resolution should be persisted optimistically");
+  require(static_cast<bool>(approved), "approval resolution should be persisted optimistically");
 
-  const auto claimed_before_crash = durable_runtime->claim_approved_continuation(
-    run_id, approved.revision, token);
+  const auto claimed_before_crash =
+    durable_runtime->claim_approved_continuation(run_id, approved.revision, token);
   require(static_cast<bool>(claimed_before_crash),
     "an approved continuation should be claimable by a worker");
   const auto interrupted = durable_runtime->get(run_id);
-  require(interrupted &&
-      interrupted->status == runtime::agent_run_status::running &&
-      interrupted->active_continuation,
+  require(interrupted && interrupted->status == runtime::agent_run_status::running &&
+            interrupted->active_continuation,
     "a claimed continuation should remain durable until the run terminates");
 
   options.context = {};
   options.pricing.reset();
-  const auto completed = runner.resume(
-    run_id, claimed_before_crash.revision, token, options);
+  const auto completed = runner.resume(run_id, claimed_before_crash.revision, token, options);
   require(!completed.error_code && completed.content == "Update completed.",
     "approved continuation should resume the original model/tool loop");
   require(completed.usage.total_tokens == 16 && completed.cost,
@@ -643,16 +660,14 @@ void runner_suspends_and_resumes_exact_tool_call_once() {
 
   const auto final = durable_runtime->get(run_id);
   require(final && final->status == runtime::agent_run_status::completed &&
-      !final->active_continuation &&
-      final->admitted_tool_results.size() == 1 &&
-      final->result.value("content", std::string {}) == "Update completed.",
+            !final->active_continuation && final->admitted_tool_results.size() == 1 &&
+            final->result.value("content", std::string {}) == "Update completed.",
     "recovered runs should clear continuation state and persist terminal output");
   const auto events = durable_runtime->list_events(run_id);
   require(!events.empty() && events.back().sequence == final->revision,
     "run events should have monotonic replay cursors matching the revision");
   for (std::size_t index = 0; index < events.size(); ++index) {
-    require(events[index].sequence == index + 1,
-      "run event sequences should be contiguous");
+    require(events[index].sequence == index + 1, "run event sequences should be contiguous");
   }
 }
 
@@ -672,7 +687,7 @@ void runner_accumulates_approvals_for_a_parallel_tool_batch() {
 
   auto suspended_a = runner.complete("update both values", options);
   require(suspended_a.error_code == agent::llm_error_code::approval_required &&
-      suspended_a.metadata.at("tool_call_id") == "write-a" && executions == 0,
+            suspended_a.metadata.at("tool_call_id") == "write-a" && executions == 0,
     "the first protected call should suspend the whole batch");
   const auto run_id = suspended_a.metadata.at("run_id");
   const auto token_a = suspended_a.metadata.at("continuation_token");
@@ -682,28 +697,27 @@ void runner_accumulates_approvals_for_a_parallel_tool_batch() {
 
   auto suspended_b = runner.resume(run_id, approved_a.revision, token_a, options);
   require(suspended_b.error_code == agent::llm_error_code::approval_required &&
-      suspended_b.metadata.at("tool_call_id") == "write-b" && executions == 0,
+            suspended_b.metadata.at("tool_call_id") == "write-b" && executions == 0,
     "the second protected call should suspend without re-requesting the first approval");
   const auto token_b = suspended_b.metadata.at("continuation_token");
   auto waiting_b = durable_runtime->get(run_id);
   const auto approved_b = durable_runtime->resolve_approval(
     run_id, waiting_b->revision, token_b, runtime::approval_resolution::approved);
 
-  const auto completed = runner.resume(
-    run_id, approved_b.revision, token_b, options);
+  const auto completed = runner.resume(run_id, approved_b.revision, token_b, options);
   require(!completed.error_code && completed.content == "Both updates completed." &&
-      executions == 2 && client.requests.size() == 2,
+            executions == 2 && client.requests.size() == 2,
     "accumulated approvals should execute each call once and complete the batch");
   const auto final = durable_runtime->get(run_id);
   require(final && final->status == runtime::agent_run_status::completed &&
-      final->admitted_tool_results.size() == 2,
+            final->admitted_tool_results.size() == 2,
     "the completed batch should durably admit both tool results");
 }
 
 #if WUWE_HAS_SQLITE
 void sqlite_store_persists_runs_events_and_schema() {
   const auto path = std::filesystem::temp_directory_path() /
-    ("wuwe-runtime-" + runtime::agent_run_runtime::make_identifier("test") + ".db");
+                    ("wuwe-runtime-" + runtime::agent_run_runtime::make_identifier("test") + ".db");
   std::string run_id;
   {
     auto store = std::make_shared<runtime::sqlite_agent_run_store>(path);
@@ -712,16 +726,15 @@ void sqlite_store_persists_runs_events_and_schema() {
     run_id = record.id;
     const auto running = runtime.transition(
       run_id, record.revision, runtime::agent_run_status::running, "run_started");
-    require(static_cast<bool>(running),
-      "sqlite runtime should transition a newly created run");
+    require(static_cast<bool>(running), "sqlite runtime should transition a newly created run");
   }
   {
     auto store = std::make_shared<runtime::sqlite_agent_run_store>(path);
     runtime::agent_run_runtime runtime(store);
     const auto record = runtime.get(run_id);
     const auto events = runtime.list_events(run_id);
-    require(record && record->status == runtime::agent_run_status::running &&
-        events.size() == 2 && events.back().sequence == record->revision,
+    require(record && record->status == runtime::agent_run_status::running && events.size() == 2 &&
+              events.back().sequence == record->revision,
       "sqlite runtime should recover records and replayable events after reopen");
   }
   std::error_code ignored;
@@ -743,8 +756,7 @@ int main() {
     run("execution context round trips", execution_context_round_trips_without_runtime_only_state);
     run("run store concurrency and idempotency",
       run_store_enforces_optimistic_concurrency_and_idempotency);
-    run("persisted run payload validation",
-      persisted_run_payloads_validate_schema_and_error_codes);
+    run("persisted run payload validation", persisted_run_payloads_validate_schema_and_error_codes);
     run("tool contract validation", tool_contracts_reject_invalid_descriptors);
     run("runner rejects unregistered and reused tool calls",
       runner_rejects_unregistered_and_reused_tool_calls);
@@ -752,10 +764,9 @@ int main() {
       runner_enforces_tool_deadlines_without_admitting_late_results);
     run("runner aggregates usage and cost",
       runner_aggregates_usage_cost_and_preserves_execution_context);
-    run("runner suspends and resumes tool calls",
-      runner_suspends_and_resumes_exact_tool_call_once);
-    run("runner accumulates batch approvals",
-      runner_accumulates_approvals_for_a_parallel_tool_batch);
+    run("runner suspends and resumes tool calls", runner_suspends_and_resumes_exact_tool_call_once);
+    run(
+      "runner accumulates batch approvals", runner_accumulates_approvals_for_a_parallel_tool_batch);
 #if WUWE_HAS_SQLITE
     run("sqlite run persistence", sqlite_store_persists_runs_events_and_schema);
 #endif

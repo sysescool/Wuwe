@@ -1,5 +1,5 @@
-#include <chrono>
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -8,17 +8,17 @@
 #include <thread>
 #include <vector>
 
-#include <nlohmann/json.hpp>
 #include <httplib/httplib.h>
+#include <nlohmann/json.hpp>
 
 #include <wuwe/agent/mcp/mcp_async.hpp>
 #include <wuwe/agent/mcp/mcp_gateway.hpp>
 #include <wuwe/agent/mcp/mcp_host_runtime.hpp>
 #include <wuwe/agent/mcp/mcp_host_telemetry.hpp>
 #include <wuwe/agent/mcp/mcp_http_listener.hpp>
+#include <wuwe/agent/mcp/mcp_http_transport.hpp>
 #include <wuwe/agent/mcp/mcp_process_client.hpp>
 #include <wuwe/agent/mcp/mcp_server.hpp>
-#include <wuwe/agent/mcp/mcp_http_transport.hpp>
 #include <wuwe/agent/mcp/mcp_stdio_client.hpp>
 #include <wuwe/agent/mcp/mcp_stdio_transport.hpp>
 #include <wuwe/agent/tools/tool.hpp>
@@ -91,12 +91,10 @@ void test_initialize_records_client_info_and_capabilities() {
   })"));
 
   require(response["result"]["protocolVersion"] == "2024-11-05" &&
-      server.negotiated_protocol_version() == "2024-11-05",
+            server.negotiated_protocol_version() == "2024-11-05",
     "initialize should return and record the negotiated protocol version");
-  require(server.client_info().name == "test-host",
-    "initialize should record client name");
-  require(server.client_info().version == "1.2.3",
-    "initialize should record client version");
+  require(server.client_info().name == "test-host", "initialize should record client name");
+  require(server.client_info().version == "1.2.3", "initialize should record client version");
   require(server.client_capabilities()["roots"]["listChanged"].get<bool>(),
     "initialize should record client capabilities");
 }
@@ -141,32 +139,18 @@ void test_tools_list_exposes_provider_schema() {
 void test_list_methods_support_cursor_pagination() {
   wuwe::agent::mcp::mcp_server server;
   server.set_list_page_size(1);
-  server.add_mcp_tool(
-    { .name = "first_tool", .description = "First." },
-    [](const json&) {
-      return wuwe::agent::mcp::mcp_tool_call_result {};
-    });
-  server.add_mcp_tool(
-    { .name = "second_tool", .description = "Second." },
-    [](const json&) {
-      return wuwe::agent::mcp::mcp_tool_call_result {};
-    });
-  server.add_resource(
-    { .uri = "wuwe://first", .name = "First" },
-    [] {
-      return std::vector<wuwe::agent::mcp::mcp_resource_content> {};
-    });
-  server.add_resource(
-    { .uri = "wuwe://second", .name = "Second" },
-    [] {
-      return std::vector<wuwe::agent::mcp::mcp_resource_content> {};
-    });
-  server.add_prompt({ .name = "first_prompt" }, [](const json&) {
-    return wuwe::agent::mcp::mcp_prompt_result {};
-  });
-  server.add_prompt({ .name = "second_prompt" }, [](const json&) {
-    return wuwe::agent::mcp::mcp_prompt_result {};
-  });
+  server.add_mcp_tool({ .name = "first_tool", .description = "First." },
+    [](const json&) { return wuwe::agent::mcp::mcp_tool_call_result {}; });
+  server.add_mcp_tool({ .name = "second_tool", .description = "Second." },
+    [](const json&) { return wuwe::agent::mcp::mcp_tool_call_result {}; });
+  server.add_resource({ .uri = "wuwe://first", .name = "First" },
+    [] { return std::vector<wuwe::agent::mcp::mcp_resource_content> {}; });
+  server.add_resource({ .uri = "wuwe://second", .name = "Second" },
+    [] { return std::vector<wuwe::agent::mcp::mcp_resource_content> {}; });
+  server.add_prompt(
+    { .name = "first_prompt" }, [](const json&) { return wuwe::agent::mcp::mcp_prompt_result {}; });
+  server.add_prompt({ .name = "second_prompt" },
+    [](const json&) { return wuwe::agent::mcp::mcp_prompt_result {}; });
 
   const auto first_tools = parse_response(server.handle_message(R"({
     "jsonrpc":"2.0",
@@ -184,10 +168,10 @@ void test_list_methods_support_cursor_pagination() {
     "method":"tools/list",
     "params":{"cursor":"1"}
   })"));
-  require(second_tools["result"]["tools"].size() == 1,
-    "tools/list should read the next cursor page");
-  require(!second_tools["result"].contains("nextCursor"),
-    "last tools/list page should omit nextCursor");
+  require(
+    second_tools["result"]["tools"].size() == 1, "tools/list should read the next cursor page");
+  require(
+    !second_tools["result"].contains("nextCursor"), "last tools/list page should omit nextCursor");
 
   const auto resources = parse_response(server.handle_message(R"({
     "jsonrpc":"2.0",
@@ -222,7 +206,8 @@ void test_tools_call_invokes_provider() {
     "params":{"name":"echo_text","arguments":{"text":"hello mcp"}}
   })"));
 
-  require(!response["result"]["isError"].get<bool>(), "successful tool call should not be an error");
+  require(
+    !response["result"]["isError"].get<bool>(), "successful tool call should not be an error");
   require(response["result"]["content"][0]["type"] == "text",
     "tool call result should use MCP text content");
   require(response["result"]["content"][0]["text"] == "hello mcp",
@@ -280,7 +265,7 @@ void test_invalid_arguments_become_tool_error_result() {
   require(response["result"]["isError"].get<bool>(),
     "provider argument errors should become MCP tool error results");
   require(response["result"]["content"][0]["text"].get<std::string>().find("invalid arguments") !=
-      std::string::npos,
+            std::string::npos,
     "tool error result should include provider error text");
 }
 
@@ -296,8 +281,7 @@ void test_invalid_json_and_unknown_tool_return_jsonrpc_errors() {
     "method":"tools/call",
     "params":{"name":"missing","arguments":{}}
   })"));
-  require(unknown_tool["error"]["code"] == -32602,
-    "unknown tool should return invalid params");
+  require(unknown_tool["error"]["code"] == -32602, "unknown tool should return invalid params");
 }
 
 void test_jsonrpc_batch_returns_response_array_and_skips_notifications() {
@@ -344,12 +328,11 @@ void test_batch_reports_malformed_items_and_params() {
 
   require(response.is_array(), "malformed batch should still return an array response");
   require(response.size() == 4, "batch should return one response per request-like item");
-  require(response[0]["error"]["code"] == -32600,
-    "primitive batch items should return invalid request");
-  require(response[1]["error"]["code"] == -32602,
-    "non-object params should return invalid params");
-  require(response[2]["error"]["code"] == -32602,
-    "malformed arguments should return invalid params");
+  require(
+    response[0]["error"]["code"] == -32600, "primitive batch items should return invalid request");
+  require(response[1]["error"]["code"] == -32602, "non-object params should return invalid params");
+  require(
+    response[2]["error"]["code"] == -32602, "malformed arguments should return invalid params");
   require(response[3]["result"]["content"][0]["text"] == "ok",
     "valid batch items should still execute after malformed items");
 }
@@ -408,8 +391,7 @@ void test_tools_can_emit_log_and_progress_notifications() {
   require(log["method"] == "notifications/message", "first notification should be a log message");
   require(log["params"]["data"]["message"] == "long task started",
     "log notification should include message");
-  require(progress["method"] == "notifications/progress",
-    "second notification should be progress");
+  require(progress["method"] == "notifications/progress", "second notification should be progress");
   require(progress["params"]["progress"] == 50.0, "progress notification should include progress");
   require(exchange.response.has_value(), "exchange should include final response");
 }
@@ -434,26 +416,23 @@ void test_request_progress_updates_lifecycle_record() {
     "params":{"name":"progress_task","arguments":{}}
   })");
 
-  require(exchange.notifications.size() == 1,
-    "request progress should emit one progress notification");
+  require(
+    exchange.notifications.size() == 1, "request progress should emit one progress notification");
   const auto record = server.request_registry().get("37");
   require(record.has_value(), "request progress should have lifecycle record");
   require(record->progress == 25.0, "request progress should update registry progress");
-  require(record->total && *record->total == 100.0,
-    "request progress should update registry total");
-  require(record->progress_message == "quarter",
-    "request progress should update registry message");
+  require(
+    record->total && *record->total == 100.0, "request progress should update registry total");
+  require(record->progress_message == "quarter", "request progress should update registry message");
 }
 
 void test_request_timeout_marks_lifecycle_failed() {
   wuwe::agent::mcp::mcp_server server;
   server.set_request_timeout(std::chrono::milliseconds(1));
-  server.add_mcp_tool(
-    { .name = "slow_tool", .description = "Sleeps." },
-    [](const json&) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
-      return wuwe::agent::mcp::mcp_tool_call_result::text("late");
-    });
+  server.add_mcp_tool({ .name = "slow_tool", .description = "Sleeps." }, [](const json&) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    return wuwe::agent::mcp::mcp_tool_call_result::text("late");
+  });
 
   const auto response = parse_response(server.handle_message(R"({
     "jsonrpc":"2.0",
@@ -462,14 +441,12 @@ void test_request_timeout_marks_lifecycle_failed() {
     "params":{"name":"slow_tool","arguments":{}}
   })"));
 
-  require(response["error"]["code"] == -32603,
-    "timed out requests should return internal error");
+  require(response["error"]["code"] == -32603, "timed out requests should return internal error");
   const auto record = server.request_registry().get("38");
   require(record.has_value(), "timed out request should have lifecycle record");
   require(record->state == wuwe::agent::mcp::mcp_request_state::failed,
     "timed out request should mark lifecycle failed");
-  require(record->error == "request timed out",
-    "timed out request should record timeout error");
+  require(record->error == "request timed out", "timed out request should record timeout error");
 }
 
 void test_sampling_and_elicitation_requests_round_trip_through_exchange() {
@@ -482,22 +459,25 @@ void test_sampling_and_elicitation_requests_round_trip_through_exchange() {
     },
     [&server](const json&) {
       const auto sampling_id = server.request_sampling(json {
-        { "messages", json::array({
-          {
-            { "role", "user" },
-            { "content", { { "type", "text" }, { "text", "Draft a title." } } },
-          },
-        }) },
+        { "messages",
+          json::array({
+            {
+              { "role", "user" },
+              { "content", { { "type", "text" }, { "text", "Draft a title." } } },
+            },
+          }) },
         { "maxTokens", 32 },
       });
       const auto elicitation_id = server.request_elicitation(json {
         { "message", "Choose a project name." },
-        { "requestedSchema", {
-          { "type", "object" },
-          { "properties", {
-            { "name", { { "type", "string" } } },
+        { "requestedSchema",
+          {
+            { "type", "object" },
+            { "properties",
+              {
+                { "name", { { "type", "string" } } },
+              } },
           } },
-        } },
       });
       return wuwe::agent::mcp::mcp_tool_call_result::text(
         sampling_id.dump() + ":" + elicitation_id.dump());
@@ -510,14 +490,13 @@ void test_sampling_and_elicitation_requests_round_trip_through_exchange() {
     "params":{"name":"ask_host","arguments":{}}
   })");
 
-  require(exchange.requests.size() == 2,
-    "sampling and elicitation should emit outbound client requests");
+  require(
+    exchange.requests.size() == 2, "sampling and elicitation should emit outbound client requests");
   const auto sampling_request = json::parse(exchange.requests[0]);
   const auto elicitation_request = json::parse(exchange.requests[1]);
   require(sampling_request["method"] == "sampling/createMessage",
     "sampling helper should use sampling/createMessage");
-  require(sampling_request["params"]["maxTokens"] == 32,
-    "sampling helper should preserve params");
+  require(sampling_request["params"]["maxTokens"] == 32, "sampling helper should preserve params");
   require(elicitation_request["method"] == "elicitation/create",
     "elicitation helper should use elicitation/create");
   require(elicitation_request["params"]["requestedSchema"]["type"] == "object",
@@ -528,11 +507,13 @@ void test_sampling_and_elicitation_requests_round_trip_through_exchange() {
   const auto sampling_response = server.handle_message(json {
     { "jsonrpc", "2.0" },
     { "id", sampling_request["id"] },
-    { "result", {
-      { "role", "assistant" },
-      { "content", { { "type", "text" }, { "text", "A title" } } },
-    } },
-  }.dump());
+    { "result",
+      {
+        { "role", "assistant" },
+        { "content", { { "type", "text" }, { "text", "A title" } } },
+      } },
+  }
+                                                         .dump());
   require(!sampling_response.has_value(),
     "JSON-RPC responses to outbound requests should not produce responses");
   const auto completed_sampling = server.client_request(sampling_request["id"]);
@@ -547,20 +528,21 @@ void test_sampling_and_elicitation_requests_round_trip_through_exchange() {
   const auto elicitation_response = server.handle_message(json {
     { "jsonrpc", "2.0" },
     { "id", elicitation_request["id"] },
-    { "error", {
-      { "code", -32000 },
-      { "message", "user declined" },
-    } },
-  }.dump());
+    { "error",
+      {
+        { "code", -32000 },
+        { "message", "user declined" },
+      } },
+  }
+                                                            .dump());
   require(!elicitation_response.has_value(),
     "JSON-RPC errors to outbound requests should not produce responses");
   const auto failed_elicitation = server.client_request(elicitation_request["id"]);
   require(failed_elicitation && failed_elicitation->completed,
     "outbound error should complete pending record");
-  require(failed_elicitation->error.has_value(),
-    "outbound error should be stored");
-  require(failed_elicitation->error->message == "user declined",
-    "outbound error should store message");
+  require(failed_elicitation->error.has_value(), "outbound error should be stored");
+  require(
+    failed_elicitation->error->message == "user declined", "outbound error should store message");
 }
 
 void test_sampling_and_elicitation_follow_client_capabilities() {
@@ -625,10 +607,9 @@ void test_typed_sampling_and_elicitation_helpers() {
   const auto elicitation = server.client_request(elicitation_id);
   require(sampling && sampling->params["messages"][0]["content"]["text"] == "Draft a title.",
     "typed sampling helper should serialize text content");
-  require(sampling->params["maxTokens"] == 64,
-    "typed sampling helper should serialize max tokens");
-  require(sampling->params["temperature"] == 0.2,
-    "typed sampling helper should serialize temperature");
+  require(sampling->params["maxTokens"] == 64, "typed sampling helper should serialize max tokens");
+  require(
+    sampling->params["temperature"] == 0.2, "typed sampling helper should serialize temperature");
   require(elicitation && elicitation->params["requestedSchema"]["properties"].contains("name"),
     "typed elicitation helper should serialize requested schema");
 
@@ -640,8 +621,7 @@ void test_typed_sampling_and_elicitation_helpers() {
   });
   require(sampling_result && sampling_result->content.text == "A title",
     "typed sampling result should parse content");
-  require(sampling_result->model == "test-model",
-    "typed sampling result should parse model");
+  require(sampling_result->model == "test-model", "typed sampling result should parse model");
 
   const auto elicitation_result = wuwe::agent::mcp::mcp_elicitation_result::from_json({
     { "action", "accept" },
@@ -723,22 +703,19 @@ void test_resources_read_can_return_blob_content() {
 
   const auto content = response["result"]["contents"][0];
   require(content["blob"] == "AAECAw==", "resources/read should support blob content");
-  require(content["mimeType"] == "application/octet-stream",
-    "blob resources should include mime type");
+  require(
+    content["mimeType"] == "application/octet-stream", "blob resources should include mime type");
 }
 
 void test_resources_subscribe_unsubscribe_and_update_notifications() {
   wuwe::agent::mcp::mcp_server server;
-  server.add_resource(
-    { .uri = "wuwe://updates", .name = "Updates" },
-    [] {
-      return std::vector<wuwe::agent::mcp::mcp_resource_content> {
-        { .uri = "wuwe://updates", .text = "updated" },
-      };
-    });
+  server.add_resource({ .uri = "wuwe://updates", .name = "Updates" }, [] {
+    return std::vector<wuwe::agent::mcp::mcp_resource_content> {
+      { .uri = "wuwe://updates", .text = "updated" },
+    };
+  });
   server.add_mcp_tool(
-    { .name = "touch_resource", .description = "Emit a resource update." },
-    [&server](const json&) {
+    { .name = "touch_resource", .description = "Emit a resource update." }, [&server](const json&) {
       server.emit_resource_updated("wuwe://updates");
       server.emit_resource_list_changed();
       server.emit_tool_list_changed();
@@ -768,8 +745,8 @@ void test_resources_subscribe_unsubscribe_and_update_notifications() {
     "resource update and listChanged helpers should emit notifications");
   require(json::parse(exchange.notifications[0])["method"] == "notifications/resources/updated",
     "resource update notification should be emitted first");
-  require(json::parse(exchange.notifications[1])["method"] ==
-      "notifications/resources/list_changed",
+  require(
+    json::parse(exchange.notifications[1])["method"] == "notifications/resources/list_changed",
     "resource listChanged notification should be emitted");
   require(json::parse(exchange.notifications[2])["method"] == "notifications/tools/list_changed",
     "tool listChanged notification should be emitted");
@@ -867,8 +844,7 @@ void test_prompts_list_and_get_registered_prompt() {
 
 void test_request_registry_records_failures() {
   wuwe::agent::mcp::mcp_server server;
-  server.add_mcp_tool(
-    { .name = "failing_tool", .description = "Throws." },
+  server.add_mcp_tool({ .name = "failing_tool", .description = "Throws." },
     [](const json&) -> wuwe::agent::mcp::mcp_tool_call_result {
       throw std::runtime_error("planned failure");
     });
@@ -880,28 +856,26 @@ void test_request_registry_records_failures() {
     "params":{"name":"failing_tool","arguments":{}}
   })"));
 
-  require(response["error"]["code"] == -32603,
-    "thrown tool callbacks should return internal error");
+  require(
+    response["error"]["code"] == -32603, "thrown tool callbacks should return internal error");
   const auto record = server.request_registry().get("36");
   require(record.has_value(), "failed tool calls should be recorded");
   require(record->state == wuwe::agent::mcp::mcp_request_state::failed,
     "failed tool calls should mark lifecycle record failed");
-  require(record->error == "planned failure",
-    "failed lifecycle record should include error message");
+  require(
+    record->error == "planned failure", "failed lifecycle record should include error message");
 }
 
 void test_prompts_get_can_return_non_text_content() {
   wuwe::agent::mcp::mcp_server server;
-  server.add_prompt(
-    { .name = "show_image" },
-    [](const json&) {
-      return wuwe::agent::mcp::mcp_prompt_result {
+  server.add_prompt({ .name = "show_image" }, [](const json&) {
+    return wuwe::agent::mcp::mcp_prompt_result {
         .messages = {
           wuwe::agent::mcp::mcp_prompt_message::user_content(
             wuwe::agent::mcp::mcp_content::image("iVBORw0KGgo=")),
         },
       };
-    });
+  });
 
   const auto response = parse_response(server.handle_message(R"({
     "jsonrpc":"2.0",
@@ -924,8 +898,8 @@ void test_unknown_resource_and_prompt_return_jsonrpc_errors() {
     "method":"resources/read",
     "params":{"uri":"wuwe://missing"}
   })"));
-  require(resource_response["error"]["code"] == -32602,
-    "unknown resources should return invalid params");
+  require(
+    resource_response["error"]["code"] == -32602, "unknown resources should return invalid params");
 
   const auto prompt_response = parse_response(server.handle_message(R"({
     "jsonrpc":"2.0",
@@ -933,8 +907,8 @@ void test_unknown_resource_and_prompt_return_jsonrpc_errors() {
     "method":"prompts/get",
     "params":{"name":"missing","arguments":{}}
   })"));
-  require(prompt_response["error"]["code"] == -32602,
-    "unknown prompts should return invalid params");
+  require(
+    prompt_response["error"]["code"] == -32602, "unknown prompts should return invalid params");
 }
 
 void test_access_policy_filters_and_denies_tools_with_audit() {
@@ -946,17 +920,15 @@ void test_access_policy_filters_and_denies_tools_with_audit() {
   });
 
   std::vector<wuwe::agent::mcp::mcp_audit_event> events;
-  server.set_audit_sink([&events](const auto& event) {
-    events.push_back(event);
-  });
+  server.set_audit_sink([&events](const auto& event) { events.push_back(event); });
 
   const auto list_response = parse_response(server.handle_message(R"({
     "jsonrpc":"2.0",
     "id":12,
     "method":"tools/list"
   })"));
-  require(list_response["result"]["tools"].empty(),
-    "denied tools should be hidden from tools/list");
+  require(
+    list_response["result"]["tools"].empty(), "denied tools should be hidden from tools/list");
 
   const auto call_response = parse_response(server.handle_message(R"({
     "jsonrpc":"2.0",
@@ -964,8 +936,8 @@ void test_access_policy_filters_and_denies_tools_with_audit() {
     "method":"tools/call",
     "params":{"name":"echo_text","arguments":{"text":"blocked"}}
   })"));
-  require(call_response["error"]["code"] == -32001,
-    "denied tool calls should return request_denied");
+  require(
+    call_response["error"]["code"] == -32001, "denied tool calls should return request_denied");
   require(events.size() == 1, "denied tool call should emit one audit event");
   require(events[0].action == "tools/call", "audit event should record action");
   require(events[0].target == "echo_text", "audit event should record target");
@@ -1001,9 +973,7 @@ void test_audit_events_include_scope_and_redacted_arguments() {
   });
 
   std::vector<wuwe::agent::mcp::mcp_audit_event> events;
-  server.set_audit_sink([&events](const auto& event) {
-    events.push_back(event);
-  });
+  server.set_audit_sink([&events](const auto& event) { events.push_back(event); });
 
   const auto response = parse_response(server.handle_message(R"({
     "jsonrpc":"2.0",
@@ -1040,36 +1010,28 @@ void test_audit_events_include_scope_and_redacted_arguments() {
 
 void test_access_policy_allowlist_filters_resources_templates_and_prompts() {
   wuwe::agent::mcp::mcp_server server;
-  server.add_resource(
-    { .uri = "wuwe://allowed", .name = "Allowed" },
-    [] {
-      return std::vector<wuwe::agent::mcp::mcp_resource_content> {
-        { .uri = "wuwe://allowed", .text = "allowed resource" },
-      };
-    });
-  server.add_resource(
-    { .uri = "wuwe://blocked", .name = "Blocked" },
-    [] {
-      return std::vector<wuwe::agent::mcp::mcp_resource_content> {
-        { .uri = "wuwe://blocked", .text = "blocked resource" },
-      };
-    });
+  server.add_resource({ .uri = "wuwe://allowed", .name = "Allowed" }, [] {
+    return std::vector<wuwe::agent::mcp::mcp_resource_content> {
+      { .uri = "wuwe://allowed", .text = "allowed resource" },
+    };
+  });
+  server.add_resource({ .uri = "wuwe://blocked", .name = "Blocked" }, [] {
+    return std::vector<wuwe::agent::mcp::mcp_resource_content> {
+      { .uri = "wuwe://blocked", .text = "blocked resource" },
+    };
+  });
   server.add_resource_template({ .uri_template = "wuwe://allowed/{id}", .name = "Allowed" });
   server.add_resource_template({ .uri_template = "wuwe://blocked/{id}", .name = "Blocked" });
-  server.add_prompt(
-    { .name = "allowed_prompt" },
-    [](const json&) {
-      return wuwe::agent::mcp::mcp_prompt_result {
-        .messages = { { .role = "user", .text = "allowed" } },
-      };
-    });
-  server.add_prompt(
-    { .name = "blocked_prompt" },
-    [](const json&) {
-      return wuwe::agent::mcp::mcp_prompt_result {
-        .messages = { { .role = "user", .text = "blocked" } },
-      };
-    });
+  server.add_prompt({ .name = "allowed_prompt" }, [](const json&) {
+    return wuwe::agent::mcp::mcp_prompt_result {
+      .messages = { { .role = "user", .text = "allowed" } },
+    };
+  });
+  server.add_prompt({ .name = "blocked_prompt" }, [](const json&) {
+    return wuwe::agent::mcp::mcp_prompt_result {
+      .messages = { { .role = "user", .text = "blocked" } },
+    };
+  });
   server.set_access_policy({
     .allowed_resources = { "wuwe://allowed" },
     .allowed_resource_templates = { "wuwe://allowed/{id}" },
@@ -1134,8 +1096,7 @@ void test_roots_list_supports_pagination_and_client_helper() {
     "id":55,
     "method":"roots/list"
   })"));
-  require(first_page["result"]["roots"].size() == 1,
-    "roots/list should support pagination");
+  require(first_page["result"]["roots"].size() == 1, "roots/list should support pagination");
   require(first_page["result"]["roots"][0]["uri"] == "file:///workspace/a",
     "roots/list should include root uri");
   require(first_page["result"].contains("nextCursor"),
@@ -1147,8 +1108,8 @@ void test_roots_list_supports_pagination_and_client_helper() {
     "method":"roots/list",
     "params":{"cursor":"1"}
   })"));
-  require(second_page["result"]["roots"][0]["name"] == "Workspace B",
-    "roots/list should page by cursor");
+  require(
+    second_page["result"]["roots"][0]["name"] == "Workspace B", "roots/list should page by cursor");
   require(server.roots().size() == 2, "server should expose registered roots");
 
   std::ostringstream framed_input;
@@ -1170,8 +1131,7 @@ void test_roots_list_supports_pagination_and_client_helper() {
 
 void test_async_task_registry_tracks_completion_progress_cancel_and_timeout() {
   wuwe::agent::mcp::mcp_async_task_registry registry;
-  registry.submit(
-    "async-complete",
+  registry.submit("async-complete",
     "tools/call",
     "worker",
     json::object(),
@@ -1192,13 +1152,11 @@ void test_async_task_registry_tracks_completion_progress_cancel_and_timeout() {
   require(completed.has_value(), "async registry should return submitted task");
   require(completed->record.state == wuwe::agent::mcp::mcp_request_state::completed,
     "async registry should mark finished task completed");
-  require(completed->record.progress == 50.0,
-    "async registry should store task progress");
+  require(completed->record.progress == 50.0, "async registry should store task progress");
   require(completed->record.progress_message == "halfway",
     "async registry should store task progress message");
 
-  registry.submit(
-    "async-cancel",
+  registry.submit("async-cancel",
     "tools/call",
     "worker",
     json::object(),
@@ -1207,13 +1165,13 @@ void test_async_task_registry_tracks_completion_progress_cancel_and_timeout() {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
       }
     });
-  require(registry.cancel("async-cancel", "stop requested"),
-    "async registry should cancel known task");
+  require(
+    registry.cancel("async-cancel", "stop requested"), "async registry should cancel known task");
   const auto cancelled = registry.poll("async-cancel");
   require(cancelled->record.state == wuwe::agent::mcp::mcp_request_state::cancelled,
     "async registry should mark cancellation");
-  require(cancelled->record.error == "stop requested",
-    "async registry should store cancellation reason");
+  require(
+    cancelled->record.error == "stop requested", "async registry should store cancellation reason");
 
   registry.submit(
     "async-timeout",
@@ -1230,20 +1188,24 @@ void test_async_task_registry_tracks_completion_progress_cancel_and_timeout() {
   const auto timed_out = registry.poll("async-timeout");
   require(timed_out->record.state == wuwe::agent::mcp::mcp_request_state::failed,
     "async registry should mark timed out task failed");
-  require(timed_out->record.error == "request timed out",
-    "async registry should record timeout error");
+  require(
+    timed_out->record.error == "request timed out", "async registry should record timeout error");
 
   bool empty_id = false;
   try {
-    registry.submit("", "tools/call", "worker", json::object(),
-      [](wuwe::agent::mcp::mcp_async_cancel_token) {});
+    registry.submit(
+      "", "tools/call", "worker", json::object(), [](wuwe::agent::mcp::mcp_async_cancel_token) {});
   }
   catch (const std::invalid_argument&) {
     empty_id = true;
   }
   bool negative_timeout = false;
   try {
-    registry.submit("negative-timeout", "tools/call", "worker", json::object(),
+    registry.submit(
+      "negative-timeout",
+      "tools/call",
+      "worker",
+      json::object(),
       [](wuwe::agent::mcp::mcp_async_cancel_token) {},
       std::chrono::milliseconds(-1));
   }
@@ -1252,7 +1214,10 @@ void test_async_task_registry_tracks_completion_progress_cancel_and_timeout() {
   }
   bool duplicate_id = false;
   try {
-    registry.submit("async-complete", "tools/call", "worker", json::object(),
+    registry.submit("async-complete",
+      "tools/call",
+      "worker",
+      json::object(),
       [](wuwe::agent::mcp::mcp_async_cancel_token) {});
   }
   catch (const std::invalid_argument&) {
@@ -1261,8 +1226,7 @@ void test_async_task_registry_tracks_completion_progress_cancel_and_timeout() {
   require(empty_id && negative_timeout && duplicate_id,
     "async registry rejects invalid and ambiguous task configuration");
 
-  registry.submit(
-    "cancel-then-throw",
+  registry.submit("cancel-then-throw",
     "tools/call",
     "worker",
     json::object(),
@@ -1276,20 +1240,20 @@ void test_async_task_registry_tracks_completion_progress_cancel_and_timeout() {
     "async registry accepts cooperative cancellation");
   for (int i = 0; i < 50; ++i) {
     const auto current = registry.poll("cancel-then-throw");
-    if (current && current->ready) break;
+    if (current && current->ready)
+      break;
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   const auto cancel_wins = registry.poll("cancel-then-throw");
-  require(cancel_wins && cancel_wins->record.state ==
-      wuwe::agent::mcp::mcp_request_state::cancelled &&
-      cancel_wins->record.error == "cancel wins",
+  require(cancel_wins &&
+            cancel_wins->record.state == wuwe::agent::mcp::mcp_request_state::cancelled &&
+            cancel_wins->record.error == "cancel wins",
     "worker exceptions cannot overwrite an already committed cancellation");
 
   const auto destruction_started = std::chrono::steady_clock::now();
   {
     wuwe::agent::mcp::mcp_async_task_registry short_lived;
-    short_lived.submit(
-      "registry-lifetime",
+    short_lived.submit("registry-lifetime",
       "tools/call",
       "worker",
       json::object(),
@@ -1297,8 +1261,7 @@ void test_async_task_registry_tracks_completion_progress_cancel_and_timeout() {
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
       });
   }
-  require(std::chrono::steady_clock::now() - destruction_started >=
-      std::chrono::milliseconds(15),
+  require(std::chrono::steady_clock::now() - destruction_started >= std::chrono::milliseconds(15),
     "registry destruction safely joins work without a task-state ownership cycle");
 }
 
@@ -1310,10 +1273,10 @@ void test_stdio_transport_uses_content_length_framing() {
   std::ostringstream framed_input;
   wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
     R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"echo_text","arguments":{"text":"one"}}})");
-  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
-    R"({"jsonrpc":"2.0","method":"notifications/initialized"})");
-  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
-    R"({"jsonrpc":"2.0","id":2,"method":"tools/list"})");
+  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(
+    framed_input, R"({"jsonrpc":"2.0","method":"notifications/initialized"})");
+  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(
+    framed_input, R"({"jsonrpc":"2.0","id":2,"method":"tools/list"})");
 
   std::istringstream input(framed_input.str());
   std::ostringstream output;
@@ -1334,14 +1297,12 @@ void test_stdio_transport_supports_json_lines_framing() {
   wuwe::tool_provider<echo_text> provider;
   wuwe::agent::mcp::mcp_server server({ .name = "json-lines-server", .version = "1.0.0" });
   server.add_tool_provider(provider);
-  server.add_resource(
-    { .uri = "wuwe://json-lines/readme", .name = "JSON Lines README" },
-    [] {
-      return std::vector<wuwe::agent::mcp::mcp_resource_content> {
-        wuwe::agent::mcp::mcp_resource_content::text_content(
-          "wuwe://json-lines/readme", "json-lines resource"),
-      };
-    });
+  server.add_resource({ .uri = "wuwe://json-lines/readme", .name = "JSON Lines README" }, [] {
+    return std::vector<wuwe::agent::mcp::mcp_resource_content> {
+      wuwe::agent::mcp::mcp_resource_content::text_content(
+        "wuwe://json-lines/readme", "json-lines resource"),
+    };
+  });
 
   std::istringstream input(
     R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","clientInfo":{"name":"codex-mcp-client","version":"0.128.0-alpha.1"},"capabilities":{"elicitation":{"form":{}}}}})"
@@ -1369,12 +1330,11 @@ void test_stdio_transport_supports_json_lines_framing() {
     }
   }
 
-  require(parsed.size() == 4,
-    "JSON Lines stdio should return one line per request with a response");
+  require(
+    parsed.size() == 4, "JSON Lines stdio should return one line per request with a response");
   require(parsed[0]["result"]["serverInfo"]["name"] == "json-lines-server",
     "JSON Lines stdio should initialize server");
-  require(parsed[1]["result"]["tools"].size() == 1,
-    "JSON Lines stdio should list tools");
+  require(parsed[1]["result"]["tools"].size() == 1, "JSON Lines stdio should list tools");
   require(parsed[2]["result"]["content"][0]["text"] == "json lines",
     "JSON Lines stdio should call tools");
   require(parsed[3]["result"]["contents"][0]["text"] == "json-lines resource",
@@ -1417,8 +1377,7 @@ void test_stdio_transport_writes_notifications_before_response() {
 void test_stdio_transport_writes_client_requests_before_response() {
   wuwe::agent::mcp::mcp_server server;
   server.add_mcp_tool(
-    { .name = "sampling_task", .description = "Request host sampling." },
-    [&server](const json&) {
+    { .name = "sampling_task", .description = "Request host sampling." }, [&server](const json&) {
       server.request_sampling(json { { "messages", json::array() } });
       return wuwe::agent::mcp::mcp_tool_call_result::text("queued");
     });
@@ -1460,28 +1419,24 @@ void test_stdio_transport_host_compatibility_transcript() {
         .content = { wuwe::agent::mcp::mcp_content::image("iVBORw0KGgo=") },
       };
     });
-  server.add_resource(
-    { .uri = "wuwe://example/readme", .name = "Example README" },
-    [] {
-      return std::vector<wuwe::agent::mcp::mcp_resource_content> {
-        wuwe::agent::mcp::mcp_resource_content::text_content(
-          "wuwe://example/readme", "compat resource"),
-      };
-    });
-  server.add_prompt(
-    { .name = "echo_prompt" },
-    [](const json& arguments) {
-      return wuwe::agent::mcp::mcp_prompt_result::single_user_message(
-        "Echo this topic: " + arguments.value("topic", std::string("compat")));
-    });
+  server.add_resource({ .uri = "wuwe://example/readme", .name = "Example README" }, [] {
+    return std::vector<wuwe::agent::mcp::mcp_resource_content> {
+      wuwe::agent::mcp::mcp_resource_content::text_content(
+        "wuwe://example/readme", "compat resource"),
+    };
+  });
+  server.add_prompt({ .name = "echo_prompt" }, [](const json& arguments) {
+    return wuwe::agent::mcp::mcp_prompt_result::single_user_message(
+      "Echo this topic: " + arguments.value("topic", std::string("compat")));
+  });
 
   std::ostringstream framed_input;
   wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
     R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","clientInfo":{"name":"compat-host","version":"0.1.0"},"capabilities":{}}})");
-  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
-    R"({"jsonrpc":"2.0","method":"notifications/initialized"})");
-  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
-    R"({"jsonrpc":"2.0","id":2,"method":"tools/list"})");
+  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(
+    framed_input, R"({"jsonrpc":"2.0","method":"notifications/initialized"})");
+  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(
+    framed_input, R"({"jsonrpc":"2.0","id":2,"method":"tools/list"})");
   wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
     R"({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo_text","arguments":{"text":"hello host"}}})");
   wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
@@ -1494,8 +1449,7 @@ void test_stdio_transport_host_compatibility_transcript() {
   std::istringstream input(framed_input.str());
   std::ostringstream output;
   wuwe::agent::mcp::mcp_stdio_transport transport;
-  require(transport.run(server, input, output) == 0,
-    "compat transcript should run to completion");
+  require(transport.run(server, input, output) == 0, "compat transcript should run to completion");
 
   std::istringstream response_stream(output.str());
   std::vector<json> responses;
@@ -1507,8 +1461,7 @@ void test_stdio_transport_host_compatibility_transcript() {
   require(responses.size() == 6, "compat transcript should return six responses");
   require(responses[0]["result"]["serverInfo"]["name"] == "compat-server",
     "compat transcript should initialize server");
-  require(responses[1]["result"]["tools"].size() == 2,
-    "compat transcript should list both tools");
+  require(responses[1]["result"]["tools"].size() == 2, "compat transcript should list both tools");
   require(responses[2]["result"]["content"][0]["text"] == "hello host",
     "compat transcript should call echo_text");
   require(responses[3]["result"]["content"][0]["type"] == "image",
@@ -1573,10 +1526,11 @@ void test_large_tool_payload_round_trips_through_server_and_stdio() {
     { "jsonrpc", "2.0" },
     { "id", 54 },
     { "method", "tools/call" },
-    { "params", {
-      { "name", "echo_text" },
-      { "arguments", { { "text", large_text } } },
-    } },
+    { "params",
+      {
+        { "name", "echo_text" },
+        { "arguments", { { "text", large_text } } },
+      } },
   };
 
   const auto direct_response = parse_response(server.handle_message(request.dump()));
@@ -1603,8 +1557,8 @@ void test_stdio_client_sends_requests_and_collects_notifications() {
   std::ostringstream framed_input;
   wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
     R"({"jsonrpc":"2.0","method":"notifications/message","params":{"level":"info","data":{"message":"hello"}}})");
-  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
-    R"({"jsonrpc":"2.0","id":1,"result":{"tools":[]}})");
+  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(
+    framed_input, R"({"jsonrpc":"2.0","id":1,"result":{"tools":[]}})");
 
   std::istringstream input(framed_input.str());
   std::ostringstream output;
@@ -1642,22 +1596,22 @@ void test_stdio_client_sends_notifications_without_waiting() {
 
 void test_stdio_client_has_resource_prompt_and_ping_helpers() {
   std::ostringstream framed_input;
-  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
-    R"({"jsonrpc":"2.0","id":1,"result":{}})");
-  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
-    R"({"jsonrpc":"2.0","id":2,"result":{"resources":[]}})");
+  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(
+    framed_input, R"({"jsonrpc":"2.0","id":1,"result":{}})");
+  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(
+    framed_input, R"({"jsonrpc":"2.0","id":2,"result":{"resources":[]}})");
   wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
     R"({"jsonrpc":"2.0","id":3,"result":{"contents":[{"uri":"wuwe://doc","text":"hello"}]}})");
-  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
-    R"({"jsonrpc":"2.0","id":4,"result":{}})");
-  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
-    R"({"jsonrpc":"2.0","id":5,"result":{}})");
-  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
-    R"({"jsonrpc":"2.0","id":6,"result":{"resourceTemplates":[]}})");
-  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
-    R"({"jsonrpc":"2.0","id":7,"result":{"prompts":[]}})");
-  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(framed_input,
-    R"({"jsonrpc":"2.0","id":8,"result":{"messages":[]}})");
+  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(
+    framed_input, R"({"jsonrpc":"2.0","id":4,"result":{}})");
+  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(
+    framed_input, R"({"jsonrpc":"2.0","id":5,"result":{}})");
+  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(
+    framed_input, R"({"jsonrpc":"2.0","id":6,"result":{"resourceTemplates":[]}})");
+  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(
+    framed_input, R"({"jsonrpc":"2.0","id":7,"result":{"prompts":[]}})");
+  wuwe::agent::mcp::mcp_stdio_transport::write_framed_message(
+    framed_input, R"({"jsonrpc":"2.0","id":8,"result":{"messages":[]}})");
 
   std::istringstream input(framed_input.str());
   std::ostringstream output;
@@ -1674,8 +1628,8 @@ void test_stdio_client_has_resource_prompt_and_ping_helpers() {
     "stdio client should support resources/unsubscribe");
   require(client.list_resource_templates()["result"]["resourceTemplates"].empty(),
     "stdio client should support resources/templates/list");
-  require(client.list_prompts()["result"]["prompts"].empty(),
-    "stdio client should support prompts/list");
+  require(
+    client.list_prompts()["result"]["prompts"].empty(), "stdio client should support prompts/list");
   require(client.get_prompt("echo")["result"]["messages"].empty(),
     "stdio client should support prompts/get");
 
@@ -1703,8 +1657,8 @@ void test_process_client_launches_stdio_server() {
   require(client.ping()["result"].is_object(), "process client should send ping");
 
   const auto tools = client.list_tools();
-  require(tools["result"]["tools"].size() >= 2,
-    "process client should list tools from launched server");
+  require(
+    tools["result"]["tools"].size() >= 2, "process client should list tools from launched server");
 
   const auto result = client.call_tool("echo_text", { { "text", "hello process" } });
   require(result["result"]["content"][0]["text"] == "hello process",
@@ -1712,10 +1666,9 @@ void test_process_client_launches_stdio_server() {
 
   require(client.list_resource_templates()["result"]["resourceTemplates"].size() == 1,
     "process client should list resource templates");
-  require(client.list_roots()["result"]["roots"].is_array(),
-    "process client should list roots");
-  require(client.list_prompts()["result"]["prompts"].size() == 1,
-    "process client should list prompts");
+  require(client.list_roots()["result"]["roots"].is_array(), "process client should list roots");
+  require(
+    client.list_prompts()["result"]["prompts"].size() == 1, "process client should list prompts");
 
   client.stop();
   require(!client.running(), "process client should stop launched server");
@@ -1740,8 +1693,7 @@ void test_process_client_captures_stderr() {
   require(client.stderr_output().find("process-stderr") != std::string::npos,
     "process client should capture child stderr");
   client.clear_stderr_output();
-  require(client.stderr_output().empty(),
-    "process client should clear captured stderr");
+  require(client.stderr_output().empty(), "process client should clear captured stderr");
 }
 
 void test_process_client_passes_environment_to_child() {
@@ -1785,8 +1737,8 @@ void test_host_runtime_manages_multiple_process_servers() {
   runtime.start_all();
   require(runtime.snapshot("alpha").state == wuwe::agent::mcp::mcp_host_server_state::running,
     "host runtime should mark started servers running");
-  require(runtime.snapshot("beta").running,
-    "host runtime snapshot should report live child process");
+  require(
+    runtime.snapshot("beta").running, "host runtime snapshot should report live child process");
 
   const auto alpha = runtime.call_tool("alpha", "echo_text", { { "text", "from alpha" } });
   const auto beta = runtime.call_tool("beta", "echo_text", { { "text", "from beta" } });
@@ -1798,20 +1750,16 @@ void test_host_runtime_manages_multiple_process_servers() {
     "host runtime should expose resource helpers");
   require(runtime.list_prompts("beta")["result"]["prompts"].size() == 1,
     "host runtime should expose prompt helpers");
-  require(runtime.snapshots().size() == 2,
-    "host runtime should expose all server snapshots");
-  require(runtime.snapshot("alpha").request_count > 0,
-    "host runtime should count routed requests");
+  require(runtime.snapshots().size() == 2, "host runtime should expose all server snapshots");
+  require(runtime.snapshot("alpha").request_count > 0, "host runtime should count routed requests");
 
   runtime.stop_server("alpha");
   require(runtime.snapshot("alpha").state == wuwe::agent::mcp::mcp_host_server_state::stopped,
     "host runtime should stop one server");
-  require(runtime.snapshot("beta").running,
-    "host runtime should leave other servers running");
+  require(runtime.snapshot("beta").running, "host runtime should leave other servers running");
 
   runtime.stop_all();
-  require(!runtime.snapshot("beta").running,
-    "host runtime should stop all servers");
+  require(!runtime.snapshot("beta").running, "host runtime should stop all servers");
 #endif
 }
 
@@ -1838,10 +1786,9 @@ void test_host_runtime_dispatches_async_requests() {
     "host runtime should dispatch async tool call to first server");
   require(second.get()["result"]["content"][0]["text"] == "async two",
     "host runtime should dispatch async tool call to second server");
-  require(!third.get()["result"]["tools"].empty(),
-    "host runtime should dispatch async list_tools");
-  require(runtime.snapshot("async-a").request_count >= 2,
-    "host runtime should count async requests");
+  require(!third.get()["result"]["tools"].empty(), "host runtime should dispatch async list_tools");
+  require(
+    runtime.snapshot("async-a").request_count >= 2, "host runtime should count async requests");
 
   runtime.stop_all();
 #endif
@@ -1867,26 +1814,31 @@ void test_host_runtime_records_telemetry_events() {
   runtime.stop_server("telemetry");
 
   const auto events = runtime.events();
-  require(events.size() == sink_events.size(),
-    "host runtime should send recorded events to sink");
-  require(!events.empty() && events.front().sequence == 1,
-    "host runtime events should be sequenced");
-  require(std::find_if(events.begin(), events.end(), [](const auto& event) {
-            return event.type == wuwe::agent::mcp::mcp_host_event_type::server_started &&
-                   event.server_id == "telemetry";
-          }) != events.end(),
+  require(events.size() == sink_events.size(), "host runtime should send recorded events to sink");
+  require(
+    !events.empty() && events.front().sequence == 1, "host runtime events should be sequenced");
+  require(std::find_if(events.begin(),
+            events.end(),
+            [](const auto& event) {
+              return event.type == wuwe::agent::mcp::mcp_host_event_type::server_started &&
+                     event.server_id == "telemetry";
+            }) != events.end(),
     "host runtime should record server started event");
-  require(std::find_if(events.begin(), events.end(), [](const auto& event) {
-            return event.type == wuwe::agent::mcp::mcp_host_event_type::request_succeeded &&
-                   event.method == "tools/call";
-          }) != events.end(),
+  require(std::find_if(events.begin(),
+            events.end(),
+            [](const auto& event) {
+              return event.type == wuwe::agent::mcp::mcp_host_event_type::request_succeeded &&
+                     event.method == "tools/call";
+            }) != events.end(),
     "host runtime should record successful request event");
-  require(std::find_if(events.begin(), events.end(), [](const auto& event) {
-            return event.type == wuwe::agent::mcp::mcp_host_event_type::health_check_succeeded;
-          }) != events.end(),
+  require(std::find_if(events.begin(),
+            events.end(),
+            [](const auto& event) {
+              return event.type == wuwe::agent::mcp::mcp_host_event_type::health_check_succeeded;
+            }) != events.end(),
     "host runtime should record health check event");
-  require(wuwe::agent::mcp::to_string(
-            wuwe::agent::mcp::mcp_host_event_type::request_succeeded) == "request_succeeded",
+  require(wuwe::agent::mcp::to_string(wuwe::agent::mcp::mcp_host_event_type::request_succeeded) ==
+            "request_succeeded",
     "host runtime should stringify event types");
 
   runtime.clear_events();
@@ -1895,9 +1847,10 @@ void test_host_runtime_records_telemetry_events() {
 }
 
 void test_host_runtime_exports_telemetry_events() {
-  const auto path = std::filesystem::temp_directory_path() /
-                    ("wuwe-mcp-telemetry-" + std::to_string(
-                       std::chrono::steady_clock::now().time_since_epoch().count()) + ".jsonl");
+  const auto path =
+    std::filesystem::temp_directory_path() /
+    ("wuwe-mcp-telemetry-" +
+      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".jsonl");
 
   wuwe::agent::mcp::mcp_host_runtime runtime;
   auto memory_sink = std::make_shared<wuwe::agent::mcp::in_memory_mcp_host_event_sink>();
@@ -1909,8 +1862,7 @@ void test_host_runtime_exports_telemetry_events() {
   });
 
   const auto memory_events = memory_sink->events();
-  require(memory_events.size() == 1,
-    "host telemetry memory sink should receive runtime events");
+  require(memory_events.size() == 1, "host telemetry memory sink should receive runtime events");
   const auto as_json = wuwe::agent::mcp::mcp_host_event_to_json(memory_events.front());
   require(as_json["type"] == "server_added" && as_json["serverId"] == "telemetry-export",
     "host telemetry should serialize event type and server id");
@@ -1977,9 +1929,9 @@ void test_mcp_gateway_aggregates_runtime_servers() {
     "params":{}
   })"));
   const auto tools = tools_response["result"]["tools"];
-  require(std::find_if(tools.begin(), tools.end(), [](const auto& tool) {
-            return tool["name"] == "gw__echo_text";
-          }) != tools.end(),
+  require(std::find_if(tools.begin(),
+            tools.end(),
+            [](const auto& tool) { return tool["name"] == "gw__echo_text"; }) != tools.end(),
     "MCP gateway should expose downstream tools with server prefix");
 
   const auto call_response = json::parse(*gateway_server.handle_message(R"({
@@ -2005,7 +1957,8 @@ void test_mcp_gateway_aggregates_runtime_servers() {
     { "id", 4 },
     { "method", "resources/read" },
     { "params", { { "uri", resource_uri } } },
-  }.dump()));
+  }
+                                                                          .dump()));
   require(!read_response["result"]["contents"].empty(),
     "MCP gateway should route resource reads to downstream server");
 
@@ -2016,7 +1969,7 @@ void test_mcp_gateway_aggregates_runtime_servers() {
     "params":{}
   })"));
   require(!prompts_response["result"]["prompts"].empty() &&
-          prompts_response["result"]["prompts"][0]["name"].get<std::string>().find("gw__") == 0,
+            prompts_response["result"]["prompts"][0]["name"].get<std::string>().find("gw__") == 0,
     "MCP gateway should expose downstream prompts with server prefix");
 
   runtime.stop_all();
@@ -2025,45 +1978,47 @@ void test_mcp_gateway_aggregates_runtime_servers() {
 
 void test_host_runtime_loads_common_json_config_shapes() {
   const auto vscode_configs = wuwe::agent::mcp::mcp_host_server_configs_from_json(json {
-    { "servers", {
-      { "wuwe", {
-        { "type", "stdio" },
-        { "command", "server.exe" },
-        { "args", json::array({ "--mode", "test" }) },
-        { "cwd", "D:\\workspace" },
-        { "env", { { "WUWE_ENV", "enabled" } } },
-        { "clientInfo", { { "name", "config-host" }, { "version", "2.0" } } },
-        { "capabilities", { { "roots", { { "listChanged", true } } } } },
+    { "servers",
+      {
+        { "wuwe",
+          {
+            { "type", "stdio" },
+            { "command", "server.exe" },
+            { "args", json::array({ "--mode", "test" }) },
+            { "cwd", "D:\\workspace" },
+            { "env", { { "WUWE_ENV", "enabled" } } },
+            { "clientInfo", { { "name", "config-host" }, { "version", "2.0" } } },
+            { "capabilities", { { "roots", { { "listChanged", true } } } } },
+          } },
       } },
-    } },
   });
   require(vscode_configs.size() == 1, "host runtime should parse VS Code servers config");
   require(vscode_configs[0].id == "wuwe", "host runtime should use server object key as id");
-  require(vscode_configs[0].command.command == "server.exe",
-    "host runtime should parse command");
-  require(vscode_configs[0].command.args.size() == 2,
-    "host runtime should parse args");
+  require(vscode_configs[0].command.command == "server.exe", "host runtime should parse command");
+  require(vscode_configs[0].command.args.size() == 2, "host runtime should parse args");
   require(vscode_configs[0].command.working_directory == "D:\\workspace",
     "host runtime should parse cwd");
   require(vscode_configs[0].command.environment.at("WUWE_ENV") == "enabled",
     "host runtime should parse env");
-  require(vscode_configs[0].client_info.name == "config-host",
-    "host runtime should parse clientInfo");
+  require(
+    vscode_configs[0].client_info.name == "config-host", "host runtime should parse clientInfo");
   require(vscode_configs[0].capabilities["roots"]["listChanged"].get<bool>(),
     "host runtime should parse capabilities");
 
   wuwe::agent::mcp::mcp_host_runtime runtime;
   runtime.add_servers_from_json(json {
-    { "mcpServers", {
-      { "claude-shape", {
-        { "command", "server.exe" },
-        { "args", json::array() },
-        { "workingDirectory", "D:\\workspace2" },
-        { "autoInitialize", false },
-        { "restartOnFailure", true },
-        { "maxRestarts", 3 },
+    { "mcpServers",
+      {
+        { "claude-shape",
+          {
+            { "command", "server.exe" },
+            { "args", json::array() },
+            { "workingDirectory", "D:\\workspace2" },
+            { "autoInitialize", false },
+            { "restartOnFailure", true },
+            { "maxRestarts", 3 },
+          } },
       } },
-    } },
   });
   require(runtime.contains("claude-shape"),
     "host runtime should add Claude/Cursor style mcpServers config");
@@ -2072,82 +2027,92 @@ void test_host_runtime_loads_common_json_config_shapes() {
   require(runtime.snapshot("claude-shape").restart_count == 0,
     "host runtime should initialize restart counter");
   const auto configs = wuwe::agent::mcp::mcp_host_server_configs_from_json(json {
-    { "mcpServers", {
-      { "restart-shape", {
-        { "command", "server.exe" },
-        { "restartOnFailure", true },
-        { "maxRestarts", 3 },
-        { "restartBackoffMillis", 25 },
-        { "maxRestartBackoffMillis", 100 },
-        { "circuitBreakerFailureThreshold", 4 },
-        { "circuitBreakerCooldownMillis", 250 },
+    { "mcpServers",
+      {
+        { "restart-shape",
+          {
+            { "command", "server.exe" },
+            { "restartOnFailure", true },
+            { "maxRestarts", 3 },
+            { "restartBackoffMillis", 25 },
+            { "maxRestartBackoffMillis", 100 },
+            { "circuitBreakerFailureThreshold", 4 },
+            { "circuitBreakerCooldownMillis", 250 },
+          } },
       } },
-    } },
   });
   require(configs[0].restart_on_failure && configs[0].max_restart_attempts == 3,
     "host runtime should parse restart policy");
   require(configs[0].restart_backoff == std::chrono::milliseconds(25) &&
-          configs[0].max_restart_backoff == std::chrono::milliseconds(100),
+            configs[0].max_restart_backoff == std::chrono::milliseconds(100),
     "host runtime should parse restart backoff policy");
   require(configs[0].circuit_breaker_failure_threshold == 4 &&
-          configs[0].circuit_breaker_cooldown == std::chrono::milliseconds(250),
+            configs[0].circuit_breaker_cooldown == std::chrono::milliseconds(250),
     "host runtime should parse circuit breaker policy");
 }
 
 void test_host_runtime_reports_config_diagnostics() {
   const auto diagnostics = wuwe::agent::mcp::mcp_host_config_diagnostics_from_json(json {
-    { "servers", {
-      { "broken", {
-        { "type", "http" },
-        { "command", "" },
-        { "args", json::array({ "--ok", 42 }) },
-        { "env", { { "WUWE_ENV", false } } },
-        { "clientInfo", { { "name", 12 } } },
-        { "capabilities", json::array() },
-        { "autoInitialize", "yes" },
-        { "maxRestarts", -1 },
+    { "servers",
+      {
+        { "broken",
+          {
+            { "type", "http" },
+            { "command", "" },
+            { "args", json::array({ "--ok", 42 }) },
+            { "env", { { "WUWE_ENV", false } } },
+            { "clientInfo", { { "name", 12 } } },
+            { "capabilities", json::array() },
+            { "autoInitialize", "yes" },
+            { "maxRestarts", -1 },
+          } },
       } },
-    } },
   });
 
   require(diagnostics.size() >= 8,
     "host runtime should report multiple config diagnostics without throwing");
-  require(std::any_of(diagnostics.begin(), diagnostics.end(), [](const auto& diagnostic) {
-            return diagnostic.path == "$.servers.broken.type" &&
-                   diagnostic.severity ==
-                     wuwe::agent::mcp::mcp_host_config_diagnostic_severity::error;
-          }),
+  require(std::any_of(diagnostics.begin(),
+            diagnostics.end(),
+            [](const auto& diagnostic) {
+              return diagnostic.path == "$.servers.broken.type" &&
+                     diagnostic.severity ==
+                       wuwe::agent::mcp::mcp_host_config_diagnostic_severity::error;
+            }),
     "host runtime should diagnose unsupported server type");
-  require(std::any_of(diagnostics.begin(), diagnostics.end(), [](const auto& diagnostic) {
-            return diagnostic.path == "$.servers.broken.command" &&
-                   diagnostic.message.find("must not be empty") != std::string::npos;
-          }),
+  require(std::any_of(diagnostics.begin(),
+            diagnostics.end(),
+            [](const auto& diagnostic) {
+              return diagnostic.path == "$.servers.broken.command" &&
+                     diagnostic.message.find("must not be empty") != std::string::npos;
+            }),
     "host runtime should diagnose empty commands");
-  require(std::any_of(diagnostics.begin(), diagnostics.end(), [](const auto& diagnostic) {
-            return diagnostic.path == "$.servers.broken.args[1]";
-          }),
+  require(std::any_of(diagnostics.begin(),
+            diagnostics.end(),
+            [](const auto& diagnostic) { return diagnostic.path == "$.servers.broken.args[1]"; }),
     "host runtime should diagnose non-string args entries");
   require(wuwe::agent::mcp::to_string(
             wuwe::agent::mcp::mcp_host_config_diagnostic_severity::warning) == "warning",
     "host runtime should stringify config diagnostic severity");
 
   const auto clean = wuwe::agent::mcp::mcp_host_config_diagnostics_from_json(json {
-    { "mcpServers", {
-      { "wuwe", {
-        { "command", "server.exe" },
-        { "args", json::array() },
-        { "restartOnFailure", true },
-        { "maxRestarts", 3 },
+    { "mcpServers",
+      {
+        { "wuwe",
+          {
+            { "command", "server.exe" },
+            { "args", json::array() },
+            { "restartOnFailure", true },
+            { "maxRestarts", 3 },
+          } },
       } },
-    } },
   });
   require(clean.empty(), "host runtime should not report diagnostics for a valid config");
 }
 
 void test_host_runtime_loads_config_files_and_discovers_workspace_paths() {
   const auto root = std::filesystem::temp_directory_path() /
-                    ("wuwe-mcp-config-test-" + std::to_string(
-                       std::chrono::steady_clock::now().time_since_epoch().count()));
+                    ("wuwe-mcp-config-test-" +
+                      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
   const auto vscode_dir = root / ".vscode";
   std::filesystem::create_directories(vscode_dir);
   const auto config_path = vscode_dir / "mcp.json";
@@ -2177,27 +2142,29 @@ void test_host_runtime_loads_config_files_and_discovers_workspace_paths() {
 
   const auto user_paths = wuwe::agent::mcp::mcp_host_user_config_paths(root, root / "AppData");
 #ifdef _WIN32
-  require(std::find(user_paths.begin(), user_paths.end(),
+  require(std::find(user_paths.begin(),
+            user_paths.end(),
             root / "AppData" / "Claude" / "claude_desktop_config.json") != user_paths.end(),
     "host runtime should discover Windows user-level Claude MCP config candidates");
-  require(std::find(user_paths.begin(), user_paths.end(),
+  require(std::find(user_paths.begin(),
+            user_paths.end(),
             root / "AppData" / "Cursor" / "User" / "mcp.json") != user_paths.end(),
     "host runtime should discover Windows user-level Cursor MCP config candidates");
 #else
-  require(std::find(user_paths.begin(), user_paths.end(),
-            root / "Library" / "Application Support" / "Claude" /
-              "claude_desktop_config.json") != user_paths.end(),
+  require(std::find(user_paths.begin(),
+            user_paths.end(),
+            root / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json") !=
+            user_paths.end(),
     "host runtime should discover macOS user-level Claude MCP config candidates");
-  require(std::find(user_paths.begin(), user_paths.end(),
-            root / ".continue" / "config.json") != user_paths.end(),
+  require(std::find(user_paths.begin(), user_paths.end(), root / ".continue" / "config.json") !=
+            user_paths.end(),
     "host runtime should discover home-level MCP config candidates");
 #endif
 
   wuwe::agent::mcp::mcp_host_runtime runtime;
   require(runtime.add_servers_from_file(config_path) == 1,
     "host runtime should add server configs from file");
-  require(runtime.contains("file-server"),
-    "host runtime should track file-loaded server config");
+  require(runtime.contains("file-server"), "host runtime should track file-loaded server config");
 
   std::filesystem::remove_all(root);
 }
@@ -2218,11 +2185,12 @@ void test_host_runtime_restarts_failed_process_server() {
     "host runtime health check should pass for running server");
 
   runtime.client("restartable").stop();
-  const auto result = runtime.call_tool("restartable", "echo_text", { { "text", "after restart" } });
+  const auto result =
+    runtime.call_tool("restartable", "echo_text", { { "text", "after restart" } });
   require(result["result"]["content"][0]["text"] == "after restart",
     "host runtime should restart failed server and retry request");
-  require(runtime.snapshot("restartable").restart_count == 1,
-    "host runtime should record restart count");
+  require(
+    runtime.snapshot("restartable").restart_count == 1, "host runtime should record restart count");
   require(runtime.snapshot("restartable").failure_count == 1,
     "host runtime should record failed request count");
   require(runtime.snapshot("restartable").request_count >= 1,
@@ -2285,17 +2253,18 @@ void test_host_runtime_applies_backoff_and_circuit_breaker() {
   require(wuwe::agent::mcp::to_string(snapshot.state) == "circuit_open",
     "host runtime should stringify circuit-open state");
   const auto events = runtime.events();
-  require(std::find_if(events.begin(), events.end(), [](const auto& event) {
-            return event.type == wuwe::agent::mcp::mcp_host_event_type::circuit_opened;
-          }) != events.end(),
+  require(std::find_if(events.begin(),
+            events.end(),
+            [](const auto& event) {
+              return event.type == wuwe::agent::mcp::mcp_host_event_type::circuit_opened;
+            }) != events.end(),
     "host runtime should record circuit-open events");
 }
 
 void test_http_transport_adapts_jsonrpc_requests_and_sse_notifications() {
   wuwe::agent::mcp::mcp_server server;
   server.add_mcp_tool(
-    { .name = "http_task", .description = "Emit a log over HTTP." },
-    [&server](const json&) {
+    { .name = "http_task", .description = "Emit a log over HTTP." }, [&server](const json&) {
       server.emit_log("info", "http task ran");
       return wuwe::agent::mcp::mcp_tool_call_result {
         .content = { { .type = "text", .text = "ok" } },
@@ -2303,13 +2272,16 @@ void test_http_transport_adapts_jsonrpc_requests_and_sse_notifications() {
     });
 
   wuwe::agent::mcp::mcp_http_transport transport;
-  const auto response = transport.handle(server, {
-    .method = "POST",
-    .body = R"({"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"http_task","arguments":{}}})",
-  });
+  const auto response = transport.handle(server,
+    {
+      .method = "POST",
+      .body =
+        R"({"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"http_task","arguments":{}}})",
+    });
 
   require(response.status_code == 200, "HTTP transport should return 200 for requests");
-  require(response.content_type == "application/json", "HTTP transport should expose JSON content type");
+  require(
+    response.content_type == "application/json", "HTTP transport should expose JSON content type");
   require(json::parse(response.body)["id"] == 35, "HTTP transport should return JSON-RPC body");
   require(!response.sse_body().empty(), "HTTP transport should build a joined SSE body");
   require(response.sse_events.size() == 1,
@@ -2317,36 +2289,37 @@ void test_http_transport_adapts_jsonrpc_requests_and_sse_notifications() {
   require(response.sse_events[0].find("notifications/message") != std::string::npos,
     "HTTP transport SSE event should include notification payload");
 
-  const auto notification_response = transport.handle(server, {
-    .method = "POST",
-    .body = R"({"jsonrpc":"2.0","method":"notifications/initialized"})",
-  });
+  const auto notification_response = transport.handle(server,
+    {
+      .method = "POST",
+      .body = R"({"jsonrpc":"2.0","method":"notifications/initialized"})",
+    });
   require(notification_response.status_code == 202,
     "HTTP transport should return 202 for notification-only requests");
 
   const auto method_response = transport.handle(server, { .method = "GET" });
-  require(method_response.status_code == 405,
-    "HTTP transport should reject unsupported methods");
+  require(method_response.status_code == 405, "HTTP transport should reject unsupported methods");
   bool has_allow_header = false;
   for (const auto& header : method_response.headers) {
     has_allow_header = has_allow_header || (header.first == "Allow" && header.second == "POST");
   }
   require(has_allow_header, "HTTP transport should expose an Allow header for 405 responses");
 
-  const auto content_type_response = transport.handle(server, {
-    .method = "POST",
-    .body = "{}",
-    .headers = { { "Content-Type", "text/plain" } },
-  });
+  const auto content_type_response = transport.handle(server,
+    {
+      .method = "POST",
+      .body = "{}",
+      .headers = { { "Content-Type", "text/plain" } },
+    });
   require(content_type_response.status_code == 415,
     "HTTP transport should reject non-JSON content types");
 
-  const auto empty_body_response = transport.handle(server, {
-    .method = "POST",
-    .headers = { { "content-type", "application/json; charset=utf-8" } },
-  });
-  require(empty_body_response.status_code == 400,
-    "HTTP transport should reject empty POST bodies");
+  const auto empty_body_response = transport.handle(server,
+    {
+      .method = "POST",
+      .headers = { { "content-type", "application/json; charset=utf-8" } },
+    });
+  require(empty_body_response.status_code == 400, "HTTP transport should reject empty POST bodies");
 }
 
 void test_http_transport_exposes_outbound_client_requests() {
@@ -2359,15 +2332,17 @@ void test_http_transport_exposes_outbound_client_requests() {
     });
 
   wuwe::agent::mcp::mcp_http_transport transport;
-  const auto response = transport.handle(server, {
-    .method = "POST",
-    .body = R"({"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"http_sampling","arguments":{}}})",
-  });
+  const auto response = transport.handle(server,
+    {
+      .method = "POST",
+      .body =
+        R"({"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"http_sampling","arguments":{}}})",
+    });
 
-  require(response.status_code == 200,
-    "HTTP transport should still return original JSON-RPC response");
-  require(response.client_requests.size() == 1,
-    "HTTP transport should expose outbound client requests");
+  require(
+    response.status_code == 200, "HTTP transport should still return original JSON-RPC response");
+  require(
+    response.client_requests.size() == 1, "HTTP transport should expose outbound client requests");
   require(json::parse(response.client_requests[0])["method"] == "sampling/createMessage",
     "HTTP transport should expose sampling request payload");
 }
@@ -2382,15 +2357,11 @@ void test_http_listener_serves_mcp_and_health_endpoints() {
 
   httplib::Client client("127.0.0.1", listener.bound_port());
   const auto health = client.Get("/healthz");
-  require(health && health->status == 200,
-    "HTTP listener should expose a health endpoint");
+  require(health && health->status == 200, "HTTP listener should expose a health endpoint");
 
-  const auto response = client.Post(
-    "/mcp",
-    R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})",
-    "application/json");
-  require(response && response->status == 200,
-    "HTTP listener should serve JSON-RPC requests");
+  const auto response =
+    client.Post("/mcp", R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})", "application/json");
+  require(response && response->status == 200, "HTTP listener should serve JSON-RPC requests");
   const auto body = json::parse(response->body);
   require(body["result"]["tools"][0]["name"] == "echo_text",
     "HTTP listener should route requests through the MCP server");
@@ -2400,34 +2371,29 @@ void test_http_listener_serves_mcp_and_health_endpoints() {
 
 void test_http_listener_rejects_unauthorized_requests() {
   wuwe::agent::mcp::mcp_server server;
-  wuwe::agent::mcp::mcp_http_listener listener(server, {
-    .authorize = [](const wuwe::agent::mcp::mcp_http_request& request) {
-      for (const auto& [name, value] : request.headers) {
-        if (name == "Authorization" && value == "Bearer test-token") {
-          return true;
-        }
-      }
-      return false;
-    },
-  });
+  wuwe::agent::mcp::mcp_http_listener listener(server,
+    {
+      .authorize =
+        [](const wuwe::agent::mcp::mcp_http_request& request) {
+          for (const auto& [name, value] : request.headers) {
+            if (name == "Authorization" && value == "Bearer test-token") {
+              return true;
+            }
+          }
+          return false;
+        },
+    });
   require(listener.start(), "HTTP listener with auth should start on localhost");
 
   httplib::Client client("127.0.0.1", listener.bound_port());
-  const auto rejected = client.Post(
-    "/mcp",
-    R"({"jsonrpc":"2.0","id":1,"method":"ping"})",
-    "application/json");
-  require(rejected && rejected->status == 401,
-    "HTTP listener should reject unauthorized requests");
+  const auto rejected =
+    client.Post("/mcp", R"({"jsonrpc":"2.0","id":1,"method":"ping"})", "application/json");
+  require(rejected && rejected->status == 401, "HTTP listener should reject unauthorized requests");
 
   httplib::Headers headers { { "Authorization", "Bearer test-token" } };
-  const auto accepted = client.Post(
-    "/mcp",
-    headers,
-    R"({"jsonrpc":"2.0","id":1,"method":"ping"})",
-    "application/json");
-  require(accepted && accepted->status == 200,
-    "HTTP listener should allow authorized requests");
+  const auto accepted =
+    client.Post("/mcp", headers, R"({"jsonrpc":"2.0","id":1,"method":"ping"})", "application/json");
+  require(accepted && accepted->status == 200, "HTTP listener should allow authorized requests");
 
   listener.stop();
 }

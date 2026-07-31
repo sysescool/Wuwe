@@ -9,8 +9,8 @@
 #include <utility>
 #include <vector>
 
-#include <wuwe/agent/runtime/run_types.hpp>
 #include <wuwe/agent/core/storage.hpp>
+#include <wuwe/agent/runtime/run_types.hpp>
 
 namespace wuwe::agent::runtime {
 
@@ -27,8 +27,7 @@ using agent_run_store_capabilities = core::storage_capabilities;
 inline void validate_agent_run_store_capabilities(
   const agent_run_store_capabilities& capabilities) {
   core::validate_storage_capabilities(capabilities);
-  if (capabilities.declared &&
-      (!capabilities.atomic_mutations || !capabilities.ordered_replay)) {
+  if (capabilities.declared && (!capabilities.atomic_mutations || !capabilities.ordered_replay)) {
     throw std::invalid_argument(
       "agent run store requires atomic mutations and ordered event replay");
   }
@@ -47,29 +46,21 @@ class agent_run_store {
 public:
   virtual ~agent_run_store() = default;
 
-  [[nodiscard]] virtual agent_run_store_capabilities capabilities()
-    const noexcept {
+  [[nodiscard]] virtual agent_run_store_capabilities capabilities() const noexcept {
     return {};
   }
 
-  virtual run_store_write_result create(
-    agent_run_record record,
-    agent_run_event event) = 0;
-  [[nodiscard]] virtual std::optional<agent_run_record> load(
-    const std::string& run_id) const = 0;
+  virtual run_store_write_result create(agent_run_record record, agent_run_event event) = 0;
+  [[nodiscard]] virtual std::optional<agent_run_record> load(const std::string& run_id) const = 0;
   virtual run_store_write_result update(
-    std::uint64_t expected_revision,
-    agent_run_record record,
-    agent_run_event event) = 0;
+    std::uint64_t expected_revision, agent_run_record record, agent_run_event event) = 0;
   [[nodiscard]] virtual std::vector<agent_run_event> list_events(
-    const std::string& run_id,
-    std::uint64_t after_sequence = 0) const = 0;
+    const std::string& run_id, std::uint64_t after_sequence = 0) const = 0;
 };
 
 class in_memory_agent_run_store final : public agent_run_store {
 public:
-  [[nodiscard]] agent_run_store_capabilities capabilities()
-    const noexcept override {
+  [[nodiscard]] agent_run_store_capabilities capabilities() const noexcept override {
     return {
       .declared = true,
       .optimistic_concurrency = true,
@@ -79,9 +70,7 @@ public:
     };
   }
 
-  run_store_write_result create(
-    agent_run_record record,
-    agent_run_event event) override {
+  run_store_write_result create(agent_run_record record, agent_run_event event) override {
     if (record.id.empty()) {
       throw std::invalid_argument("agent run store requires a run id");
     }
@@ -104,19 +93,14 @@ public:
     return { .revision = record.revision };
   }
 
-  std::optional<agent_run_record> load(
-    const std::string& run_id) const override {
+  std::optional<agent_run_record> load(const std::string& run_id) const override {
     std::scoped_lock lock(mutex_);
     const auto found = records_.find(run_id);
-    return found == records_.end()
-             ? std::nullopt
-             : std::optional<agent_run_record>(found->second);
+    return found == records_.end() ? std::nullopt : std::optional<agent_run_record>(found->second);
   }
 
   run_store_write_result update(
-    std::uint64_t expected_revision,
-    agent_run_record record,
-    agent_run_event event) override {
+    std::uint64_t expected_revision, agent_run_record record, agent_run_event event) override {
     if (record.id.empty()) {
       throw std::invalid_argument("agent run store requires a run id");
     }
@@ -144,8 +128,7 @@ public:
   }
 
   std::vector<agent_run_event> list_events(
-    const std::string& run_id,
-    std::uint64_t after_sequence = 0) const override {
+    const std::string& run_id, std::uint64_t after_sequence = 0) const override {
     std::scoped_lock lock(mutex_);
     std::vector<agent_run_event> output;
     const auto found = events_.find(run_id);

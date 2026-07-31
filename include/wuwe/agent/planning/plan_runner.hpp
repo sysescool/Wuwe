@@ -20,8 +20,8 @@
 
 #include <wuwe/agent/memory/memory_context.hpp>
 #include <wuwe/agent/planning/plan.hpp>
-#include <wuwe/agent/planning/plan_prioritizer.hpp>
 #include <wuwe/agent/planning/plan_executor.hpp>
+#include <wuwe/agent/planning/plan_prioritizer.hpp>
 #include <wuwe/agent/planning/plan_reflection.hpp>
 #include <wuwe/agent/planning/plan_store.hpp>
 #include <wuwe/agent/planning/planner.hpp>
@@ -65,14 +65,9 @@ using plan_trace_sink = std::function<void(const plan_trace_event&)>;
 
 class plan_runtime_services {
 public:
-  plan_runtime_services(
-    const plan_store* store,
-    agent::memory::memory_context* memory,
-    plan_observer observer,
-    plan_trace_sink trace_sink)
-      : store_(const_cast<plan_store*>(store)),
-        memory_(memory),
-        observer_(std::move(observer)),
+  plan_runtime_services(const plan_store* store, agent::memory::memory_context* memory,
+    plan_observer observer, plan_trace_sink trace_sink)
+      : store_(const_cast<plan_store*>(store)), memory_(memory), observer_(std::move(observer)),
         trace_sink_(std::move(trace_sink)) {
   }
 
@@ -82,11 +77,7 @@ public:
     }
   }
 
-  void trace(
-    plan_event_type type,
-    const plan& value,
-    const plan_step* step,
-    std::size_t iteration,
+  void trace(plan_event_type type, const plan& value, const plan_step* step, std::size_t iteration,
     std::chrono::milliseconds elapsed) const {
     if (!trace_sink_) {
       return;
@@ -108,7 +99,7 @@ public:
 
   void remember_step(const std::string& plan_id, const plan_step& step) const {
     remember("plan step '" + step.id + "' " + to_string(step.status) +
-        (step.error.empty() ? std::string {} : ": " + step.error),
+               (step.error.empty() ? std::string {} : ": " + step.error),
       {
         { "planning_event", "step_finished" },
         { "plan_id", plan_id },
@@ -133,9 +124,8 @@ private:
 class plan_graph {
 public:
   static bool dependency_completed(const plan& value, const std::string& id) {
-    const auto found = std::find_if(value.steps.begin(), value.steps.end(), [&](const plan_step& step) {
-      return step.id == id;
-    });
+    const auto found = std::find_if(
+      value.steps.begin(), value.steps.end(), [&](const plan_step& step) { return step.id == id; });
     return found != value.steps.end() && found->status == plan_step_status::completed;
   }
 
@@ -174,17 +164,17 @@ public:
   }
 
   static const plan_step* first_pending_approval_step(const plan& value) {
-    const auto found = std::find_if(value.steps.begin(), value.steps.end(), [&](const plan_step& step) {
-      return step.status == plan_step_status::pending && dependencies_completed(value, step) &&
-             step.requires_approval && !step.approved;
-    });
+    const auto found =
+      std::find_if(value.steps.begin(), value.steps.end(), [&](const plan_step& step) {
+        return step.status == plan_step_status::pending && dependencies_completed(value, step) &&
+               step.requires_approval && !step.approved;
+      });
     return found == value.steps.end() ? nullptr : &*found;
   }
 
   static plan_step* find_step(plan& value, const std::string& id) {
-    const auto found = std::find_if(value.steps.begin(), value.steps.end(), [&](const plan_step& step) {
-      return step.id == id;
-    });
+    const auto found = std::find_if(
+      value.steps.begin(), value.steps.end(), [&](const plan_step& step) { return step.id == id; });
     return found == value.steps.end() ? nullptr : &*found;
   }
 };
@@ -219,9 +209,9 @@ public:
       input = nlohmann::json::object();
     }
     for (const auto& source_id : step.input_from_steps) {
-      const auto found = std::find_if(value.steps.begin(), value.steps.end(), [&](const plan_step& candidate) {
-        return candidate.id == source_id;
-      });
+      const auto found = std::find_if(value.steps.begin(),
+        value.steps.end(),
+        [&](const plan_step& candidate) { return candidate.id == source_id; });
       if (found != value.steps.end()) {
         input["steps"][source_id] =
           found->output_json.is_null() ? nlohmann::json(found->output) : found->output_json;
@@ -311,13 +301,11 @@ public:
     if (options_.policy.max_step_attempts == 0) {
       throw std::invalid_argument("plan max_step_attempts must be greater than zero");
     }
-    if (options_.policy.step_timeout.count() < 0 ||
-        options_.policy.run_timeout.count() < 0) {
+    if (options_.policy.step_timeout.count() < 0 || options_.policy.run_timeout.count() < 0) {
       throw std::invalid_argument("plan timeouts must not be negative");
     }
     if (options_.policy.cancellation_poll_interval.count() <= 0) {
-      throw std::invalid_argument(
-        "plan cancellation poll interval must be greater than zero");
+      throw std::invalid_argument("plan cancellation poll interval must be greater than zero");
     }
     (void)plan_prioritizer(options_.policy.prioritization, options_.priority_scorer);
   }
@@ -392,14 +380,11 @@ private:
       condition_.notify_all();
     }
 
-    void wait_until(
-      std::stop_token stop_token,
-      std::chrono::steady_clock::time_point deadline) {
+    void wait_until(std::stop_token stop_token, std::chrono::steady_clock::time_point deadline) {
       std::unique_lock lock(mutex_);
       const auto observed_generation = generation_;
-      condition_.wait_until(lock, stop_token, deadline, [&] {
-        return generation_ != observed_generation;
-      });
+      condition_.wait_until(
+        lock, stop_token, deadline, [&] { return generation_ != observed_generation; });
     }
 
   private:
@@ -429,9 +414,8 @@ private:
                                 ? std::optional(run_started + options_.policy.run_timeout)
                                 : std::nullopt;
     std::stop_source run_stop_source;
-    std::stop_callback external_stop_callback(options_.stop_token, [&run_stop_source] {
-      run_stop_source.request_stop();
-    });
+    std::stop_callback external_stop_callback(
+      options_.stop_token, [&run_stop_source] { run_stop_source.request_stop(); });
     if (options_.stop_token.stop_requested()) {
       run_stop_source.request_stop();
     }
@@ -454,7 +438,8 @@ private:
         result.stop_reason = plan_run_stop_reason::step_budget_exhausted;
         result.final_output = final_output(result.value);
         notify({ .type = plan_event_type::plan_finished, .current_plan = &result.value });
-        trace(plan_event_type::plan_finished, result.value, nullptr, result.iterations, result.elapsed);
+        trace(
+          plan_event_type::plan_finished, result.value, nullptr, result.iterations, result.elapsed);
         save(result.value);
         return result;
       }
@@ -465,11 +450,8 @@ private:
         return finish_interrupted_run(std::move(result), interruption, run_started);
       }
 
-      auto ready = plan_prioritizer(
-        options_.policy.prioritization,
-        options_.priority_scorer).order(
-          result.value,
-          plan_graph::ready_step_indices(result.value));
+      auto ready = plan_prioritizer(options_.policy.prioritization, options_.priority_scorer)
+                     .order(result.value, plan_graph::ready_step_indices(result.value));
       if (ready.empty()) {
         result.completed = plan_graph::all_terminal(result.value) &&
                            !plan_graph::has_status(result.value, plan_step_status::failed) &&
@@ -494,7 +476,8 @@ private:
           }
         }
         notify({ .type = plan_event_type::plan_finished, .current_plan = &result.value });
-        trace(plan_event_type::plan_finished, result.value, nullptr, result.iterations, result.elapsed);
+        trace(
+          plan_event_type::plan_finished, result.value, nullptr, result.iterations, result.elapsed);
         save(result.value);
         return result;
       }
@@ -503,7 +486,8 @@ private:
       if (budget != 0 && ready.size() > budget) {
         ready.resize(budget);
       }
-      const auto parallelism = (std::max<std::size_t>)(std::size_t { 1 }, options_.policy.max_parallel_steps);
+      const auto parallelism =
+        (std::max<std::size_t>)(std::size_t { 1 }, options_.policy.max_parallel_steps);
       if (ready.size() > parallelism) {
         ready.resize(parallelism);
       }
@@ -514,12 +498,7 @@ private:
       }
 
       auto batch = execute_ready_steps(
-        result.value,
-        ready,
-        result,
-        run_started,
-        run_stop_source,
-        run_deadline);
+        result.value, ready, result, run_started, run_stop_source, run_deadline);
       save(result.value);
 
       if (batch.interruption != run_interruption::none) {
@@ -541,12 +520,17 @@ private:
           result.value = options_.planner->revise_plan(result.value, observation);
           validate_or_throw(result.value, validation_for(request));
           notify({ .type = plan_event_type::plan_revised, .current_plan = &result.value });
-          trace(plan_event_type::plan_revised, result.value, nullptr, result.iterations, result.elapsed);
+          trace(plan_event_type::plan_revised,
+            result.value,
+            nullptr,
+            result.iterations,
+            result.elapsed);
           save(result.value);
           break;
         }
 
-        if ((step->status == plan_step_status::failed || step->status == plan_step_status::blocked) &&
+        if ((step->status == plan_step_status::failed ||
+              step->status == plan_step_status::blocked) &&
             !options_.policy.continue_after_step_failure) {
           result.completed = false;
           result.stop_reason = step->status == plan_step_status::blocked
@@ -556,7 +540,11 @@ private:
           result.final_output = final_output(result.value);
           result.elapsed = elapsed_since(run_started);
           notify({ .type = plan_event_type::plan_finished, .current_plan = &result.value });
-          trace(plan_event_type::plan_finished, result.value, nullptr, result.iterations, result.elapsed);
+          trace(plan_event_type::plan_finished,
+            result.value,
+            nullptr,
+            result.iterations,
+            result.elapsed);
           save(result.value);
           return result;
         }
@@ -574,8 +562,7 @@ private:
     return result;
   }
 
-  run_interruption current_run_interruption(
-    std::stop_source& run_stop_source,
+  run_interruption current_run_interruption(std::stop_source& run_stop_source,
     const std::optional<std::chrono::steady_clock::time_point>& run_deadline) const {
     if (options_.stop_token.stop_requested()) {
       run_stop_source.request_stop();
@@ -595,17 +582,14 @@ private:
     return run_interruption::none;
   }
 
-  plan_run_result finish_interrupted_run(
-    plan_run_result result,
-    run_interruption interruption,
+  plan_run_result finish_interrupted_run(plan_run_result result, run_interruption interruption,
     std::chrono::steady_clock::time_point run_started) const {
     result.completed = false;
     result.stop_reason = interruption == run_interruption::run_timeout
                            ? plan_run_stop_reason::run_timeout
                            : plan_run_stop_reason::cancelled;
-    result.error = interruption == run_interruption::run_timeout
-                     ? "plan run timeout exceeded"
-                     : "plan run cancelled";
+    result.error = interruption == run_interruption::run_timeout ? "plan run timeout exceeded"
+                                                                 : "plan run cancelled";
     result.final_output = final_output(result.value);
     result.elapsed = elapsed_since(run_started);
     const auto event_type = interruption == run_interruption::run_timeout
@@ -624,8 +608,9 @@ private:
       return;
     }
     for (auto& step : value.steps) {
-      if (step.status != plan_step_status::pending || !plan_graph::dependencies_completed(value, step) ||
-          !step.requires_approval || step.approved) {
+      if (step.status != plan_step_status::pending ||
+          !plan_graph::dependencies_completed(value, step) || !step.requires_approval ||
+          step.approved) {
         continue;
       }
       const auto approval = options_.approval_provider(step, value);
@@ -651,11 +636,8 @@ private:
     return options_.policy.max_steps_per_run - result.steps_executed;
   }
 
-  execution_batch_result execute_ready_steps(
-    plan& value,
-    const std::vector<std::size_t>& ready,
-    plan_run_result& run_result,
-    std::chrono::steady_clock::time_point run_started,
+  execution_batch_result execute_ready_steps(plan& value, const std::vector<std::size_t>& ready,
+    plan_run_result& run_result, std::chrono::steady_clock::time_point run_started,
     std::stop_source& run_stop_source,
     const std::optional<std::chrono::steady_clock::time_point>& run_deadline) {
     std::vector<plan_step_execution_item> running;
@@ -675,8 +657,10 @@ private:
         const auto decision = options_.policy_check(step, value);
         if (decision.decision == plan_policy_decision::deny) {
           ++step.attempts;
-          apply_step_result(value, step, plan_step_result::blocked(
-            decision.reason.empty() ? "step denied by planning policy" : decision.reason));
+          apply_step_result(value,
+            step,
+            plan_step_result::blocked(
+              decision.reason.empty() ? "step denied by planning policy" : decision.reason));
           batch.observations.push_back(observe_finished_step(value, step, run_result, run_started));
           continue;
         }
@@ -686,8 +670,13 @@ private:
           if (!decision.reason.empty()) {
             step.metadata["approval_reason"] = decision.reason;
           }
-          notify({ .type = plan_event_type::step_approval_required, .current_plan = &value, .step = &step });
-          trace(plan_event_type::step_approval_required, value, &step, run_result.iterations,
+          notify({ .type = plan_event_type::step_approval_required,
+            .current_plan = &value,
+            .step = &step });
+          trace(plan_event_type::step_approval_required,
+            value,
+            &step,
+            run_result.iterations,
             elapsed_since(run_started));
           continue;
         }
@@ -714,7 +703,10 @@ private:
       ++step.attempts;
       ++run_result.steps_executed;
       notify({ .type = plan_event_type::step_started, .current_plan = &value, .step = &step });
-      trace(plan_event_type::step_started, value, &step, run_result.iterations,
+      trace(plan_event_type::step_started,
+        value,
+        &step,
+        run_result.iterations,
         elapsed_since(run_started));
     }
 
@@ -731,29 +723,23 @@ private:
       const auto deadline = earliest_deadline(step_deadline, run_deadline);
       std::stop_source step_stop_source;
       const auto stop_token = step_stop_source.get_token();
-      auto promise =
-        std::make_shared<std::promise<plan_step_execution_item::task_result>>();
+      auto promise = std::make_shared<std::promise<plan_step_execution_item::task_result>>();
       auto future = promise->get_future();
       const auto step = snapshot->steps[index];
       const auto capabilities = executor->capabilities(step);
 
       try {
         std::thread worker(
-          [executor,
-            snapshot,
-            signal,
-            step,
-            stop_token,
-            deadline,
-            promise]() mutable {
+          [executor, snapshot, signal, step, stop_token, deadline, promise]() mutable {
             plan_step_result result;
             try {
-              result = executor->execute(step, {
-                .current_plan = *snapshot,
-                .artifacts = snapshot->artifacts,
-                .stop_token = stop_token,
-                .deadline = deadline,
-              });
+              result = executor->execute(step,
+                {
+                  .current_plan = *snapshot,
+                  .artifacts = snapshot->artifacts,
+                  .stop_token = stop_token,
+                  .deadline = deadline,
+                });
             }
             catch (const std::exception& ex) {
               result = plan_step_result::failed(
@@ -778,12 +764,13 @@ private:
           worker.detach();
         }
         catch (...) {
-          if (worker.joinable()) worker.join();
+          if (worker.joinable())
+            worker.join();
         }
       }
       catch (const std::exception& ex) {
-        auto result = plan_step_result::failed(
-          std::string("failed to start plan step executor: ") + ex.what());
+        auto result =
+          plan_step_result::failed(std::string("failed to start plan step executor: ") + ex.what());
         result.metadata["executor_start_exception"] = "true";
         promise->set_value({
           .result = std::move(result),
@@ -792,8 +779,8 @@ private:
         signal->notify();
       }
       catch (...) {
-        auto result = plan_step_result::failed(
-          "failed to start plan step executor with an unknown exception");
+        auto result =
+          plan_step_result::failed("failed to start plan step executor with an unknown exception");
         result.metadata["executor_start_exception"] = "true";
         promise->set_value({
           .result = std::move(result),
@@ -815,22 +802,16 @@ private:
     std::size_t remaining = running.size();
     while (remaining > 0) {
       for (auto& item : running) {
-        if (item.settled || item.future.wait_for(std::chrono::milliseconds { 0 }) !=
-                              std::future_status::ready) {
+        if (item.settled ||
+            item.future.wait_for(std::chrono::milliseconds { 0 }) != std::future_status::ready) {
           continue;
         }
         const auto completion_interruption = settle_completed_step(
-          value,
-          item,
-          run_result,
-          run_started,
-          batch.observations,
-          run_deadline);
+          value, item, run_result, run_started, batch.observations, run_deadline);
         --remaining;
         if (completion_interruption != run_interruption::none) {
           run_stop_source.request_stop();
-          interrupt_running_steps(
-            value,
+          interrupt_running_steps(value,
             running,
             run_result,
             run_started,
@@ -849,13 +830,7 @@ private:
       if (const auto interruption = current_run_interruption(run_stop_source, run_deadline);
           interruption != run_interruption::none) {
         interrupt_running_steps(
-          value,
-          running,
-          run_result,
-          run_started,
-          batch.observations,
-          interruption,
-          run_deadline);
+          value, running, run_result, run_started, batch.observations, interruption, run_deadline);
         batch.interruption = interruption;
         return batch;
       }
@@ -865,20 +840,13 @@ private:
         if (item.settled || !item.step_deadline || now < *item.step_deadline) {
           continue;
         }
-        if (item.future.wait_for(std::chrono::milliseconds { 0 }) ==
-            std::future_status::ready) {
+        if (item.future.wait_for(std::chrono::milliseconds { 0 }) == std::future_status::ready) {
           const auto completion_interruption = settle_completed_step(
-            value,
-            item,
-            run_result,
-            run_started,
-            batch.observations,
-            run_deadline);
+            value, item, run_result, run_started, batch.observations, run_deadline);
           --remaining;
           if (completion_interruption != run_interruption::none) {
             run_stop_source.request_stop();
-            interrupt_running_steps(
-              value,
+            interrupt_running_steps(value,
               running,
               run_result,
               run_started,
@@ -898,9 +866,7 @@ private:
         break;
       }
 
-      signal->wait_until(
-        run_stop_source.get_token(),
-        next_wake_deadline(running, run_deadline));
+      signal->wait_until(run_stop_source.get_token(), next_wake_deadline(running, run_deadline));
     }
 
     return batch;
@@ -936,11 +902,8 @@ private:
     return wake;
   }
 
-  run_interruption settle_completed_step(
-    plan& value,
-    plan_step_execution_item& item,
-    plan_run_result& run_result,
-    std::chrono::steady_clock::time_point run_started,
+  run_interruption settle_completed_step(plan& value, plan_step_execution_item& item,
+    plan_run_result& run_result, std::chrono::steady_clock::time_point run_started,
     std::vector<planning_observation>& observations,
     const std::optional<std::chrono::steady_clock::time_point>& run_deadline = std::nullopt) {
     auto task = take_task_result(item.future);
@@ -955,13 +918,7 @@ private:
       return run_interruption::run_timeout;
     }
     if (item.step_deadline && task.completed_at > *item.step_deadline) {
-      settle_timed_out_step(
-        value,
-        item,
-        run_result,
-        run_started,
-        observations,
-        false);
+      settle_timed_out_step(value, item, run_result, run_started, observations, false);
       return run_interruption::none;
     }
     auto result = std::move(task.result);
@@ -989,8 +946,7 @@ private:
       };
     }
     catch (...) {
-      auto result = plan_step_result::failed(
-        "plan step task failed before producing a result");
+      auto result = plan_step_result::failed("plan step task failed before producing a result");
       result.metadata["task_exception"] = "true";
       return {
         .result = std::move(result),
@@ -999,17 +955,12 @@ private:
     }
   }
 
-  void settle_timed_out_step(
-    plan& value,
-    plan_step_execution_item& item,
-    plan_run_result& run_result,
-    std::chrono::steady_clock::time_point run_started,
-    std::vector<planning_observation>& observations,
-    bool consume_future = true) {
+  void settle_timed_out_step(plan& value, plan_step_execution_item& item,
+    plan_run_result& run_result, std::chrono::steady_clock::time_point run_started,
+    std::vector<planning_observation>& observations, bool consume_future = true) {
     item.stop_source.request_stop();
-    const bool detached = consume_future &&
-                          item.future.wait_for(std::chrono::milliseconds { 0 }) !=
-                            std::future_status::ready;
+    const bool detached = consume_future && item.future.wait_for(std::chrono::milliseconds { 0 }) !=
+                                              std::future_status::ready;
     if (consume_future && !detached) {
       try {
         (void)item.future.get();
@@ -1039,37 +990,28 @@ private:
     item.settled = true;
   }
 
-  void interrupt_running_steps(
-    plan& value,
-    std::vector<plan_step_execution_item>& running,
-    plan_run_result& run_result,
-    std::chrono::steady_clock::time_point run_started,
-    std::vector<planning_observation>& observations,
-    run_interruption interruption,
+  void interrupt_running_steps(plan& value, std::vector<plan_step_execution_item>& running,
+    plan_run_result& run_result, std::chrono::steady_clock::time_point run_started,
+    std::vector<planning_observation>& observations, run_interruption interruption,
     const std::optional<std::chrono::steady_clock::time_point>& run_deadline) {
-    const auto stop_reason = interruption == run_interruption::run_timeout
-                               ? "run_timeout"
-                               : "cancelled";
+    const auto stop_reason =
+      interruption == run_interruption::run_timeout ? "run_timeout" : "cancelled";
     for (auto& item : running) {
       if (item.settled) {
         continue;
       }
-      if (item.future.wait_for(std::chrono::milliseconds { 0 }) ==
-          std::future_status::ready) {
-        (void)settle_completed_step(
-          value,
+      if (item.future.wait_for(std::chrono::milliseconds { 0 }) == std::future_status::ready) {
+        (void)settle_completed_step(value,
           item,
           run_result,
           run_started,
           observations,
-          interruption == run_interruption::run_timeout
-            ? run_deadline
-            : std::nullopt);
+          interruption == run_interruption::run_timeout ? run_deadline : std::nullopt);
         continue;
       }
       item.stop_source.request_stop();
-      const bool detached = item.future.wait_for(std::chrono::milliseconds { 0 }) !=
-                            std::future_status::ready;
+      const bool detached =
+        item.future.wait_for(std::chrono::milliseconds { 0 }) != std::future_status::ready;
       if (!detached) {
         try {
           (void)item.future.get();
@@ -1101,11 +1043,8 @@ private:
     step.metadata.erase("result_discarded");
   }
 
-  planning_observation observe_finished_step(
-    plan& value,
-    plan_step& step,
-    plan_run_result& run_result,
-    std::chrono::steady_clock::time_point run_started) {
+  planning_observation observe_finished_step(plan& value, plan_step& step,
+    plan_run_result& run_result, std::chrono::steady_clock::time_point run_started) {
     if (step.status == plan_step_status::completed) {
       ++run_result.steps_completed;
     }
@@ -1151,10 +1090,7 @@ private:
     plan_step_state::apply_result(value, step, std::move(result));
   }
 
-  void reflect_step_result(
-    plan& value,
-    plan_step& step,
-    plan_run_result& run_result,
+  void reflect_step_result(plan& value, plan_step& step, plan_run_result& run_result,
     std::chrono::steady_clock::time_point run_started) const {
     const auto reflected = plan_reflection_gate(options_.reflection).review(value, step);
     if (!reflected) {
@@ -1168,7 +1104,11 @@ private:
       .step = &step,
       .observation = observation,
     });
-    trace(plan_event_type::step_reflected, value, &step, run_result.iterations, elapsed_since(run_started));
+    trace(plan_event_type::step_reflected,
+      value,
+      &step,
+      run_result.iterations,
+      elapsed_since(run_started));
   }
 
   static void hydrate_step_input(plan& value, plan_step& step) {
@@ -1222,11 +1162,7 @@ private:
       std::chrono::steady_clock::now() - started);
   }
 
-  void trace(
-    plan_event_type type,
-    const plan& value,
-    const plan_step* step,
-    std::size_t iteration,
+  void trace(plan_event_type type, const plan& value, const plan_step* step, std::size_t iteration,
     std::chrono::milliseconds elapsed) const {
     if (!options_.trace_sink) {
       return;
@@ -1234,10 +1170,7 @@ private:
     services().trace(type, value, step, iteration, elapsed);
   }
 
-  void notify(
-    plan_event_type type,
-    const plan* current_plan,
-    const plan_step* step,
+  void notify(plan_event_type type, const plan* current_plan, const plan_step* step,
     planning_observation observation) const {
     notify({
       .type = type,
@@ -1260,7 +1193,8 @@ private:
   }
 
   plan_runtime_services services() const {
-    return plan_runtime_services(options_.store, options_.memory, options_.observer, options_.trace_sink);
+    return plan_runtime_services(
+      options_.store, options_.memory, options_.observer, options_.trace_sink);
   }
 
   plan_step_recovery_policy recovery_policy() const {

@@ -1,8 +1,8 @@
 #ifndef WUWE_AGENT_EXECUTION_EXECUTION_TOOLS_HPP
 #define WUWE_AGENT_EXECUTION_EXECUTION_TOOLS_HPP
 
-#include <optional>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -24,9 +24,7 @@ struct run_python_snippet {
 
 struct execution_tool_options {
   std::string tool_name { "run_python_snippet" };
-  std::string description {
-    "Run a short Python snippet with bounded output and timeout."
-  };
+  std::string description { "Run a short Python snippet with bounded output and timeout." };
   std::size_t max_arguments_bytes { 131072 };
   bool allow_empty_stdin { true };
   bool allow_additional_arguments { false };
@@ -38,20 +36,15 @@ struct execution_tool_options {
 
 class execution_tool_provider {
 public:
-  execution_tool_provider(
-    execution_runtime& runtime,
-    execution_tool_options options = {});
+  execution_tool_provider(execution_runtime& runtime, execution_tool_options options = {});
 
   [[nodiscard]] std::vector<llm_tool> tools() const;
 
   [[nodiscard]] llm_tool_result invoke(
-    const std::string& name,
-    const std::string& arguments_json) const;
+    const std::string& name, const std::string& arguments_json) const;
 
   [[nodiscard]] llm_tool_result invoke(
-    const std::string& name,
-    const std::string& arguments_json,
-    std::stop_token stop_token) const;
+    const std::string& name, const std::string& arguments_json, std::stop_token stop_token) const;
 
 private:
   execution_runtime& runtime_;

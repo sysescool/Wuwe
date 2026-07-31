@@ -1,8 +1,8 @@
 #ifndef WUWE_AGENT_REASONING_HPP
 #define WUWE_AGENT_REASONING_HPP
 
+#include <wuwe/agent/reasoning/best_of_n.hpp>
 #include <wuwe/agent/reasoning/reasoning_core.hpp>
 #include <wuwe/agent/reasoning/reasoning_runner.hpp>
-#include <wuwe/agent/reasoning/best_of_n.hpp>
 
 #endif // WUWE_AGENT_REASONING_HPP

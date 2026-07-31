@@ -1,15 +1,15 @@
 #ifndef WUWE_AGENT_RUNTIME_LLM_CONTINUATION_HPP
 #define WUWE_AGENT_RUNTIME_LLM_CONTINUATION_HPP
 
-#include <stdexcept>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <nlohmann/json.hpp>
 
-#include <wuwe/agent/llm/llm_usage.hpp>
 #include <wuwe/agent/llm/llm_capabilities.hpp>
+#include <wuwe/agent/llm/llm_usage.hpp>
 
 namespace wuwe::agent::runtime {
 
@@ -35,30 +35,36 @@ inline llm_context_source context_source_from_json(const nlohmann::json& value) 
   }
   if (value.is_string()) {
     const auto source = value.get<std::string>();
-    if (source == "automatic") return llm_context_source::automatic;
-    if (source == "system") return llm_context_source::system;
-    if (source == "conversation") return llm_context_source::conversation;
-    if (source == "memory") return llm_context_source::memory;
-    if (source == "knowledge") return llm_context_source::knowledge;
-    if (source == "tool_result") return llm_context_source::tool_result;
-    if (source == "other") return llm_context_source::other;
+    if (source == "automatic")
+      return llm_context_source::automatic;
+    if (source == "system")
+      return llm_context_source::system;
+    if (source == "conversation")
+      return llm_context_source::conversation;
+    if (source == "memory")
+      return llm_context_source::memory;
+    if (source == "knowledge")
+      return llm_context_source::knowledge;
+    if (source == "tool_result")
+      return llm_context_source::tool_result;
+    if (source == "other")
+      return llm_context_source::other;
   }
   throw std::invalid_argument("invalid persisted LLM context source");
 }
 
-inline llm_context_overflow_policy context_overflow_from_json(
-  const nlohmann::json& value) {
+inline llm_context_overflow_policy context_overflow_from_json(const nlohmann::json& value) {
   if (value.is_number_integer()) {
     const auto policy = value.get<int>();
     if (policy >= static_cast<int>(llm_context_overflow_policy::reject) &&
-        policy <= static_cast<int>(
-          llm_context_overflow_policy::trim_low_priority)) {
+        policy <= static_cast<int>(llm_context_overflow_policy::trim_low_priority)) {
       return static_cast<llm_context_overflow_policy>(policy);
     }
   }
   if (value.is_string()) {
     const auto policy = value.get<std::string>();
-    if (policy == "reject") return llm_context_overflow_policy::reject;
+    if (policy == "reject")
+      return llm_context_overflow_policy::reject;
     if (policy == "trim_low_priority") {
       return llm_context_overflow_policy::trim_low_priority;
     }
@@ -71,9 +77,12 @@ inline llm_cache_mode cache_mode_from_json(const nlohmann::json& value) {
     throw std::invalid_argument("invalid persisted LLM cache mode");
   }
   const auto mode = value.get<std::string>();
-  if (mode == "provider_default") return llm_cache_mode::provider_default;
-  if (mode == "disabled") return llm_cache_mode::disabled;
-  if (mode == "enabled") return llm_cache_mode::enabled;
+  if (mode == "provider_default")
+    return llm_cache_mode::provider_default;
+  if (mode == "disabled")
+    return llm_cache_mode::disabled;
+  if (mode == "enabled")
+    return llm_cache_mode::enabled;
   throw std::invalid_argument("invalid persisted LLM cache mode");
 }
 
@@ -105,9 +114,8 @@ inline nlohmann::json message_to_json(const chat_message& value) {
     { "context_source", std::string(to_string(value.context_source)) },
   };
   output["name"] = value.name ? nlohmann::json(*value.name) : nlohmann::json(nullptr);
-  output["tool_call_id"] = value.tool_call_id
-    ? nlohmann::json(*value.tool_call_id)
-    : nlohmann::json(nullptr);
+  output["tool_call_id"] =
+    value.tool_call_id ? nlohmann::json(*value.tool_call_id) : nlohmann::json(nullptr);
   return output;
 }
 
@@ -118,8 +126,7 @@ inline chat_message message_from_json(const nlohmann::json& value) {
   if (value.contains("name") && !value.at("name").is_null()) {
     message.name = value.at("name").get<std::string>();
   }
-  if (value.contains("tool_call_id") &&
-      !value.at("tool_call_id").is_null()) {
+  if (value.contains("tool_call_id") && !value.at("tool_call_id").is_null()) {
     message.tool_call_id = value.at("tool_call_id").get<std::string>();
   }
   if (value.contains("tool_calls") && value.at("tool_calls").is_array()) {
@@ -128,8 +135,8 @@ inline chat_message message_from_json(const nlohmann::json& value) {
     }
   }
   message.context_source = value.contains("context_source")
-    ? context_source_from_json(value.at("context_source"))
-    : llm_context_source::automatic;
+                             ? context_source_from_json(value.at("context_source"))
+                             : llm_context_source::automatic;
   return message;
 }
 
@@ -148,36 +155,34 @@ inline nlohmann::json request_to_json(const llm_request& value) {
   }
   nlohmann::json output {
     { "model", value.model },
+    { "provider", value.provider },
     { "messages", std::move(messages) },
     { "temperature", value.temperature },
     { "tools", std::move(tools) },
-    { "language", {
-      { "response_language", value.language.response_language },
-      { "reasoning_language", value.language.reasoning_language },
-      { "locale", value.language.locale },
-    } },
+    { "language",
+      {
+        { "response_language", value.language.response_language },
+        { "reasoning_language", value.language.reasoning_language },
+        { "locale", value.language.locale },
+      } },
   };
-  output["response_format"] = value.response_format
-    ? nlohmann::json(*value.response_format)
-    : nlohmann::json(nullptr);
-  output["max_output_tokens"] = value.max_output_tokens
-    ? nlohmann::json(*value.max_output_tokens)
-    : nlohmann::json(nullptr);
+  output["response_format"] =
+    value.response_format ? nlohmann::json(*value.response_format) : nlohmann::json(nullptr);
+  output["max_output_tokens"] =
+    value.max_output_tokens ? nlohmann::json(*value.max_output_tokens) : nlohmann::json(nullptr);
   output["stop_sequences"] = value.stop_sequences;
-  output["seed"] = value.seed
-    ? nlohmann::json(*value.seed)
-    : nlohmann::json(nullptr);
+  output["seed"] = value.seed ? nlohmann::json(*value.seed) : nlohmann::json(nullptr);
   output["json_schema_output"] = value.json_schema_output
-    ? nlohmann::json({
-        { "name", value.json_schema_output->name },
-        { "schema", value.json_schema_output->schema },
-        { "strict", value.json_schema_output->strict },
-      })
-    : nlohmann::json(nullptr);
+                                   ? nlohmann::json({
+                                       { "name", value.json_schema_output->name },
+                                       { "schema", value.json_schema_output->schema },
+                                       { "strict", value.json_schema_output->strict },
+                                     })
+                                   : nlohmann::json(nullptr);
   output["cache_mode"] = std::string(to_string(value.cache_mode));
   output["execution_context"] = value.execution_context
-    ? core::execution_context_to_json(*value.execution_context)
-    : nlohmann::json(nullptr);
+                                  ? core::execution_context_to_json(*value.execution_context)
+                                  : nlohmann::json(nullptr);
   if (value.context_budget) {
     output["context_budget"] = {
       { "context_window_tokens", value.context_budget->context_window_tokens },
@@ -186,15 +191,16 @@ inline nlohmann::json request_to_json(const llm_request& value) {
         value.context_budget->minimum_recent_conversation_messages },
       { "overflow", std::string(to_string(value.context_budget->overflow)) },
       { "allow_system_truncation", value.context_budget->allow_system_truncation },
-      { "limits", {
-        { "system", value.context_budget->limits.system },
-        { "conversation", value.context_budget->limits.conversation },
-        { "memory", value.context_budget->limits.memory },
-        { "knowledge", value.context_budget->limits.knowledge },
-        { "tool_schemas", value.context_budget->limits.tool_schemas },
-        { "tool_results", value.context_budget->limits.tool_results },
-        { "other", value.context_budget->limits.other },
-      } },
+      { "limits",
+        {
+          { "system", value.context_budget->limits.system },
+          { "conversation", value.context_budget->limits.conversation },
+          { "memory", value.context_budget->limits.memory },
+          { "knowledge", value.context_budget->limits.knowledge },
+          { "tool_schemas", value.context_budget->limits.tool_schemas },
+          { "tool_results", value.context_budget->limits.tool_results },
+          { "other", value.context_budget->limits.other },
+        } },
     };
   }
   else {
@@ -215,6 +221,7 @@ inline nlohmann::json request_to_json(const llm_request& value) {
 inline llm_request request_from_json(const nlohmann::json& value) {
   llm_request request;
   request.model = value.value("model", std::string {});
+  request.provider = value.value("provider", std::string {});
   request.temperature = value.value("temperature", 0.2);
   if (value.contains("messages") && value.at("messages").is_array()) {
     for (const auto& message : value.at("messages")) {
@@ -226,26 +233,21 @@ inline llm_request request_from_json(const nlohmann::json& value) {
       request.tools.push_back({
         .name = tool.value("name", std::string {}),
         .description = tool.value("description", std::string {}),
-        .parameters_json_schema = tool.value(
-          "parameters_json_schema", std::string("{}")),
+        .parameters_json_schema = tool.value("parameters_json_schema", std::string("{}")),
       });
     }
   }
-  if (value.contains("response_format") &&
-      !value.at("response_format").is_null()) {
+  if (value.contains("response_format") && !value.at("response_format").is_null()) {
     request.response_format = value.at("response_format").get<std::string>();
   }
-  if (value.contains("max_output_tokens") &&
-      !value.at("max_output_tokens").is_null()) {
+  if (value.contains("max_output_tokens") && !value.at("max_output_tokens").is_null()) {
     request.max_output_tokens = value.at("max_output_tokens").get<int>();
   }
-  request.stop_sequences = value.value(
-    "stop_sequences", std::vector<std::string> {});
+  request.stop_sequences = value.value("stop_sequences", std::vector<std::string> {});
   if (value.contains("seed") && !value.at("seed").is_null()) {
     request.seed = value.at("seed").get<std::int64_t>();
   }
-  if (value.contains("json_schema_output") &&
-      !value.at("json_schema_output").is_null()) {
+  if (value.contains("json_schema_output") && !value.at("json_schema_output").is_null()) {
     const auto& output = value.at("json_schema_output");
     request.json_schema_output = llm_json_schema_output {
       .name = output.value("name", std::string {}),
@@ -253,19 +255,16 @@ inline llm_request request_from_json(const nlohmann::json& value) {
       .strict = output.value("strict", true),
     };
   }
-  request.cache_mode = value.contains("cache_mode")
-    ? cache_mode_from_json(value.at("cache_mode"))
-    : llm_cache_mode::provider_default;
-  if (value.contains("execution_context") &&
-      !value.at("execution_context").is_null()) {
-    request.execution_context = core::execution_context_from_json(
-      value.at("execution_context"));
+  request.cache_mode = value.contains("cache_mode") ? cache_mode_from_json(value.at("cache_mode"))
+                                                    : llm_cache_mode::provider_default;
+  if (value.contains("execution_context") && !value.at("execution_context").is_null()) {
+    request.execution_context = core::execution_context_from_json(value.at("execution_context"));
   }
   if (value.contains("context_budget") && !value.at("context_budget").is_null()) {
     const auto& encoded = value.at("context_budget");
     const auto overflow = encoded.contains("overflow")
-      ? context_overflow_from_json(encoded.at("overflow"))
-      : llm_context_overflow_policy::trim_low_priority;
+                            ? context_overflow_from_json(encoded.at("overflow"))
+                            : llm_context_overflow_policy::trim_low_priority;
     const auto limits = encoded.value("limits", nlohmann::json::object());
     request.context_budget = llm_context_budget {
       .context_window_tokens = encoded.value("context_window_tokens", std::size_t {}),
@@ -298,24 +297,22 @@ inline llm_request request_from_json(const nlohmann::json& value) {
   }
   if (value.contains("language") && value.at("language").is_object()) {
     const auto& language = value.at("language");
-    request.language.response_language = language.value(
-      "response_language", std::string {});
-    request.language.reasoning_language = language.value(
-      "reasoning_language", std::string {});
+    request.language.response_language = language.value("response_language", std::string {});
+    request.language.reasoning_language = language.value("reasoning_language", std::string {});
     request.language.locale = language.value("locale", std::string {});
   }
-  const auto validation = agent::llm::validate_llm_request(request, {
-    .tools = true,
-    .tool_choice = true,
-    .json_response_format = true,
-    .stop_sequences = true,
-    .deterministic_seed = true,
-    .json_schema_output = true,
-    .explicit_cache_control = true,
-  });
+  const auto validation = agent::llm::validate_llm_request(request,
+    {
+      .tools = true,
+      .tool_choice = true,
+      .json_response_format = true,
+      .stop_sequences = true,
+      .deterministic_seed = true,
+      .json_schema_output = true,
+      .explicit_cache_control = true,
+    });
   if (!validation) {
-    throw std::invalid_argument(
-      "invalid persisted LLM request: " + validation.message);
+    throw std::invalid_argument("invalid persisted LLM request: " + validation.message);
   }
   return request;
 }
@@ -338,9 +335,8 @@ inline llm_usage usage_from_json(const nlohmann::json& value) {
     .cached_prompt_tokens = value.value("cached_prompt_tokens", 0),
     .reasoning_tokens = value.value("reasoning_tokens", 0),
   };
-  if (usage.prompt_tokens < 0 || usage.completion_tokens < 0 ||
-      usage.total_tokens < 0 || usage.cached_prompt_tokens < 0 ||
-      usage.reasoning_tokens < 0 ||
+  if (usage.prompt_tokens < 0 || usage.completion_tokens < 0 || usage.total_tokens < 0 ||
+      usage.cached_prompt_tokens < 0 || usage.reasoning_tokens < 0 ||
       usage.cached_prompt_tokens > usage.prompt_tokens ||
       usage.reasoning_tokens > usage.completion_tokens) {
     throw std::invalid_argument("invalid persisted LLM usage");
@@ -358,18 +354,15 @@ inline nlohmann::json pricing_to_json(const agent::llm::llm_pricing& value) {
       ? nlohmann::json(*value.cached_input_per_million_tokens_usd)
       : nlohmann::json(nullptr);
   output["reasoning_per_million_tokens_usd"] =
-    value.reasoning_per_million_tokens_usd
-      ? nlohmann::json(*value.reasoning_per_million_tokens_usd)
-      : nlohmann::json(nullptr);
+    value.reasoning_per_million_tokens_usd ? nlohmann::json(*value.reasoning_per_million_tokens_usd)
+                                           : nlohmann::json(nullptr);
   return output;
 }
 
 inline agent::llm::llm_pricing pricing_from_json(const nlohmann::json& value) {
   agent::llm::llm_pricing pricing {
-    .input_per_million_tokens_usd = value.value(
-      "input_per_million_tokens_usd", 0.0),
-    .output_per_million_tokens_usd = value.value(
-      "output_per_million_tokens_usd", 0.0),
+    .input_per_million_tokens_usd = value.value("input_per_million_tokens_usd", 0.0),
+    .output_per_million_tokens_usd = value.value("output_per_million_tokens_usd", 0.0),
   };
   if (value.contains("cached_input_per_million_tokens_usd") &&
       !value.at("cached_input_per_million_tokens_usd").is_null()) {
@@ -389,8 +382,7 @@ inline agent::llm::llm_pricing pricing_from_json(const nlohmann::json& value) {
 
 } // namespace llm_codec
 
-inline nlohmann::json llm_continuation_to_json(
-  const llm_tool_continuation& value) {
+inline nlohmann::json llm_continuation_to_json(const llm_tool_continuation& value) {
   auto pending = nlohmann::json::array();
   for (const auto& call : value.pending_calls) {
     pending.push_back(llm_codec::tool_call_to_json(call));
@@ -405,14 +397,12 @@ inline nlohmann::json llm_continuation_to_json(
     { "assistant_persisted", value.assistant_persisted },
     { "accumulated_usage", llm_codec::usage_to_json(value.accumulated_usage) },
   };
-  output["pricing"] = value.pricing
-    ? llm_codec::pricing_to_json(*value.pricing)
-    : nlohmann::json(nullptr);
+  output["pricing"] =
+    value.pricing ? llm_codec::pricing_to_json(*value.pricing) : nlohmann::json(nullptr);
   return output;
 }
 
-inline llm_tool_continuation llm_continuation_from_json(
-  const nlohmann::json& value) {
+inline llm_tool_continuation llm_continuation_from_json(const nlohmann::json& value) {
   if (value.value("schema_version", 0) != 1 ||
       value.value("kind", std::string {}) != "llm_tool_loop") {
     throw std::invalid_argument("unsupported LLM continuation payload");
@@ -424,12 +414,11 @@ inline llm_tool_continuation llm_continuation_from_json(
       continuation.pending_calls.push_back(llm_codec::tool_call_from_json(call));
     }
   }
-  continuation.approved_call_ids = value.value(
-    "approved_call_ids", std::vector<std::string> {});
+  continuation.approved_call_ids = value.value("approved_call_ids", std::vector<std::string> {});
   continuation.used_tool_rounds = value.value("used_tool_rounds", 0);
   continuation.assistant_persisted = value.value("assistant_persisted", false);
-  continuation.accumulated_usage = llm_codec::usage_from_json(
-    value.value("accumulated_usage", nlohmann::json::object()));
+  continuation.accumulated_usage =
+    llm_codec::usage_from_json(value.value("accumulated_usage", nlohmann::json::object()));
   if (value.contains("pricing") && !value.at("pricing").is_null()) {
     continuation.pricing = llm_codec::pricing_from_json(value.at("pricing"));
   }
@@ -438,17 +427,14 @@ inline llm_tool_continuation llm_continuation_from_json(
   }
   std::set<std::string> pending_ids;
   for (const auto& call : continuation.pending_calls) {
-    if (call.id.empty() || call.name.empty() ||
-        !pending_ids.insert(call.id).second) {
-      throw std::invalid_argument(
-        "persisted LLM continuation has invalid pending tool calls");
+    if (call.id.empty() || call.name.empty() || !pending_ids.insert(call.id).second) {
+      throw std::invalid_argument("persisted LLM continuation has invalid pending tool calls");
     }
   }
   std::set<std::string> approved_ids;
   for (const auto& call_id : continuation.approved_call_ids) {
     if (!pending_ids.contains(call_id) || !approved_ids.insert(call_id).second) {
-      throw std::invalid_argument(
-        "persisted LLM continuation has invalid approved tool calls");
+      throw std::invalid_argument("persisted LLM continuation has invalid approved tool calls");
     }
   }
   return continuation;

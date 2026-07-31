@@ -1,11 +1,11 @@
 #ifndef WUWE_AGENT_LLM_CLIENT_H
 #define WUWE_AGENT_LLM_CLIENT_H
 
-#include <string_view>
 #include <stop_token>
+#include <string_view>
 
-#include <wuwe/agent/llm/llm_error.h>
 #include <wuwe/agent/llm/llm_capabilities.hpp>
+#include <wuwe/agent/llm/llm_error.h>
 #include <wuwe/agent/llm/llm_types.h>
 #include <wuwe/common/wuwe_fwd.h>
 
@@ -32,8 +32,7 @@ public:
     return false;
   }
 
-  [[nodiscard]] virtual llm_provider_capabilities capabilities()
-    const noexcept {
+  [[nodiscard]] virtual llm_provider_capabilities capabilities() const noexcept {
     return { .declared = false };
   }
 
@@ -49,20 +48,18 @@ public:
     return response;
   }
 
-  virtual llm_response complete_stream(
-    const llm_request& request,
-    const llm_stream_callbacks& callbacks,
-    std::stop_token stop_token = {}) {
+  virtual llm_response complete_stream(const llm_request& request,
+    const llm_stream_callbacks& callbacks, std::stop_token stop_token = {}) {
     const auto emit_event = [&](const llm_stream_event& event) {
       if (callbacks.on_event) {
         callbacks.on_event(event);
       }
-      if (event.type == llm_stream_event_type::reasoning_delta &&
-          callbacks.on_reasoning_delta && !event.reasoning_delta.empty()) {
+      if (event.type == llm_stream_event_type::reasoning_delta && callbacks.on_reasoning_delta &&
+          !event.reasoning_delta.empty()) {
         callbacks.on_reasoning_delta(event.reasoning_delta);
       }
-      if (event.type == llm_stream_event_type::reasoning_done &&
-          callbacks.on_reasoning_done && !event.reasoning_summary.empty()) {
+      if (event.type == llm_stream_event_type::reasoning_done && callbacks.on_reasoning_done &&
+          !event.reasoning_summary.empty()) {
         callbacks.on_reasoning_done(event.reasoning_summary);
       }
     };

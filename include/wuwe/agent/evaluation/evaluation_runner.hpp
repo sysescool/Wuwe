@@ -3,8 +3,8 @@
 
 #include <algorithm>
 #include <chrono>
-#include <exception>
 #include <cmath>
+#include <exception>
 #include <limits>
 #include <map>
 #include <memory>
@@ -43,8 +43,7 @@ class evaluation_runner {
 public:
   explicit evaluation_runner(evaluation_runner_options options = {})
       : options_(std::move(options)) {
-    if (!std::isfinite(options_.policy.pass_threshold) ||
-        options_.policy.pass_threshold < 0.0 ||
+    if (!std::isfinite(options_.policy.pass_threshold) || options_.policy.pass_threshold < 0.0 ||
         options_.policy.pass_threshold > 1.0) {
       throw std::invalid_argument(
         "evaluation pass threshold must be finite and between zero and one");
@@ -52,15 +51,12 @@ public:
   }
 
   evaluation_runner& add(
-    std::shared_ptr<evaluator> value,
-    double weight = 1.0,
-    bool required = true) {
+    std::shared_ptr<evaluator> value, double weight = 1.0, bool required = true) {
     if (!value) {
       throw std::invalid_argument("evaluation_runner cannot add a null evaluator");
     }
     if (!std::isfinite(weight) || weight < 0.0) {
-      throw std::invalid_argument(
-        "evaluation evaluator weight must be finite and non-negative");
+      throw std::invalid_argument("evaluation evaluator weight must be finite and non-negative");
     }
     if (weight > (std::numeric_limits<double>::max)() - configured_weight_) {
       throw std::invalid_argument(
@@ -119,8 +115,8 @@ public:
       }
       check.elapsed = elapsed_since(check_started);
 
-      const bool ignored_error = !check.error.empty() &&
-                                 options_.policy.failure_mode == evaluator_failure_mode::ignore;
+      const bool ignored_error =
+        !check.error.empty() && options_.policy.failure_mode == evaluator_failure_mode::ignore;
       if (!ignored_error) {
         weighted_score += check.metric.score * entry.weight;
         total_weight += entry.weight;
@@ -144,8 +140,7 @@ public:
     return result;
   }
 
-  [[nodiscard]] evaluation_suite_result run(
-    const std::vector<evaluation_case>& cases) const {
+  [[nodiscard]] evaluation_suite_result run(const std::vector<evaluation_case>& cases) const {
     const auto started = std::chrono::steady_clock::now();
     std::vector<evaluation_case_result> results;
     results.reserve(cases.size());
@@ -156,8 +151,7 @@ public:
   }
 
   [[nodiscard]] evaluation_suite_result run(
-    const std::vector<evaluation_case>& cases,
-    const evaluation_target& target) const {
+    const std::vector<evaluation_case>& cases, const evaluation_target& target) const {
     if (!target) {
       throw std::invalid_argument("evaluation target is required");
     }
@@ -190,8 +184,7 @@ private:
     bool required { true };
   };
 
-  evaluation_suite_result summarize(
-    std::vector<evaluation_case_result> results,
+  evaluation_suite_result summarize(std::vector<evaluation_case_result> results,
     std::chrono::steady_clock::time_point started) const {
     evaluation_suite_result suite;
     suite.total = results.size();
@@ -237,18 +230,20 @@ private:
   }
 
   static void inherit_case_defaults(evaluation_case& value, const evaluation_case& seed) {
-    if (value.id.empty()) value.id = seed.id;
-    if (value.input.empty()) value.input = seed.input;
-    if (value.expected_output.empty()) value.expected_output = seed.expected_output;
-    if (value.expected.is_null()) value.expected = seed.expected;
+    if (value.id.empty())
+      value.id = seed.id;
+    if (value.input.empty())
+      value.input = seed.input;
+    if (value.expected_output.empty())
+      value.expected_output = seed.expected_output;
+    if (value.expected.is_null())
+      value.expected = seed.expected;
     for (const auto& [key, metadata_value] : seed.metadata) {
       value.metadata.try_emplace(key, metadata_value);
     }
   }
 
-  static evaluation_case_result target_failure(
-    const evaluation_case& value,
-    std::string error) {
+  static evaluation_case_result target_failure(const evaluation_case& value, std::string error) {
     return {
       .id = value.id,
       .passed = false,
@@ -258,9 +253,7 @@ private:
     };
   }
 
-  static evaluation_metric_result failed_metric(
-    std::string name,
-    const std::string& error) {
+  static evaluation_metric_result failed_metric(std::string name, const std::string& error) {
     return {
       .name = std::move(name),
       .score = 0.0,
@@ -273,13 +266,14 @@ private:
     std::size_t failures = 0;
     if (options_.observer) {
       failures += observability::invoke_telemetry(
-        options_.telemetry_failure_mode,
-        [&] { options_.observer(result); }) ? 0U : 1U;
+                    options_.telemetry_failure_mode, [&] { options_.observer(result); })
+                    ? 0U
+                    : 1U;
     }
     if (options_.event_sink) {
-      failures += observability::invoke_telemetry(
-        options_.telemetry_failure_mode,
-        [&] { options_.event_sink->publish({
+      failures += observability::invoke_telemetry(options_.telemetry_failure_mode,
+                    [&] {
+                      options_.event_sink->publish({
         .module = "evaluation",
         .name = "case_evaluated",
         .subject_id = result.id,
@@ -289,15 +283,17 @@ private:
           { "score", std::to_string(result.score) },
           { "checks", std::to_string(result.checks.size()) },
         },
-      }); }) ? 0U : 1U;
+      });
+                    })
+                    ? 0U
+                    : 1U;
     }
     if (failures != 0) {
       result.metadata["telemetry_error_count"] = std::to_string(failures);
     }
   }
 
-  static std::chrono::milliseconds elapsed_since(
-    std::chrono::steady_clock::time_point started) {
+  static std::chrono::milliseconds elapsed_since(std::chrono::steady_clock::time_point started) {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - started);
   }

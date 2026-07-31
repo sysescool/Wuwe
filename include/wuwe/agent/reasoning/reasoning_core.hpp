@@ -1,14 +1,14 @@
 #ifndef WUWE_AGENT_REASONING_CORE_HPP
 #define WUWE_AGENT_REASONING_CORE_HPP
 
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <functional>
 #include <map>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <string_view>
-#include <stop_token>
 #include <system_error>
 #include <type_traits>
 #include <utility>
@@ -16,8 +16,8 @@
 
 #include <nlohmann/json.hpp>
 
-#include <wuwe/agent/llm/llm_types.h>
 #include <wuwe/agent/guardrails/guardrail_core.hpp>
+#include <wuwe/agent/llm/llm_types.h>
 #include <wuwe/agent/planning/plan.hpp>
 #include <wuwe/agent/reflection/reflection_core.hpp>
 #include <wuwe/agent/reflection/reflection_runner.hpp>
@@ -368,8 +368,7 @@ inline reasoning_policy select_policy(const reasoning_task_description& task) {
   if (task.profile != reasoning_task_profile::auto_select) {
     return select_policy(task.profile);
   }
-  if (task.requires_plan ||
-      contains_case_insensitive(task.input, "multi-step") ||
+  if (task.requires_plan || contains_case_insensitive(task.input, "multi-step") ||
       contains_case_insensitive(task.input, "plan") ||
       contains_case_insensitive(task.input, "workflow")) {
     return select_policy(reasoning_task_profile::plan_required);
@@ -393,6 +392,7 @@ struct reasoning_request {
   reflection::reflection_rubric rubric;
   std::map<std::string, std::string> metadata;
   routing::model_route_requirements model_routing;
+  std::string provider;
 };
 
 struct reasoning_step {
@@ -540,8 +540,7 @@ inline nlohmann::json reasoning_trace_record_to_json(const reasoning_trace_recor
   };
 }
 
-inline nlohmann::json reasoning_trace_to_json(
-  const std::vector<reasoning_trace_record>& trace) {
+inline nlohmann::json reasoning_trace_to_json(const std::vector<reasoning_trace_record>& trace) {
   auto output = nlohmann::json::array();
   for (const auto& record : trace) {
     output.push_back(reasoning_trace_record_to_json(record));

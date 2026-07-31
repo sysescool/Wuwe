@@ -98,6 +98,8 @@ auto pipeline = client
 
 `collect_all` schedules every branch and preserves partial failures. `fail_fast` stops scheduling after the first observed failure and requests cancellation from active siblings. Operation timeout and external cancellation also stop new scheduling immediately.
 
+`fan_out_options::timeout` is relative to the start of that fan-out operation. `fan_out_options::deadline` is an absolute `std::chrono::steady_clock` deadline and is useful when several phases share one end-to-end budget. When both are present, the earlier boundary wins. An already-expired deadline returns a timed-out result without starting new branch work.
+
 C++ cannot terminate an arbitrary function safely. If an active branch ignores its token when timeout, cancellation, or fail-fast occurs, the returned item is marked `detached`; the framework keeps the branch callable, input, and execution state alive until that work actually exits. Hosts must reconcile possible side effects before retrying detached work.
 
 ## Flow primitives

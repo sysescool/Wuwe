@@ -23,8 +23,8 @@
 
 #include <nlohmann/json.hpp>
 
-#include <wuwe/agent/orchestration/fan_out.hpp>
 #include <wuwe/agent/core/observability.hpp>
+#include <wuwe/agent/orchestration/fan_out.hpp>
 #include <wuwe/agent/reasoning/reasoning_runner.hpp>
 
 namespace wuwe::agent::reasoning {
@@ -43,16 +43,24 @@ enum class best_of_n_candidate_status {
 
 [[nodiscard]] inline std::string to_string(best_of_n_candidate_status value) {
   switch (value) {
-    case best_of_n_candidate_status::eligible: return "eligible";
-    case best_of_n_candidate_status::rejected: return "rejected";
-    case best_of_n_candidate_status::generation_failed: return "generation_failed";
-    case best_of_n_candidate_status::scoring_failed: return "scoring_failed";
-    case best_of_n_candidate_status::budget_exceeded: return "budget_exceeded";
+    case best_of_n_candidate_status::eligible:
+      return "eligible";
+    case best_of_n_candidate_status::rejected:
+      return "rejected";
+    case best_of_n_candidate_status::generation_failed:
+      return "generation_failed";
+    case best_of_n_candidate_status::scoring_failed:
+      return "scoring_failed";
+    case best_of_n_candidate_status::budget_exceeded:
+      return "budget_exceeded";
     case best_of_n_candidate_status::side_effect_blocked:
       return "side_effect_blocked";
-    case best_of_n_candidate_status::cancelled: return "cancelled";
-    case best_of_n_candidate_status::timed_out: return "timed_out";
-    case best_of_n_candidate_status::skipped: return "skipped";
+    case best_of_n_candidate_status::cancelled:
+      return "cancelled";
+    case best_of_n_candidate_status::timed_out:
+      return "timed_out";
+    case best_of_n_candidate_status::skipped:
+      return "skipped";
   }
   return "unknown";
 }
@@ -68,13 +76,18 @@ enum class best_of_n_stop_reason {
 
 [[nodiscard]] inline std::string to_string(best_of_n_stop_reason value) {
   switch (value) {
-    case best_of_n_stop_reason::none: return "none";
-    case best_of_n_stop_reason::cancelled: return "cancelled";
-    case best_of_n_stop_reason::timed_out: return "timed_out";
-    case best_of_n_stop_reason::budget_exceeded: return "budget_exceeded";
+    case best_of_n_stop_reason::none:
+      return "none";
+    case best_of_n_stop_reason::cancelled:
+      return "cancelled";
+    case best_of_n_stop_reason::timed_out:
+      return "timed_out";
+    case best_of_n_stop_reason::budget_exceeded:
+      return "budget_exceeded";
     case best_of_n_stop_reason::no_eligible_candidate:
       return "no_eligible_candidate";
-    case best_of_n_stop_reason::selection_failed: return "selection_failed";
+    case best_of_n_stop_reason::selection_failed:
+      return "selection_failed";
   }
   return "unknown";
 }
@@ -103,29 +116,44 @@ enum class best_of_n_side_effect_policy {
 
 [[nodiscard]] inline std::string to_string(best_of_n_side_effect_policy value) {
   switch (value) {
-    case best_of_n_side_effect_policy::isolate: return "isolate";
-    case best_of_n_side_effect_policy::allow: return "allow";
+    case best_of_n_side_effect_policy::isolate:
+      return "isolate";
+    case best_of_n_side_effect_policy::allow:
+      return "allow";
   }
   return "unknown";
 }
 
 [[nodiscard]] inline std::string to_string(best_of_n_event_type value) {
   switch (value) {
-    case best_of_n_event_type::started: return "started";
-    case best_of_n_event_type::candidate_started: return "candidate_started";
-    case best_of_n_event_type::candidate_generated: return "candidate_generated";
-    case best_of_n_event_type::candidate_scored: return "candidate_scored";
-    case best_of_n_event_type::candidate_rejected: return "candidate_rejected";
-    case best_of_n_event_type::candidate_failed: return "candidate_failed";
+    case best_of_n_event_type::started:
+      return "started";
+    case best_of_n_event_type::candidate_started:
+      return "candidate_started";
+    case best_of_n_event_type::candidate_generated:
+      return "candidate_generated";
+    case best_of_n_event_type::candidate_scored:
+      return "candidate_scored";
+    case best_of_n_event_type::candidate_rejected:
+      return "candidate_rejected";
+    case best_of_n_event_type::candidate_failed:
+      return "candidate_failed";
     case best_of_n_event_type::candidate_budget_exceeded:
       return "candidate_budget_exceeded";
-    case best_of_n_event_type::candidate_cancelled: return "candidate_cancelled";
-    case best_of_n_event_type::candidate_timed_out: return "candidate_timed_out";
-    case best_of_n_event_type::candidate_skipped: return "candidate_skipped";
-    case best_of_n_event_type::selected: return "selected";
-    case best_of_n_event_type::completed: return "completed";
-    case best_of_n_event_type::failed: return "failed";
-    case best_of_n_event_type::cancelled: return "cancelled";
+    case best_of_n_event_type::candidate_cancelled:
+      return "candidate_cancelled";
+    case best_of_n_event_type::candidate_timed_out:
+      return "candidate_timed_out";
+    case best_of_n_event_type::candidate_skipped:
+      return "candidate_skipped";
+    case best_of_n_event_type::selected:
+      return "selected";
+    case best_of_n_event_type::completed:
+      return "completed";
+    case best_of_n_event_type::failed:
+      return "failed";
+    case best_of_n_event_type::cancelled:
+      return "cancelled";
   }
   return "unknown";
 }
@@ -134,9 +162,7 @@ struct best_of_n_context {
   std::size_t index { 0 };
   std::stop_token stop_token;
   std::optional<std::chrono::steady_clock::time_point> deadline;
-  best_of_n_side_effect_policy side_effects {
-    best_of_n_side_effect_policy::isolate
-  };
+  best_of_n_side_effect_policy side_effects { best_of_n_side_effect_policy::isolate };
 
   [[nodiscard]] bool cancellation_requested() const noexcept {
     return stop_token.stop_requested();
@@ -192,18 +218,16 @@ struct best_of_n_event {
 };
 
 using best_of_n_observer = std::function<void(const best_of_n_event&)>;
-using best_of_n_candidate_generator = std::function<reasoning_result(
-  const reasoning_request&, const best_of_n_context&)>;
+using best_of_n_candidate_generator =
+  std::function<reasoning_result(const reasoning_request&, const best_of_n_context&)>;
 using best_of_n_candidate_scorer = std::function<best_of_n_score(
-  const reasoning_request&,
-  const reasoning_result&,
-  const best_of_n_context&)>;
-using best_of_n_request_builder = std::function<reasoning_request(
-  const reasoning_request&, std::size_t)>;
-using best_of_n_contextual_request_builder = std::function<reasoning_request(
-  const reasoning_request&, std::size_t, const best_of_n_context&)>;
-using best_of_n_selector = std::function<std::optional<std::size_t>(
-  const std::vector<best_of_n_candidate>&)>;
+  const reasoning_request&, const reasoning_result&, const best_of_n_context&)>;
+using best_of_n_request_builder =
+  std::function<reasoning_request(const reasoning_request&, std::size_t)>;
+using best_of_n_contextual_request_builder =
+  std::function<reasoning_request(const reasoning_request&, std::size_t, const best_of_n_context&)>;
+using best_of_n_selector =
+  std::function<std::optional<std::size_t>(const std::vector<best_of_n_candidate>&)>;
 using best_of_n_contextual_selector = std::function<std::optional<std::size_t>(
   const std::vector<best_of_n_candidate>&, const best_of_n_context&)>;
 using best_of_n_vote_key = std::function<std::string(const best_of_n_candidate&)>;
@@ -227,9 +251,7 @@ struct best_of_n_options {
   std::optional<double> minimum_score;
   double score_tie_tolerance { 1e-9 };
   bool prefer_lower_cost_on_tie { true };
-  best_of_n_side_effect_policy side_effects {
-    best_of_n_side_effect_policy::isolate
-  };
+  best_of_n_side_effect_policy side_effects { best_of_n_side_effect_policy::isolate };
   best_of_n_budget budget;
 };
 
@@ -346,25 +368,21 @@ inline void merge_reasoning_usage(reasoning_usage& target, const reasoning_usage
   target.total_tokens = add(target.total_tokens, value.total_tokens);
   const auto add_cost = [](double left, double right) noexcept {
     const auto maximum = (std::numeric_limits<double>::max)();
-    if (!std::isfinite(left) || left < 0.0 ||
-        !std::isfinite(right) || right < 0.0 || right > maximum - left) {
+    if (!std::isfinite(left) || left < 0.0 || !std::isfinite(right) || right < 0.0 ||
+        right > maximum - left) {
       return maximum;
     }
     return left + right;
   };
-  target.estimated_cost_usd =
-    add_cost(target.estimated_cost_usd, value.estimated_cost_usd);
+  target.estimated_cost_usd = add_cost(target.estimated_cost_usd, value.estimated_cost_usd);
   target.cost_usd = add_cost(target.cost_usd, value.cost_usd);
-  target.estimated_token_calls =
-    add(target.estimated_token_calls, value.estimated_token_calls);
+  target.estimated_token_calls = add(target.estimated_token_calls, value.estimated_token_calls);
 }
 
 struct best_of_n_trace_state {
   explicit best_of_n_trace_state(
-    best_of_n_observer value,
-    observability::telemetry_failure_mode failure_mode)
-      : observer(std::move(value)),
-        telemetry_failure_mode(failure_mode),
+    best_of_n_observer value, observability::telemetry_failure_mode failure_mode)
+      : observer(std::move(value)), telemetry_failure_mode(failure_mode),
         started(std::chrono::steady_clock::now()) {
   }
 
@@ -393,12 +411,10 @@ struct best_of_n_budget_snapshot {
 
 class best_of_n_budget_state {
 public:
-  explicit best_of_n_budget_state(best_of_n_budget value)
-      : budget_(std::move(value)) {
+  explicit best_of_n_budget_state(best_of_n_budget value) : budget_(std::move(value)) {
   }
 
-  [[nodiscard]] std::optional<best_of_n_budget_reservation>
-  try_reserve_candidate() {
+  [[nodiscard]] std::optional<best_of_n_budget_reservation> try_reserve_candidate() {
     return try_reserve({
       .model_calls = budget_.estimated_model_calls_per_candidate,
       .total_tokens = budget_.estimated_total_tokens_per_candidate,
@@ -407,8 +423,7 @@ public:
     });
   }
 
-  [[nodiscard]] std::optional<best_of_n_budget_reservation>
-  try_reserve_scorer() {
+  [[nodiscard]] std::optional<best_of_n_budget_reservation> try_reserve_scorer() {
     return try_reserve({
       .model_calls = budget_.estimated_scorer_model_calls_per_candidate,
       .total_tokens = budget_.estimated_scorer_total_tokens_per_candidate,
@@ -418,8 +433,7 @@ public:
   }
 
   [[nodiscard]] bool complete(
-    const best_of_n_budget_reservation& reservation,
-    const reasoning_usage& usage) {
+    const best_of_n_budget_reservation& reservation, const reasoning_usage& usage) {
     std::scoped_lock lock(mutex_);
     release(reservation);
     if (!valid_usage(usage)) {
@@ -438,10 +452,9 @@ public:
       }
       return false;
     }
-    const auto exceeded =
-      exceeds(actual_model_calls_, budget_.max_model_calls) ||
-      exceeds(actual_total_tokens_, budget_.max_total_tokens) ||
-      exceeds_cost(actual_cost_usd_, budget_.max_cost_usd);
+    const auto exceeded = exceeds(actual_model_calls_, budget_.max_model_calls) ||
+                          exceeds(actual_total_tokens_, budget_.max_total_tokens) ||
+                          exceeds_cost(actual_cost_usd_, budget_.max_cost_usd);
     if (exceeded) {
       exceeded_ = true;
       if (error_.empty()) {
@@ -485,15 +498,16 @@ private:
   [[nodiscard]] std::optional<best_of_n_budget_reservation> try_reserve(
     best_of_n_budget_reservation reservation) {
     std::scoped_lock lock(mutex_);
-    if (would_exceed(
-          actual_model_calls_, reserved_model_calls_, reservation.model_calls,
+    if (would_exceed(actual_model_calls_,
+          reserved_model_calls_,
+          reservation.model_calls,
           budget_.max_model_calls) ||
-        would_exceed(
-          actual_total_tokens_, reserved_total_tokens_, reservation.total_tokens,
+        would_exceed(actual_total_tokens_,
+          reserved_total_tokens_,
+          reservation.total_tokens,
           budget_.max_total_tokens) ||
         would_exceed_cost(
-          actual_cost_usd_, reserved_cost_usd_, reservation.cost_usd,
-          budget_.max_cost_usd) ||
+          actual_cost_usd_, reserved_cost_usd_, reservation.cost_usd, budget_.max_cost_usd) ||
         !can_add(reserved_model_calls_, reservation.model_calls) ||
         !can_add(reserved_total_tokens_, reservation.total_tokens) ||
         !can_add(reserved_cost_usd_, reservation.cost_usd)) {
@@ -520,8 +534,7 @@ private:
 
   static bool valid_usage(const reasoning_usage& usage) noexcept {
     return std::isfinite(usage.cost_usd) && usage.cost_usd >= 0.0 &&
-           std::isfinite(usage.estimated_cost_usd) &&
-           usage.estimated_cost_usd >= 0.0;
+           std::isfinite(usage.estimated_cost_usd) && usage.estimated_cost_usd >= 0.0;
   }
 
   static bool checked_add(std::size_t& target, std::size_t value) noexcept {
@@ -552,13 +565,9 @@ private:
   }
 
   static bool would_exceed(
-    std::size_t actual,
-    std::size_t reserved,
-    std::size_t requested,
-    std::size_t maximum) noexcept {
-    return maximum != 0 &&
-           (actual > maximum || reserved > maximum - actual ||
-            requested > maximum - actual - reserved);
+    std::size_t actual, std::size_t reserved, std::size_t requested, std::size_t maximum) noexcept {
+    return maximum != 0 && (actual > maximum || reserved > maximum - actual ||
+                             requested > maximum - actual - reserved);
   }
 
   static bool exceeds(std::size_t actual, std::size_t maximum) noexcept {
@@ -566,10 +575,7 @@ private:
   }
 
   static bool would_exceed_cost(
-    double actual,
-    double reserved,
-    double requested,
-    double maximum) noexcept {
+    double actual, double reserved, double requested, double maximum) noexcept {
     return maximum > 0.0 && actual + reserved + requested > maximum + 1e-12;
   }
 
@@ -589,10 +595,8 @@ private:
   std::string error_;
 };
 
-inline void emit_best_of_n_event(
-  const std::shared_ptr<best_of_n_trace_state>& state,
-  best_of_n_event event,
-  bool coordinator_event = false) {
+inline void emit_best_of_n_event(const std::shared_ptr<best_of_n_trace_state>& state,
+  best_of_n_event event, bool coordinator_event = false) {
   if (!coordinator_event && !state->accept_worker_events.load()) {
     return;
   }
@@ -612,16 +616,14 @@ inline void emit_best_of_n_event(
       return;
     }
     if (!observability::invoke_telemetry(
-          state->telemetry_failure_mode,
-          [&] { state->observer(event); })) {
+          state->telemetry_failure_mode, [&] { state->observer(event); })) {
       state->telemetry_error_count.fetch_add(1, std::memory_order_relaxed);
     }
   }
 }
 
 inline bool lower_cost_candidate(
-  const best_of_n_candidate& candidate,
-  const best_of_n_candidate& incumbent) noexcept {
+  const best_of_n_candidate& candidate, const best_of_n_candidate& incumbent) noexcept {
   constexpr double tolerance = 1e-12;
   const auto candidate_cost = candidate.result.usage.cost_usd;
   const auto incumbent_cost = incumbent.result.usage.cost_usd;
@@ -641,8 +643,7 @@ inline bool lower_cost_candidate(
 
 class best_of_n_runner {
 public:
-  explicit best_of_n_runner(best_of_n_runner_options options)
-      : options_(std::move(options)) {
+  explicit best_of_n_runner(best_of_n_runner_options options) : options_(std::move(options)) {
     if (!options_.generator) {
       throw std::invalid_argument("best_of_n_runner requires a candidate generator");
     }
@@ -660,19 +661,14 @@ public:
   }
 
   [[nodiscard]] best_of_n_result run(
-    reasoning_request request,
-    best_of_n_run_options run_options = {}) const {
+    reasoning_request request, best_of_n_run_options run_options = {}) const {
     validate(run_options.policy);
     const auto started = std::chrono::steady_clock::now();
-    auto execution_options =
-      std::make_shared<const best_of_n_runner_options>(options_);
+    auto execution_options = std::make_shared<const best_of_n_runner_options>(options_);
     auto trace_state = std::make_shared<detail::best_of_n_trace_state>(
-      execution_options->observer,
-      execution_options->telemetry_failure_mode);
-    detail::emit_best_of_n_event(
-      trace_state,
-      { .type = best_of_n_event_type::started,
-        .message = "best-of-n reasoning started" },
+      execution_options->observer, execution_options->telemetry_failure_mode);
+    detail::emit_best_of_n_event(trace_state,
+      { .type = best_of_n_event_type::started, .message = "best-of-n reasoning started" },
       true);
 
     best_of_n_result output;
@@ -710,8 +706,7 @@ public:
         .timeout = remaining_timeout,
       },
       [execution_options, request, side_effects = run_options.policy.side_effects](
-        const std::size_t& index,
-        const fan_out_context& fan_context) {
+        const std::size_t& index, const fan_out_context& fan_context) {
         candidate_seed seed { .index = index, .request = request };
         const best_of_n_context context {
           .index = index,
@@ -721,26 +716,22 @@ public:
         };
         try {
           if (execution_options->contextual_request_builder) {
-            seed.request = execution_options->contextual_request_builder(
-              request, index, context);
+            seed.request = execution_options->contextual_request_builder(request, index, context);
           }
           else if (execution_options->request_builder) {
             seed.request = execution_options->request_builder(request, index);
           }
-          seed.request.metadata["best_of_n.candidate_index"] =
-            std::to_string(index);
+          seed.request.metadata["best_of_n.candidate_index"] = std::to_string(index);
         }
         catch (const std::exception& ex) {
           seed.error = ex.what();
         }
         catch (...) {
-          seed.error =
-            "candidate request builder failed with an unknown exception";
+          seed.error = "candidate request builder failed with an unknown exception";
         }
         return seed;
       });
-    auto build_result = build_requests.run(
-      std::move(indices), run_options.stop_token);
+    auto build_result = build_requests.run(std::move(indices), run_options.stop_token);
     if (build_result.stop_reason != fan_out_stop_reason::none) {
       trace_state->accept_worker_events = false;
       output.stop_reason = build_result.stop_reason == fan_out_stop_reason::timed_out
@@ -790,9 +781,8 @@ public:
         seeds.push_back({
           .index = item.index,
           .request = request,
-          .error = item.error.empty()
-                     ? "candidate request builder did not produce a result"
-                     : std::move(item.error),
+          .error = item.error.empty() ? "candidate request builder did not produce a result"
+                                      : std::move(item.error),
         });
       }
     }
@@ -815,8 +805,7 @@ public:
     }
 
     const auto policy = run_options.policy;
-    auto budget_state =
-      std::make_shared<detail::best_of_n_budget_state>(policy.budget);
+    auto budget_state = std::make_shared<detail::best_of_n_budget_state>(policy.budget);
     auto parallel = fan_out_each(
       fan_out_options {
         .max_concurrency = policy.max_concurrency,
@@ -824,15 +813,9 @@ public:
         .timeout = remaining_timeout,
       },
       [execution_options, trace_state, budget_state, policy](
-        const candidate_seed& seed,
-        const fan_out_context& fan_context) {
+        const candidate_seed& seed, const fan_out_context& fan_context) {
         return evaluate_candidate(
-          seed,
-          fan_context,
-          policy,
-          execution_options,
-          budget_state,
-          trace_state);
+          seed, fan_context, policy, execution_options, budget_state, trace_state);
       });
     auto parallel_result = parallel.run(std::move(seeds), run_options.stop_token);
     trace_state->accept_worker_events = false;
@@ -895,8 +878,7 @@ public:
       output.error = budget_state->error();
     }
     else {
-      select_candidate(
-        output,
+      select_candidate(output,
         run_options.policy,
         execution_options,
         trace_state,
@@ -913,46 +895,38 @@ public:
   }
 
   [[nodiscard]] best_of_n_run run_async(
-    reasoning_request request,
-    best_of_n_run_options run_options = {}) const {
+    reasoning_request request, best_of_n_run_options run_options = {}) const {
     auto promise = std::make_shared<std::promise<best_of_n_result>>();
     auto future = promise->get_future();
     auto runner = *this;
-    std::jthread worker(
-      [runner = std::move(runner),
-       request = std::move(request),
-       run_options = std::move(run_options),
-       promise](std::stop_token worker_stop_token) mutable {
-        const auto external_stop_token = run_options.stop_token;
-        std::stop_source run_stop_source;
-        std::stop_callback external_stop_callback(
-          external_stop_token,
-          [&run_stop_source] { run_stop_source.request_stop(); });
-        std::stop_callback worker_stop_callback(
-          worker_stop_token,
-          [&run_stop_source] { run_stop_source.request_stop(); });
-        if (external_stop_token.stop_requested() ||
-            worker_stop_token.stop_requested()) {
-          run_stop_source.request_stop();
-        }
-        run_options.stop_token = run_stop_source.get_token();
-        try {
-          promise->set_value(
-            runner.run(std::move(request), std::move(run_options)));
-        }
-        catch (...) {
-          promise->set_exception(std::current_exception());
-        }
-      });
+    std::jthread worker([runner = std::move(runner),
+                          request = std::move(request),
+                          run_options = std::move(run_options),
+                          promise](std::stop_token worker_stop_token) mutable {
+      const auto external_stop_token = run_options.stop_token;
+      std::stop_source run_stop_source;
+      std::stop_callback external_stop_callback(
+        external_stop_token, [&run_stop_source] { run_stop_source.request_stop(); });
+      std::stop_callback worker_stop_callback(
+        worker_stop_token, [&run_stop_source] { run_stop_source.request_stop(); });
+      if (external_stop_token.stop_requested() || worker_stop_token.stop_requested()) {
+        run_stop_source.request_stop();
+      }
+      run_options.stop_token = run_stop_source.get_token();
+      try {
+        promise->set_value(runner.run(std::move(request), std::move(run_options)));
+      }
+      catch (...) {
+        promise->set_exception(std::current_exception());
+      }
+    });
     return best_of_n_run(std::move(worker), std::move(future));
   }
 
 private:
   template<typename Seed>
-  static best_of_n_candidate evaluate_candidate(
-    const Seed& seed,
-    const fan_out_context& fan_context,
-    const best_of_n_options& policy,
+  static best_of_n_candidate evaluate_candidate(const Seed& seed,
+    const fan_out_context& fan_context, const best_of_n_options& policy,
     const std::shared_ptr<const best_of_n_runner_options>& execution_options,
     const std::shared_ptr<detail::best_of_n_budget_state>& budget_state,
     const std::shared_ptr<detail::best_of_n_trace_state>& trace_state) {
@@ -967,11 +941,12 @@ private:
       .deadline = fan_context.deadline,
       .side_effects = policy.side_effects,
     };
-    detail::emit_best_of_n_event(trace_state, {
-      .type = best_of_n_event_type::candidate_started,
-      .candidate_index = seed.index,
-      .message = "candidate generation started",
-    });
+    detail::emit_best_of_n_event(trace_state,
+      {
+        .type = best_of_n_event_type::candidate_started,
+        .candidate_index = seed.index,
+        .message = "candidate generation started",
+      });
 
     if (!seed.error.empty()) {
       candidate.status = best_of_n_candidate_status::generation_failed;
@@ -994,9 +969,7 @@ private:
       candidate.error = budget_state->error();
       finish_candidate(candidate, started);
       emit_candidate_terminal(
-        trace_state,
-        candidate,
-        best_of_n_event_type::candidate_budget_exceeded);
+        trace_state, candidate, best_of_n_event_type::candidate_budget_exceeded);
       return candidate;
     }
 
@@ -1033,43 +1006,37 @@ private:
       candidate.error = budget_state->error();
       finish_candidate(candidate, started);
       emit_candidate_terminal(
-        trace_state,
-        candidate,
-        best_of_n_event_type::candidate_budget_exceeded);
+        trace_state, candidate, best_of_n_event_type::candidate_budget_exceeded);
       return candidate;
     }
 
     if (policy.side_effects == best_of_n_side_effect_policy::isolate &&
-        (candidate.result.usage.tool_calls != 0 ||
-         candidate.result.usage.plan_steps != 0)) {
+        (candidate.result.usage.tool_calls != 0 || candidate.result.usage.plan_steps != 0)) {
       candidate.status = best_of_n_candidate_status::side_effect_blocked;
-      candidate.error =
-        "candidate executed tools or plan steps while side effects were isolated";
+      candidate.error = "candidate executed tools or plan steps while side effects were isolated";
       finish_candidate(candidate, started);
-      emit_candidate_terminal(
-        trace_state, candidate, best_of_n_event_type::candidate_failed);
+      emit_candidate_terminal(trace_state, candidate, best_of_n_event_type::candidate_failed);
       return candidate;
     }
 
     if (!candidate.result) {
-      candidate.status = candidate.result.reasoning_error ==
-                             reasoning_error_code::side_effect_blocked
-                           ? best_of_n_candidate_status::side_effect_blocked
-                           : best_of_n_candidate_status::generation_failed;
-      candidate.error = candidate.result.error.empty()
-                          ? "candidate generation did not complete"
-                          : candidate.result.error;
+      candidate.status =
+        candidate.result.reasoning_error == reasoning_error_code::side_effect_blocked
+          ? best_of_n_candidate_status::side_effect_blocked
+          : best_of_n_candidate_status::generation_failed;
+      candidate.error = candidate.result.error.empty() ? "candidate generation did not complete"
+                                                       : candidate.result.error;
       finish_candidate(candidate, started);
-      emit_candidate_terminal(
-        trace_state, candidate, best_of_n_event_type::candidate_failed);
+      emit_candidate_terminal(trace_state, candidate, best_of_n_event_type::candidate_failed);
       return candidate;
     }
-    detail::emit_best_of_n_event(trace_state, {
-      .type = best_of_n_event_type::candidate_generated,
-      .candidate_index = seed.index,
-      .message = "candidate generation completed",
-      .metadata = candidate.result.final_response.metadata,
-    });
+    detail::emit_best_of_n_event(trace_state,
+      {
+        .type = best_of_n_event_type::candidate_generated,
+        .candidate_index = seed.index,
+        .message = "candidate generation completed",
+        .metadata = candidate.result.final_response.metadata,
+      });
 
     if (context.cancellation_requested()) {
       candidate.status = best_of_n_candidate_status::cancelled;
@@ -1085,14 +1052,11 @@ private:
       candidate.error = budget_state->error();
       finish_candidate(candidate, started);
       emit_candidate_terminal(
-        trace_state,
-        candidate,
-        best_of_n_event_type::candidate_budget_exceeded);
+        trace_state, candidate, best_of_n_event_type::candidate_budget_exceeded);
       return candidate;
     }
     try {
-      candidate.score = execution_options->scorer(
-        candidate.request, candidate.result, context);
+      candidate.score = execution_options->scorer(candidate.request, candidate.result, context);
       if (!std::isfinite(candidate.score->value)) {
         throw std::invalid_argument("candidate score must be finite");
       }
@@ -1131,26 +1095,22 @@ private:
     }
 
     if (!budget_state->complete(*scorer_reservation, candidate.score->usage)) {
-      detail::merge_reasoning_usage(
-        candidate.result.usage, candidate.score->usage);
+      detail::merge_reasoning_usage(candidate.result.usage, candidate.score->usage);
       candidate.status = best_of_n_candidate_status::budget_exceeded;
       candidate.error = budget_state->error();
       finish_candidate(candidate, started);
       emit_candidate_terminal(
-        trace_state,
-        candidate,
-        best_of_n_event_type::candidate_budget_exceeded);
+        trace_state, candidate, best_of_n_event_type::candidate_budget_exceeded);
       return candidate;
     }
     detail::merge_reasoning_usage(candidate.result.usage, candidate.score->usage);
 
-    const auto meets_minimum = !policy.minimum_score ||
-      candidate.score->value >= *policy.minimum_score;
+    const auto meets_minimum =
+      !policy.minimum_score || candidate.score->value >= *policy.minimum_score;
     if (!candidate.score->accepted || !meets_minimum) {
       candidate.status = best_of_n_candidate_status::rejected;
-      candidate.error = !candidate.score->accepted
-                          ? "candidate rejected by scorer"
-                          : "candidate score is below the minimum";
+      candidate.error = !candidate.score->accepted ? "candidate rejected by scorer"
+                                                   : "candidate score is below the minimum";
       finish_candidate(candidate, started);
       emit_candidate_terminal(trace_state, candidate, best_of_n_event_type::candidate_rejected);
       return candidate;
@@ -1158,23 +1118,21 @@ private:
 
     candidate.status = best_of_n_candidate_status::eligible;
     finish_candidate(candidate, started);
-    detail::emit_best_of_n_event(trace_state, {
-      .type = best_of_n_event_type::candidate_scored,
-      .candidate_index = seed.index,
-      .score = candidate.score->value,
-      .message = candidate.score->rationale,
-      .metadata = candidate.score->metadata,
-    });
+    detail::emit_best_of_n_event(trace_state,
+      {
+        .type = best_of_n_event_type::candidate_scored,
+        .candidate_index = seed.index,
+        .score = candidate.score->value,
+        .message = candidate.score->rationale,
+        .metadata = candidate.score->metadata,
+      });
     return candidate;
   }
 
-  static void select_candidate(
-    best_of_n_result& output,
-    const best_of_n_options& policy,
+  static void select_candidate(best_of_n_result& output, const best_of_n_options& policy,
     const std::shared_ptr<const best_of_n_runner_options>& execution_options,
     const std::shared_ptr<detail::best_of_n_trace_state>& trace_state,
-    std::chrono::steady_clock::time_point started,
-    std::stop_token stop_token) {
+    std::chrono::steady_clock::time_point started, std::stop_token stop_token) {
     const auto selection_timeout = remaining_time(started, policy.timeout);
     if (policy.timeout.count() > 0 && selection_timeout.count() == 0) {
       output.stop_reason = best_of_n_stop_reason::timed_out;
@@ -1182,8 +1140,7 @@ private:
       return;
     }
 
-    auto candidates =
-      std::make_shared<const std::vector<best_of_n_candidate>>(output.candidates);
+    auto candidates = std::make_shared<const std::vector<best_of_n_candidate>>(output.candidates);
     auto selection = fan_out(
       fan_out_options {
         .max_concurrency = 1,
@@ -1216,22 +1173,16 @@ private:
       if (selection_result.stop_reason == fan_out_stop_reason::timed_out ||
           item.status == fan_out_item_status::timed_out) {
         output.stop_reason = best_of_n_stop_reason::timed_out;
-        output.error = item.error.empty()
-                         ? "best-of-n selector timed out"
-                         : item.error;
+        output.error = item.error.empty() ? "best-of-n selector timed out" : item.error;
       }
       else if (selection_result.stop_reason == fan_out_stop_reason::cancelled ||
                item.status == fan_out_item_status::cancelled) {
         output.stop_reason = best_of_n_stop_reason::cancelled;
-        output.error = item.error.empty()
-                         ? "best-of-n selector cancelled"
-                         : item.error;
+        output.error = item.error.empty() ? "best-of-n selector cancelled" : item.error;
       }
       else {
         output.stop_reason = best_of_n_stop_reason::selection_failed;
-        output.error = item.error.empty()
-                         ? "best-of-n selector failed"
-                         : item.error;
+        output.error = item.error.empty() ? "best-of-n selector failed" : item.error;
       }
       return;
     }
@@ -1253,30 +1204,29 @@ private:
 
     output.completed = true;
     const auto& selected = output.candidates[*output.selected_index];
-    detail::emit_best_of_n_event(trace_state, {
-      .type = best_of_n_event_type::selected,
-      .candidate_index = selected.index,
-      .score = selected.score->value,
-      .message = "best-of-n candidate selected",
-    }, true);
+    detail::emit_best_of_n_event(trace_state,
+      {
+        .type = best_of_n_event_type::selected,
+        .candidate_index = selected.index,
+        .score = selected.score->value,
+        .message = "best-of-n candidate selected",
+      },
+      true);
   }
 
   static std::optional<std::size_t> highest_scoring_candidate(
-    const std::vector<best_of_n_candidate>& candidates,
-    const best_of_n_options& policy) {
+    const std::vector<best_of_n_candidate>& candidates, const best_of_n_options& policy) {
     const best_of_n_candidate* best = nullptr;
     for (const auto& candidate : candidates) {
       if (!candidate.eligible()) {
         continue;
       }
-      if (!best || candidate.score->value >
-                     best->score->value + policy.score_tie_tolerance) {
+      if (!best || candidate.score->value > best->score->value + policy.score_tie_tolerance) {
         best = &candidate;
       }
       else if (std::abs(candidate.score->value - best->score->value) <=
                  policy.score_tie_tolerance &&
-               policy.prefer_lower_cost_on_tie &&
-               detail::lower_cost_candidate(candidate, *best)) {
+               policy.prefer_lower_cost_on_tie && detail::lower_cost_candidate(candidate, *best)) {
         best = &candidate;
       }
     }
@@ -1296,10 +1246,8 @@ private:
     if (value.minimum_score && !std::isfinite(*value.minimum_score)) {
       throw std::invalid_argument("best-of-n minimum_score must be finite");
     }
-    if (!std::isfinite(value.score_tie_tolerance) ||
-        value.score_tie_tolerance < 0.0) {
-      throw std::invalid_argument(
-        "best-of-n score_tie_tolerance must be finite and non-negative");
+    if (!std::isfinite(value.score_tie_tolerance) || value.score_tie_tolerance < 0.0) {
+      throw std::invalid_argument("best-of-n score_tie_tolerance must be finite and non-negative");
     }
     const auto& budget = value.budget;
     if (!std::isfinite(budget.max_cost_usd) || budget.max_cost_usd < 0.0 ||
@@ -1317,52 +1265,45 @@ private:
       }
       return generation + scoring;
     };
-    const auto model_calls_per_candidate = combined_estimate(
-      budget.estimated_model_calls_per_candidate,
-      budget.estimated_scorer_model_calls_per_candidate);
-    const auto total_tokens_per_candidate = combined_estimate(
-      budget.estimated_total_tokens_per_candidate,
-      budget.estimated_scorer_total_tokens_per_candidate);
+    const auto model_calls_per_candidate =
+      combined_estimate(budget.estimated_model_calls_per_candidate,
+        budget.estimated_scorer_model_calls_per_candidate);
+    const auto total_tokens_per_candidate =
+      combined_estimate(budget.estimated_total_tokens_per_candidate,
+        budget.estimated_scorer_total_tokens_per_candidate);
     const auto cost_per_candidate =
-      budget.estimated_cost_usd_per_candidate +
-      budget.estimated_scorer_cost_usd_per_candidate;
+      budget.estimated_cost_usd_per_candidate + budget.estimated_scorer_cost_usd_per_candidate;
     if (!std::isfinite(cost_per_candidate)) {
       throw std::invalid_argument("best-of-n per-candidate cost estimate overflowed");
     }
     if (budget.max_model_calls != 0 &&
         (model_calls_per_candidate == 0 ||
-         model_calls_per_candidate >
-           budget.max_model_calls / value.candidate_count)) {
+          model_calls_per_candidate > budget.max_model_calls / value.candidate_count)) {
       throw std::invalid_argument(
         "best-of-n model call budget cannot cover every requested candidate");
     }
     if (budget.max_total_tokens != 0 &&
         (total_tokens_per_candidate == 0 ||
-         total_tokens_per_candidate >
-           budget.max_total_tokens / value.candidate_count)) {
+          total_tokens_per_candidate > budget.max_total_tokens / value.candidate_count)) {
       throw std::invalid_argument(
         "best-of-n token budget requires a non-zero estimate and capacity for every candidate");
     }
     if (budget.max_cost_usd > 0.0 &&
         (cost_per_candidate <= 0.0 ||
-         cost_per_candidate *
-             static_cast<double>(value.candidate_count) >
-           budget.max_cost_usd + 1e-12)) {
+          cost_per_candidate * static_cast<double>(value.candidate_count) >
+            budget.max_cost_usd + 1e-12)) {
       throw std::invalid_argument(
         "best-of-n cost budget requires a non-zero estimate and capacity for every candidate");
     }
   }
 
   static bool deadline_reached(
-    std::chrono::steady_clock::time_point started,
-    std::chrono::milliseconds timeout) noexcept {
-    return timeout.count() > 0 &&
-           std::chrono::steady_clock::now() - started >= timeout;
+    std::chrono::steady_clock::time_point started, std::chrono::milliseconds timeout) noexcept {
+    return timeout.count() > 0 && std::chrono::steady_clock::now() - started >= timeout;
   }
 
   static std::chrono::milliseconds remaining_time(
-    std::chrono::steady_clock::time_point started,
-    std::chrono::milliseconds timeout) noexcept {
+    std::chrono::steady_clock::time_point started, std::chrono::milliseconds timeout) noexcept {
     if (timeout.count() == 0) {
       return std::chrono::milliseconds { 0 };
     }
@@ -1372,36 +1313,37 @@ private:
   }
 
   static void finish_candidate(
-    best_of_n_candidate& candidate,
-    std::chrono::steady_clock::time_point started) noexcept {
+    best_of_n_candidate& candidate, std::chrono::steady_clock::time_point started) noexcept {
     candidate.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - started);
   }
 
   static void emit_candidate_terminal(
     const std::shared_ptr<detail::best_of_n_trace_state>& trace_state,
-    const best_of_n_candidate& candidate,
-    best_of_n_event_type type,
+    const best_of_n_candidate& candidate, best_of_n_event_type type,
     bool coordinator_event = false) {
-    detail::emit_best_of_n_event(trace_state, {
-      .type = type,
-      .candidate_index = candidate.index,
-      .score = candidate.score
-                 ? std::optional(candidate.score->value)
-                 : std::nullopt,
-      .message = candidate.error,
-    }, coordinator_event);
+    detail::emit_best_of_n_event(trace_state,
+      {
+        .type = type,
+        .candidate_index = candidate.index,
+        .score = candidate.score ? std::optional(candidate.score->value) : std::nullopt,
+        .message = candidate.error,
+      },
+      coordinator_event);
   }
 
-  static void finalize(
-    best_of_n_result& output,
+  static void finalize(best_of_n_result& output,
     const std::shared_ptr<detail::best_of_n_trace_state>& trace_state,
     std::chrono::steady_clock::time_point started) {
     for (const auto& candidate : output.candidates) {
       detail::merge_reasoning_usage(output.aggregate_usage, candidate.result.usage);
       switch (candidate.status) {
-        case best_of_n_candidate_status::eligible: ++output.eligible_count; break;
-        case best_of_n_candidate_status::rejected: ++output.rejected_count; break;
+        case best_of_n_candidate_status::eligible:
+          ++output.eligible_count;
+          break;
+        case best_of_n_candidate_status::rejected:
+          ++output.rejected_count;
+          break;
         case best_of_n_candidate_status::generation_failed:
         case best_of_n_candidate_status::scoring_failed:
           ++output.failed_count;
@@ -1412,9 +1354,15 @@ private:
         case best_of_n_candidate_status::side_effect_blocked:
           ++output.side_effect_blocked_count;
           break;
-        case best_of_n_candidate_status::cancelled: ++output.cancelled_count; break;
-        case best_of_n_candidate_status::timed_out: ++output.timed_out_count; break;
-        case best_of_n_candidate_status::skipped: ++output.skipped_count; break;
+        case best_of_n_candidate_status::cancelled:
+          ++output.cancelled_count;
+          break;
+        case best_of_n_candidate_status::timed_out:
+          ++output.timed_out_count;
+          break;
+        case best_of_n_candidate_status::skipped:
+          ++output.skipped_count;
+          break;
       }
       if (candidate.detached) {
         ++output.detached_count;
@@ -1422,22 +1370,22 @@ private:
     }
     output.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - started);
-    const auto terminal_type = output.completed
-                                 ? best_of_n_event_type::completed
-                                 : (output.stop_reason == best_of_n_stop_reason::cancelled
-                                      ? best_of_n_event_type::cancelled
-                                      : best_of_n_event_type::failed);
+    const auto terminal_type =
+      output.completed
+        ? best_of_n_event_type::completed
+        : (output.stop_reason == best_of_n_stop_reason::cancelled ? best_of_n_event_type::cancelled
+                                                                  : best_of_n_event_type::failed);
     // Stop worker-originated callbacks before emitting the terminal event.
     // The observer mutex taken by the coordinator event then also waits for
     // any callback that was already in flight, so no observer can outlive run().
     trace_state->accept_worker_events = false;
-    detail::emit_best_of_n_event(trace_state, {
-      .type = terminal_type,
-      .candidate_index = output.selected_index,
-      .message = output.completed
-                   ? "best-of-n reasoning completed"
-                   : output.error,
-    }, true);
+    detail::emit_best_of_n_event(trace_state,
+      {
+        .type = terminal_type,
+        .candidate_index = output.selected_index,
+        .message = output.completed ? "best-of-n reasoning completed" : output.error,
+      },
+      true);
     output.telemetry_error_count =
       trace_state->telemetry_error_count.load(std::memory_order_relaxed);
     {

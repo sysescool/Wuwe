@@ -86,6 +86,7 @@ struct llm_planner_options {
   std::string model;
   double temperature { 0.0 };
   bool repair_plan { true };
+  std::string provider;
 };
 
 class llm_planner final : public planner {
@@ -97,6 +98,7 @@ public:
   plan create_plan(const planning_request& request) override {
     llm_request llm_request;
     llm_request.model = options_.model;
+    llm_request.provider = options_.provider;
     llm_request.temperature = options_.temperature;
     llm_request.response_format = "json_object";
     llm_request.messages.push_back({
@@ -121,6 +123,7 @@ public:
   plan revise_plan(const plan& current, const planning_observation& observation) override {
     llm_request llm_request;
     llm_request.model = options_.model;
+    llm_request.provider = options_.provider;
     llm_request.temperature = options_.temperature;
     llm_request.response_format = "json_object";
     llm_request.messages.push_back({
@@ -184,7 +187,8 @@ private:
         << "{\"id\":\"plan-id\",\"goal\":\"...\",\"steps\":[{\"id\":\"step-id\","
            "\"title\":\"...\",\"description\":\"...\",\"depends_on\":[],"
            "\"priority\":0,\"urgency\":0,\"expected_value\":0,\"estimated_cost\":0,"
-           "\"deadline_unix_ms\":null,\"assigned_tool\":null,\"assigned_agent\":null,\"input\":\"{}\","
+           "\"deadline_unix_ms\":null,\"assigned_tool\":null,\"assigned_agent\":null,\"input\":\"{}"
+           "\","
            "\"metadata\":{}}],\"metadata\":{}}\n";
     return out.str();
   }
@@ -202,7 +206,8 @@ private:
 
     std::ostringstream out;
     out << "Revise this plan after the latest observation.\nCurrent plan:\n"
-        << current_json.dump() << "\nObservation:\n" << observation_json.dump();
+        << current_json.dump() << "\nObservation:\n"
+        << observation_json.dump();
     return out.str();
   }
 
@@ -214,12 +219,13 @@ private:
     if (!options_.repair_plan) {
       return;
     }
-    normalize_plan(value, {
-      .clear_unknown_tools = false,
-      .clear_unknown_agents = false,
-      .available_tools = request.available_tools,
-      .available_agents = request.available_agents,
-    });
+    normalize_plan(value,
+      {
+        .clear_unknown_tools = false,
+        .clear_unknown_agents = false,
+        .available_tools = request.available_tools,
+        .available_agents = request.available_agents,
+      });
   }
 
   static void ensure_valid_llm_plan(const plan& value, plan_validation_options options) {

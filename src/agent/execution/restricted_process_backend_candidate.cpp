@@ -11,15 +11,13 @@ namespace {
 
 class restricted_process_backend_candidate final : public execution_backend {
 public:
-  explicit restricted_process_backend_candidate(
-    restricted_process_backend_config config)
+  explicit restricted_process_backend_candidate(restricted_process_backend_config config)
       : config_(std::move(config)) {
   }
 
   [[nodiscard]] sandbox::sandbox_backend_info info() const override {
     auto descriptor = restricted_process_backend_descriptor();
-    const auto availability =
-      evaluate_restricted_process_backend_availability(config_);
+    const auto availability = evaluate_restricted_process_backend_availability(config_);
     descriptor.unavailable_reason =
       "restricted_process backend candidate is internal and not registered";
     descriptor.enforcement = availability.contract;
@@ -27,13 +25,14 @@ public:
   }
 
   [[nodiscard]] execution_result run(
-    const execution_request& request,
-    std::stop_token stop_token) override {
+    const execution_request& request, std::stop_token stop_token) override {
 #ifdef _WIN32
     auto result = run_restricted_execution_plan(config_, request, stop_token);
     result.metadata["backend_candidate"] = "true";
     return result;
 #else
+    (void)request;
+    (void)stop_token;
     execution_result result {
       .termination_reason = execution_termination_reason::backend_error,
       .error_message = "restricted_process backend candidate is Windows-only",
@@ -53,8 +52,7 @@ private:
 
 std::unique_ptr<execution_backend> make_restricted_process_backend_candidate(
   restricted_process_backend_config config) {
-  return std::make_unique<restricted_process_backend_candidate>(
-    std::move(config));
+  return std::make_unique<restricted_process_backend_candidate>(std::move(config));
 }
 
 } // namespace wuwe::agent::execution::detail

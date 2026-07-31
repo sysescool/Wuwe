@@ -9,8 +9,8 @@
 #include <vector>
 
 #include <wuwe/agent/llm/llm_agent_runner.h>
-#include <wuwe/agent/memory/file_memory_store.hpp>
 #include <wuwe/agent/memory/embedding_model.hpp>
+#include <wuwe/agent/memory/file_memory_store.hpp>
 #include <wuwe/agent/memory/hybrid_memory_ranker.hpp>
 #include <wuwe/agent/memory/in_memory_store.hpp>
 #include <wuwe/agent/memory/in_memory_vector_index.hpp>
@@ -66,12 +66,10 @@ std::string env_value(const char* name) {
 class preferred_ranker final : public memory_ranker {
 public:
   std::vector<memory_record> rank(
-    const memory_query& query,
-    std::vector<memory_record> candidates) const override {
-    std::sort(candidates.begin(), candidates.end(), [](const memory_record& lhs,
-                                                        const memory_record& rhs) {
-      return lhs.content > rhs.content;
-    });
+    const memory_query& query, std::vector<memory_record> candidates) const override {
+    std::sort(candidates.begin(),
+      candidates.end(),
+      [](const memory_record& lhs, const memory_record& rhs) { return lhs.content > rhs.content; });
 
     if (candidates.size() > query.limit) {
       candidates.resize(query.limit);
@@ -136,8 +134,7 @@ public:
     embeddings.push_back(embedding);
   }
 
-  void upsert_batch(
-    const std::vector<memory_record>& batch_records,
+  void upsert_batch(const std::vector<memory_record>& batch_records,
     const std::vector<std::vector<float>>& batch_embeddings) override {
     ++batch_upserts;
     batch_sizes.push_back(batch_records.size());
@@ -268,7 +265,8 @@ void test_scoped_recall_and_isolation() {
 
   memory_query other_conversation_query = matching_query;
   other_conversation_query.scope = test_scope("conversation-b");
-  require(memory.recall(other_conversation_query).empty(), "different conversation should not recall record");
+  require(memory.recall(other_conversation_query).empty(),
+    "different conversation should not recall record");
 }
 
 void test_long_term_scope_required() {
@@ -312,14 +310,15 @@ void test_hidden_secret_and_request_dedupe() {
   require(augmented.messages.size() == 3, "visible memory should inject one memory message");
   require(augmented.messages.front().role == "system",
     "memory injection should preserve leading system instructions");
-  require(augmented.messages[1].role == "user" &&
-      contains(augmented.messages[1].content, "wuwe-context"),
+  require(
+    augmented.messages[1].role == "user" && contains(augmented.messages[1].content, "wuwe-context"),
     "retrieved memory should use an untrusted data boundary by default");
   const auto& block = augmented.messages[1].content;
   require(contains(block, "visible working item"), "visible memory should be injected");
   require(!contains(block, "hidden working item"), "hidden memory should not be injected");
   require(!contains(block, "secret working item"), "secret memory should not be injected");
-  require(!contains(block, "current request should not repeat"), "current request should be deduped");
+  require(
+    !contains(block, "current request should not repeat"), "current request should be deduped");
 }
 
 void test_memory_inspection_list_get_and_filters() {
@@ -327,18 +326,13 @@ void test_memory_inspection_list_get_and_filters() {
   memory.set_scope(test_scope());
 
   memory.remember_working("temporary implementation note", { { "topic", "work" } });
-  const auto api_memory = memory.remember_long_term(
-    "Use explicit ownership in public APIs.",
+  const auto api_memory = memory.remember_long_term("Use explicit ownership in public APIs.",
     test_scope(),
     { { "topic", "api-style" }, { "sensitivity", "internal" } });
   memory.remember_long_term(
-    "Prefer Python notebooks for exploratory analysis.",
-    test_scope(),
-    { { "topic", "analysis" } });
+    "Prefer Python notebooks for exploratory analysis.", test_scope(), { { "topic", "analysis" } });
   memory.remember_long_term(
-    "Other conversation memory",
-    test_scope("conversation-b"),
-    { { "topic", "api-style" } });
+    "Other conversation memory", test_scope("conversation-b"), { { "topic", "api-style" } });
 
   memory_query long_term_query;
   long_term_query.kinds = { memory_kind::long_term };
@@ -351,8 +345,8 @@ void test_memory_inspection_list_get_and_filters() {
 
   const auto loaded = memory.get(api_memory.id, test_scope());
   require(loaded.has_value(), "inspection get should load memory by id and scope");
-  require(loaded->metadata.at("sensitivity") == "internal",
-    "inspection get should preserve metadata");
+  require(
+    loaded->metadata.at("sensitivity") == "internal", "inspection get should preserve metadata");
 
   memory_query sensitivity_query;
   sensitivity_query.scope = test_scope();
@@ -389,8 +383,8 @@ void test_memory_inspection_delete_and_clear() {
   require(memory.list(query).size() == 2,
     "inspection list should include remaining long-term and working memory");
 
-  require(memory.clear(test_scope()) == 2,
-    "inspection clear should remove remaining scoped memory");
+  require(
+    memory.clear(test_scope()) == 2, "inspection clear should remove remaining scoped memory");
   require(memory.list(query).empty(), "inspection list should be empty after clear");
 }
 
@@ -431,9 +425,7 @@ void test_conversation_summarization_can_erase_sources() {
       .scope = test_scope(),
       .erase_source_records = true,
     },
-    [](const std::vector<memory_record>&) {
-      return "Summarized old messages.";
-    });
+    [](const std::vector<memory_record>&) { return "Summarized old messages."; });
   require(result.summary.has_value(), "conversation summarization should create summary");
 
   memory_query conversation_query;
@@ -472,10 +464,10 @@ void test_budget_and_ranker() {
 }
 
 void test_file_store_reload_and_ids() {
-  const auto path = std::filesystem::temp_directory_path() /
-                    ("wuwe-memory-test-" +
-                     std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
-                     ".jsonl");
+  const auto path =
+    std::filesystem::temp_directory_path() /
+    ("wuwe-memory-test-" +
+      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".jsonl");
 
   const auto cleanup = [&] {
     std::error_code ignored;
@@ -522,13 +514,9 @@ void test_vector_index_semantic_recall() {
   memory.set_vector_index(std::make_shared<in_memory_vector_index>());
 
   memory.remember_long_term(
-    "Use explicit ownership in public APIs.",
-    test_scope(),
-    { { "topic", "api-style" } });
+    "Use explicit ownership in public APIs.", test_scope(), { { "topic", "api-style" } });
   memory.remember_long_term(
-    "Prefer Python notebooks for exploratory analysis.",
-    test_scope(),
-    { { "topic", "analysis" } });
+    "Prefer Python notebooks for exploratory analysis.", test_scope(), { { "topic", "analysis" } });
 
   memory_query query;
   query.scope = test_scope();
@@ -549,9 +537,7 @@ void test_vector_index_lifecycle_sync() {
   memory.set_vector_index(std::make_shared<in_memory_vector_index>());
 
   auto saved = memory.remember_long_term(
-    "Use explicit ownership in public APIs.",
-    test_scope(),
-    { { "topic", "api-style" } });
+    "Use explicit ownership in public APIs.", test_scope(), { { "topic", "api-style" } });
 
   saved.content = "Prefer Python notebooks for exploratory analysis.";
   saved.metadata = { { "topic", "analysis" } };
@@ -568,7 +554,8 @@ void test_vector_index_lifecycle_sync() {
   require(contains(records.front().content, "Python notebooks"),
     "updated vector memory should use the new content");
 
-  require(memory.erase(saved.id, test_scope()), "memory erase should remove store and vector index");
+  require(
+    memory.erase(saved.id, test_scope()), "memory erase should remove store and vector index");
   require(memory.recall(query).empty(), "erased memory should not be recalled");
 }
 
@@ -577,17 +564,10 @@ void test_vector_index_rebuild() {
   memory.set_scope(test_scope());
 
   memory.remember_long_term(
-    "Use explicit ownership in public APIs.",
-    test_scope(),
-    { { "topic", "api-style" } });
+    "Use explicit ownership in public APIs.", test_scope(), { { "topic", "api-style" } });
   memory.remember_long_term(
-    "Prefer Python notebooks for exploratory analysis.",
-    test_scope(),
-    { { "topic", "analysis" } });
-  memory.remember_long_term(
-    "Do not embed secrets.",
-    test_scope(),
-    { { "sensitivity", "secret" } });
+    "Prefer Python notebooks for exploratory analysis.", test_scope(), { { "topic", "analysis" } });
+  memory.remember_long_term("Do not embed secrets.", test_scope(), { { "sensitivity", "secret" } });
 
   memory.set_embedding_model(std::make_shared<topic_embedding_model>());
   memory.set_vector_index(std::make_shared<in_memory_vector_index>());
@@ -598,8 +578,8 @@ void test_vector_index_rebuild() {
   require(rebuild.skipped_hidden_or_secret == 1,
     "vector index rebuild should count skipped secret records");
   require(rebuild.errors.empty(), "vector index rebuild should not report errors");
-  require(memory.rebuild_vector_index() == 2,
-    "legacy vector index rebuild should return rebuilt count");
+  require(
+    memory.rebuild_vector_index() == 2, "legacy vector index rebuild should return rebuilt count");
 
   memory_query query;
   query.scope = test_scope();
@@ -644,9 +624,8 @@ void test_index_failure_marks_pending_reindex_on_write() {
   memory.set_embedding_model(std::make_shared<failing_embedding_model>());
   memory.set_vector_index(std::make_shared<in_memory_vector_index>());
 
-  const auto saved = memory.remember_long_term(
-    "Use explicit ownership in public APIs.",
-    test_scope());
+  const auto saved =
+    memory.remember_long_term("Use explicit ownership in public APIs.", test_scope());
   require(saved.metadata.at("index_status") == "pending_reindex",
     "index failure on write should mark returned record pending");
   require(contains(saved.metadata.at("index_error"), "embedding failed"),
@@ -664,9 +643,8 @@ void test_reconcile_pending_reindex_marks_indexed() {
   memory.set_embedding_model(std::make_shared<failing_embedding_model>());
   memory.set_vector_index(std::make_shared<in_memory_vector_index>());
 
-  const auto saved = memory.remember_long_term(
-    "Use explicit ownership in public APIs.",
-    test_scope());
+  const auto saved =
+    memory.remember_long_term("Use explicit ownership in public APIs.", test_scope());
   require(saved.metadata.at("index_status") == "pending_reindex",
     "setup should leave memory pending reindex");
 
@@ -677,8 +655,7 @@ void test_reconcile_pending_reindex_marks_indexed() {
   require(reconcile.errors.empty(), "reconcile should not report errors after provider recovery");
 
   const auto loaded = memory.get(saved.id, test_scope());
-  require(loaded->metadata.at("index_status") == "indexed",
-    "reconcile should mark memory indexed");
+  require(loaded->metadata.at("index_status") == "indexed", "reconcile should mark memory indexed");
   require(loaded->metadata.find("index_error") == loaded->metadata.end(),
     "reconcile should clear stale index error");
 }
@@ -718,8 +695,8 @@ void test_compact_expired_memories() {
 
   const auto remaining = memory.list(query);
   require(remaining.size() == 1, "compaction should retain non-expired memory");
-  require(contains(remaining.front().content, "retained"),
-    "compaction should keep the unexpired record");
+  require(
+    contains(remaining.front().content, "retained"), "compaction should keep the unexpired record");
 }
 
 void test_audit_sink_records_memory_operations() {
@@ -727,9 +704,7 @@ void test_audit_sink_records_memory_operations() {
   memory.set_scope(test_scope());
 
   std::vector<memory_audit_event> events;
-  memory.set_audit_sink([&](const memory_audit_event& event) {
-    events.push_back(event);
-  });
+  memory.set_audit_sink([&](const memory_audit_event& event) { events.push_back(event); });
 
   const auto saved = memory.remember_long_term("audited memory", test_scope());
   auto updated = saved;
@@ -751,9 +726,7 @@ void test_privacy_filter_rejects_sensitive_memory() {
   memory.set_scope(test_scope());
 
   std::vector<memory_audit_event> events;
-  memory.set_audit_sink([&](const memory_audit_event& event) {
-    events.push_back(event);
-  });
+  memory.set_audit_sink([&](const memory_audit_event& event) { events.push_back(event); });
   memory.set_privacy_filter([](memory_record& record, std::string& reason) {
     if (contains(record.content, "SSN")) {
       reason = "PII rejected";
@@ -834,13 +807,12 @@ void test_hybrid_ranker_prefers_vector_match() {
   memory.set_scope(test_scope());
   memory.set_embedding_model(std::make_shared<topic_embedding_model>());
   memory.set_vector_index(std::make_shared<in_memory_vector_index>());
-  memory.set_ranker(std::make_shared<hybrid_memory_ranker>(
-    hybrid_memory_ranker_policy {
-      .vector_weight = 1.0,
-      .lexical_weight = 0.0,
-      .priority_weight = 0.0,
-      .recency_weight = 0.0,
-    }));
+  memory.set_ranker(std::make_shared<hybrid_memory_ranker>(hybrid_memory_ranker_policy {
+    .vector_weight = 1.0,
+    .lexical_weight = 0.0,
+    .priority_weight = 0.0,
+    .recency_weight = 0.0,
+  }));
 
   memory.remember_long_term("Use explicit ownership in public APIs.", test_scope());
   memory.remember_long_term("Prefer Python notebooks for exploratory analysis.", test_scope());
@@ -858,15 +830,14 @@ void test_hybrid_ranker_prefers_vector_match() {
 }
 
 void test_hybrid_ranker_priority_and_minimum_vector_score() {
-  hybrid_memory_ranker ranker(
-    hybrid_memory_ranker_policy {
-      .vector_weight = 0.0,
-      .lexical_weight = 0.0,
-      .priority_weight = 1.0,
-      .recency_weight = 0.0,
-      .minimum_vector_score = 0.5,
-      .priority_scale = 10,
-    });
+  hybrid_memory_ranker ranker(hybrid_memory_ranker_policy {
+    .vector_weight = 0.0,
+    .lexical_weight = 0.0,
+    .priority_weight = 1.0,
+    .recency_weight = 0.0,
+    .minimum_vector_score = 0.5,
+    .priority_scale = 10,
+  });
 
   memory_record low_priority;
   low_priority.id = "low";
@@ -897,7 +868,8 @@ void test_hybrid_ranker_priority_and_minimum_vector_score() {
 
 void test_openai_embedding_model_request_and_parse() {
   auto http = std::make_shared<embedding_http_client>();
-  openai_embedding_model model({
+  openai_embedding_model model(
+    {
       .base_url = "https://embedding.example/",
       .api_key = "test-key",
       .model = "embedding-test",
@@ -919,18 +891,20 @@ void test_openai_embedding_model_request_and_parse() {
   require(request.timeout == 1234, "embedding request should use configured timeout");
   require(contains(request.body, R"("model":"embedding-test")"),
     "embedding request should include model");
-  require(contains(request.body, R"("input":"hello memory")"),
-    "embedding request should include input");
+  require(
+    contains(request.body, R"("input":"hello memory")"), "embedding request should include input");
 
-  const auto has_auth = std::any_of(request.headers.begin(), request.headers.end(), [](const auto& header) {
-    return header.first == "Authorization" && header.second == "Bearer test-key";
-  });
+  const auto has_auth =
+    std::any_of(request.headers.begin(), request.headers.end(), [](const auto& header) {
+      return header.first == "Authorization" && header.second == "Bearer test-key";
+    });
   require(has_auth, "embedding request should include authorization header");
 }
 
 void test_openai_embedding_model_batch_request_and_parse() {
   auto http = std::make_shared<batch_embedding_http_client>();
-  openai_embedding_model model({
+  openai_embedding_model model(
+    {
       .base_url = "https://embedding.example",
       .model = "embedding-test",
       .max_retries = 0,
@@ -973,8 +947,8 @@ void test_openai_embedding_model_with_memory_context() {
   require(records.size() == 1, "OpenAI-compatible embedding model should support vector recall");
   require(contains(records.front().content, "explicit ownership"),
     "OpenAI-compatible embedding recall should return stored memory");
-  require(http->requests.size() == 2,
-    "embedding model should be called for write and query embeddings");
+  require(
+    http->requests.size() == 2, "embedding model should be called for write and query embeddings");
 }
 
 void test_qdrant_upsert_payload_includes_embedding_metadata() {
@@ -1009,12 +983,11 @@ void test_qdrant_upsert_payload_includes_embedding_metadata() {
     "qdrant payload should include embedding model");
   require(payload["embedding_version"] == "2026-05-03",
     "qdrant payload should include embedding version");
-  require(payload["embedding_dimension"] == 3,
-    "qdrant payload should include embedding dimension");
-  require(payload["index_schema_version"] == "2",
-    "qdrant payload should include index schema version");
-  require(payload["metadata"]["topic"] == "metadata",
-    "qdrant payload should preserve memory metadata");
+  require(payload["embedding_dimension"] == 3, "qdrant payload should include embedding dimension");
+  require(
+    payload["index_schema_version"] == "2", "qdrant payload should include index schema version");
+  require(
+    payload["metadata"]["topic"] == "metadata", "qdrant payload should preserve memory metadata");
 }
 
 void test_qdrant_live_integration_when_configured() {
@@ -1027,19 +1000,15 @@ void test_qdrant_live_integration_when_configured() {
   const auto collection = env_value("WUWE_TEST_QDRANT_COLLECTION");
   qdrant_memory_index index({
     .base_url = url,
-    .collection_name = collection.empty()
-      ? "wuwe_memory_live_test"
-      : collection,
+    .collection_name = collection.empty() ? "wuwe_memory_live_test" : collection,
     .embedding_provider = "test",
     .embedding_model = "deterministic",
     .embedding_version = "live-test",
     .index_schema_version = "1",
   });
 
-  const auto scope = test_scope("qdrant-live-" +
-                                std::to_string(std::chrono::steady_clock::now()
-                                  .time_since_epoch()
-                                  .count()));
+  const auto scope = test_scope(
+    "qdrant-live-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 
   memory_record ownership;
   ownership.id = "qdrant-live-ownership";
@@ -1075,10 +1044,10 @@ void test_qdrant_live_integration_when_configured() {
 
 void test_sqlite_store() {
 #if WUWE_HAS_SQLITE
-  const auto path = std::filesystem::temp_directory_path() /
-                    ("wuwe-memory-test-" +
-                     std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
-                     ".sqlite3");
+  const auto path =
+    std::filesystem::temp_directory_path() /
+    ("wuwe-memory-test-" +
+      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".sqlite3");
 
   const auto cleanup = [&] {
     std::error_code ignored;
@@ -1171,14 +1140,12 @@ void test_memory_tools_save_and_search() {
   memory.set_scope(test_scope());
   memory_tool_provider provider(memory);
 
-  const auto save_result = provider.invoke(
-    "save_memory",
+  const auto save_result = provider.invoke("save_memory",
     R"({"content":"User prefers concise C++20 answers.","topic":"preference","sensitivity":"internal"})");
   require(!save_result.error_code, "save_memory should save valid long-term memory");
 
   const auto search_result = provider.invoke(
-    "search_memory",
-    R"({"content":"C++20 answers","topic":"preference","limit":3})");
+    "search_memory", R"({"content":"C++20 answers","topic":"preference","limit":3})");
   require(!search_result.error_code,
     "search_memory should search saved memory: " + search_result.content);
   require(contains(search_result.content, "User prefers concise C++20 answers."),
@@ -1186,17 +1153,15 @@ void test_memory_tools_save_and_search() {
   require(!contains(search_result.content, "tenant-a"),
     "search_memory should not expose internal scope fields");
 
-  const auto secret_result = provider.invoke(
-    "save_memory",
-    R"({"content":"api token is abc","sensitivity":"secret"})");
+  const auto secret_result =
+    provider.invoke("save_memory", R"({"content":"api token is abc","sensitivity":"secret"})");
   require(secret_result.error_code == std::errc::permission_denied,
     "save_memory should reject secret content");
 
   memory_context empty_scope_memory;
   memory_tool_provider empty_scope_provider(empty_scope_memory);
-  const auto empty_scope_result = empty_scope_provider.invoke(
-    "save_memory",
-    R"({"content":"should fail"})");
+  const auto empty_scope_result =
+    empty_scope_provider.invoke("save_memory", R"({"content":"should fail"})");
   require(static_cast<bool>(empty_scope_result.error_code),
     "save_memory should reject invalid scope through memory policy");
 }
@@ -1217,24 +1182,20 @@ void test_memory_tools_review_and_limit() {
   };
 
   memory_tool_provider provider(memory, options);
-  const auto rejected = provider.invoke(
-    "save_memory",
-    R"({"content":"please reject this","topic":"review"})");
+  const auto rejected =
+    provider.invoke("save_memory", R"({"content":"please reject this","topic":"review"})");
   require(rejected.error_code == std::errc::permission_denied,
     "save_memory should honor review callback");
 
-  require(!provider.invoke(
-    "save_memory",
-    R"({"content":"first retained memory","topic":"limit"})").error_code,
+  require(!provider.invoke("save_memory", R"({"content":"first retained memory","topic":"limit"})")
+             .error_code,
     "save_memory should save first record");
-  require(!provider.invoke(
-    "save_memory",
-    R"({"content":"second retained memory","topic":"limit"})").error_code,
+  require(!provider.invoke("save_memory", R"({"content":"second retained memory","topic":"limit"})")
+             .error_code,
     "save_memory should save second record");
 
-  const auto search_result = provider.invoke(
-    "search_memory",
-    R"({"content":"retained","topic":"limit","limit":10})");
+  const auto search_result =
+    provider.invoke("search_memory", R"({"content":"retained","topic":"limit","limit":10})");
   require(!search_result.error_code, "search_memory should succeed with clamped limit");
   const auto json = nlohmann::json::parse(search_result.content);
   require(json.is_array() && json.size() == 1, "search_memory should clamp limit to policy");
@@ -1295,15 +1256,13 @@ void test_runner_execution_context_scope_semantics() {
   llm_agent_runner legacy_runner(legacy_client, &memory);
   require(static_cast<bool>(legacy_runner.complete("active scope fact")),
     "legacy runner call should complete");
-  const auto legacy_injected = std::any_of(
-    legacy_client.last_request.messages.begin(),
+  const auto legacy_injected = std::any_of(legacy_client.last_request.messages.begin(),
     legacy_client.last_request.messages.end(),
     [](const chat_message& message) {
       return message.context_source == llm_context_source::memory &&
              contains(message.content, "legacy active scope fact");
     });
-  require(legacy_injected,
-    "an empty execution context must preserve the memory active scope");
+  require(legacy_injected, "an empty execution context must preserve the memory active scope");
 
   capture_client isolated_client;
   llm_agent_runner isolated_runner(isolated_client, &memory);
@@ -1312,8 +1271,7 @@ void test_runner_execution_context_scope_semantics() {
   options.context.user_id = "user-b";
   require(static_cast<bool>(isolated_runner.complete("active scope fact", options)),
     "context-scoped runner call should complete");
-  const auto cross_scope_injected = std::any_of(
-    isolated_client.last_request.messages.begin(),
+  const auto cross_scope_injected = std::any_of(isolated_client.last_request.messages.begin(),
     isolated_client.last_request.messages.end(),
     [](const chat_message& message) {
       return message.context_source == llm_context_source::memory &&
@@ -1358,8 +1316,7 @@ int main() {
     run("vector index rebuild collects errors", test_vector_index_rebuild_collects_errors);
     run("index failure marks pending reindex on write",
       test_index_failure_marks_pending_reindex_on_write);
-    run("reconcile pending reindex marks indexed",
-      test_reconcile_pending_reindex_marks_indexed);
+    run("reconcile pending reindex marks indexed", test_reconcile_pending_reindex_marks_indexed);
     run("compact expired memories", test_compact_expired_memories);
     run("audit sink records memory operations", test_audit_sink_records_memory_operations);
     run("privacy filter rejects sensitive memory", test_privacy_filter_rejects_sensitive_memory);
@@ -1371,7 +1328,8 @@ int main() {
     run("openai embedding model request and parse", test_openai_embedding_model_request_and_parse);
     run("openai embedding model batch request and parse",
       test_openai_embedding_model_batch_request_and_parse);
-    run("openai embedding model with memory context", test_openai_embedding_model_with_memory_context);
+    run("openai embedding model with memory context",
+      test_openai_embedding_model_with_memory_context);
     run("qdrant upsert payload includes embedding metadata",
       test_qdrant_upsert_payload_includes_embedding_metadata);
     run("qdrant live integration when configured", test_qdrant_live_integration_when_configured);
@@ -1379,9 +1337,9 @@ int main() {
     run("memory tools save and search", test_memory_tools_save_and_search);
     run("memory tools review and limit", test_memory_tools_review_and_limit);
     run("runner memory tool call", test_runner_memory_tool_call);
-    run("runner observes without duplicate injection", test_runner_observes_without_injecting_current_request_twice);
-    run("runner execution-context scope semantics",
-      test_runner_execution_context_scope_semantics);
+    run("runner observes without duplicate injection",
+      test_runner_observes_without_injecting_current_request_twice);
+    run("runner execution-context scope semantics", test_runner_execution_context_scope_semantics);
   }
   catch (const std::exception& ex) {
     println("[FAIL] {}", ex.what());

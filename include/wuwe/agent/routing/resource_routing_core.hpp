@@ -28,10 +28,14 @@ enum class model_selection_strategy {
 
 [[nodiscard]] inline std::string to_string(model_selection_strategy strategy) {
   switch (strategy) {
-    case model_selection_strategy::balanced: return "balanced";
-    case model_selection_strategy::lowest_cost: return "lowest_cost";
-    case model_selection_strategy::highest_quality: return "highest_quality";
-    case model_selection_strategy::lowest_latency: return "lowest_latency";
+    case model_selection_strategy::balanced:
+      return "balanced";
+    case model_selection_strategy::lowest_cost:
+      return "lowest_cost";
+    case model_selection_strategy::highest_quality:
+      return "highest_quality";
+    case model_selection_strategy::lowest_latency:
+      return "lowest_latency";
   }
   return "unknown";
 }
@@ -42,17 +46,23 @@ enum class model_route_error_code {
   preferred_model_unavailable,
   no_eligible_model,
   estimated_cost_budget_exceeded,
+  preferred_provider_unavailable,
 };
 
 [[nodiscard]] inline std::string to_string(model_route_error_code code) {
   switch (code) {
-    case model_route_error_code::none: return "none";
-    case model_route_error_code::no_models_registered: return "no_models_registered";
+    case model_route_error_code::none:
+      return "none";
+    case model_route_error_code::no_models_registered:
+      return "no_models_registered";
     case model_route_error_code::preferred_model_unavailable:
       return "preferred_model_unavailable";
-    case model_route_error_code::no_eligible_model: return "no_eligible_model";
+    case model_route_error_code::no_eligible_model:
+      return "no_eligible_model";
     case model_route_error_code::estimated_cost_budget_exceeded:
       return "estimated_cost_budget_exceeded";
+    case model_route_error_code::preferred_provider_unavailable:
+      return "preferred_provider_unavailable";
   }
   return "unknown";
 }
@@ -100,6 +110,7 @@ struct model_route_requirements {
   bool require_local_runtime { false };
   double minimum_quality_score { 0.0 };
   std::map<std::string, std::string> metadata;
+  bool allow_provider_override { false };
 };
 
 struct model_route_request {
@@ -108,6 +119,7 @@ struct model_route_request {
   std::size_t estimated_output_tokens { 0 };
   double max_estimated_cost_usd { 0.0 };
   model_route_requirements requirements;
+  std::string preferred_provider;
 };
 
 struct model_route_candidate {
@@ -143,16 +155,12 @@ using llm_token_estimator = std::function<std::size_t(const llm_request&)>;
 class model_router {
 public:
   virtual ~model_router() = default;
-  [[nodiscard]] virtual model_route_decision route(
-    const model_route_request& request) const = 0;
+  [[nodiscard]] virtual model_route_decision route(const model_route_request& request) const = 0;
 };
 
 [[nodiscard]] inline std::optional<double> estimate_model_cost_usd(
-  const model_resource_profile& profile,
-  std::size_t input_tokens,
-  std::size_t output_tokens) {
-  if (!profile.input_cost_per_million_tokens ||
-      !profile.output_cost_per_million_tokens) {
+  const model_resource_profile& profile, std::size_t input_tokens, std::size_t output_tokens) {
+  if (!profile.input_cost_per_million_tokens || !profile.output_cost_per_million_tokens) {
     return std::nullopt;
   }
   if (!std::isfinite(*profile.input_cost_per_million_tokens) ||
@@ -162,15 +170,11 @@ public:
     return std::nullopt;
   }
   const auto input_cost =
-    (static_cast<double>(input_tokens) / 1'000'000.0) *
-    *profile.input_cost_per_million_tokens;
+    (static_cast<double>(input_tokens) / 1'000'000.0) * *profile.input_cost_per_million_tokens;
   const auto output_cost =
-    (static_cast<double>(output_tokens) / 1'000'000.0) *
-    *profile.output_cost_per_million_tokens;
+    (static_cast<double>(output_tokens) / 1'000'000.0) * *profile.output_cost_per_million_tokens;
   const auto total = input_cost + output_cost;
-  return std::isfinite(total)
-           ? total
-           : (std::numeric_limits<double>::max)();
+  return std::isfinite(total) ? total : (std::numeric_limits<double>::max)();
 }
 
 inline void saturating_token_add(std::size_t& target, std::size_t value) noexcept {
@@ -265,28 +269,26 @@ inline void saturating_token_add(std::size_t& target, std::size_t value) noexcep
     { "quality_score", profile.quality_score },
     { "latency_score", profile.latency_score },
     { "available", profile.available },
-    { "capabilities", {
-      { "tools", profile.capabilities.tools },
-      { "parallel_tools", profile.capabilities.parallel_tools },
-      { "streaming", profile.capabilities.streaming },
-      { "reasoning", profile.capabilities.reasoning },
-      { "json_response", profile.capabilities.json_response },
-      { "json_schema_output", profile.capabilities.json_schema_output },
-      { "stop_sequences", profile.capabilities.stop_sequences },
-      { "deterministic_seed", profile.capabilities.deterministic_seed },
-      { "explicit_cache_control",
-        profile.capabilities.explicit_cache_control },
-      { "local_runtime", profile.capabilities.local_runtime },
-    } },
+    { "capabilities",
+      {
+        { "tools", profile.capabilities.tools },
+        { "parallel_tools", profile.capabilities.parallel_tools },
+        { "streaming", profile.capabilities.streaming },
+        { "reasoning", profile.capabilities.reasoning },
+        { "json_response", profile.capabilities.json_response },
+        { "json_schema_output", profile.capabilities.json_schema_output },
+        { "stop_sequences", profile.capabilities.stop_sequences },
+        { "deterministic_seed", profile.capabilities.deterministic_seed },
+        { "explicit_cache_control", profile.capabilities.explicit_cache_control },
+        { "local_runtime", profile.capabilities.local_runtime },
+      } },
     { "metadata", profile.metadata },
   };
   if (profile.input_cost_per_million_tokens) {
-    output["input_cost_per_million_tokens"] =
-      *profile.input_cost_per_million_tokens;
+    output["input_cost_per_million_tokens"] = *profile.input_cost_per_million_tokens;
   }
   if (profile.output_cost_per_million_tokens) {
-    output["output_cost_per_million_tokens"] =
-      *profile.output_cost_per_million_tokens;
+    output["output_cost_per_million_tokens"] = *profile.output_cost_per_million_tokens;
   }
   return output;
 }

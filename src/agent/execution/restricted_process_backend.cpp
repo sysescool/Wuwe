@@ -9,18 +9,18 @@
 namespace wuwe::agent::execution {
 namespace {
 
+#ifdef _WIN32
 bool is_enforced(sandbox::enforcement_level level) {
   return level == sandbox::enforcement_level::enforced;
 }
 
 void add_if_not_enforced(
-  std::vector<std::string>& blockers,
-  sandbox::enforcement_level level,
-  const char* name) {
+  std::vector<std::string>& blockers, sandbox::enforcement_level level, const char* name) {
   if (!is_enforced(level)) {
     blockers.emplace_back(name);
   }
 }
+#endif
 
 std::string join_blockers(const std::vector<std::string>& blockers) {
   std::string result;
@@ -42,8 +42,7 @@ public:
   [[nodiscard]] sandbox::sandbox_backend_info info() const override {
     auto descriptor = restricted_process_backend_descriptor();
     const auto availability = evaluate_restricted_process_backend_availability(
-      config_,
-      restricted_process_backend_registration::registered_factory);
+      config_, restricted_process_backend_registration::registered_factory);
     descriptor.available = availability.available;
     descriptor.enforcement = availability.contract;
     descriptor.unavailable_reason =
@@ -52,11 +51,9 @@ public:
   }
 
   [[nodiscard]] execution_result run(
-    const execution_request& request,
-    std::stop_token stop_token) override {
+    const execution_request& request, std::stop_token stop_token) override {
     const auto availability = evaluate_restricted_process_backend_availability(
-      config_,
-      restricted_process_backend_registration::registered_factory);
+      config_, restricted_process_backend_registration::registered_factory);
     if (!availability.available) {
       execution_result result {
         .termination_reason = execution_termination_reason::backend_error,
@@ -71,6 +68,8 @@ public:
 #ifdef _WIN32
     return detail::run_restricted_execution_plan(config_, request, stop_token);
 #else
+    (void)request;
+    (void)stop_token;
     execution_result result {
       .termination_reason = execution_termination_reason::backend_error,
       .error_message = "restricted_process backend is Windows-only",
@@ -87,8 +86,7 @@ private:
 
 } // namespace
 
-sandbox::sandbox_enforcement_contract
-restricted_process_backend_planned_contract() {
+sandbox::sandbox_enforcement_contract restricted_process_backend_planned_contract() {
   return {
     .shell_execution = sandbox::enforcement_level::planned,
     .timeout = sandbox::enforcement_level::planned,
@@ -107,13 +105,11 @@ restricted_process_backend_planned_contract() {
   };
 }
 
-sandbox::sandbox_enforcement_contract
-restricted_process_backend_configured_contract(
+sandbox::sandbox_enforcement_contract restricted_process_backend_configured_contract(
   const restricted_process_backend_config& config) {
 #ifdef _WIN32
-  const auto job_enforcement = config.use_job_object
-                                 ? sandbox::enforcement_level::enforced
-                                 : sandbox::enforcement_level::not_enforced;
+  const auto job_enforcement = config.use_job_object ? sandbox::enforcement_level::enforced
+                                                     : sandbox::enforcement_level::not_enforced;
   return {
     .shell_execution = sandbox::enforcement_level::enforced,
     .timeout = sandbox::enforcement_level::enforced,
@@ -128,9 +124,8 @@ restricted_process_backend_configured_contract(
     .memory_limit = job_enforcement,
     .filesystem_read_deny = sandbox::enforcement_level::enforced,
     .filesystem_write_deny = sandbox::enforcement_level::enforced,
-    .network_deny = config.deny_network
-                      ? sandbox::enforcement_level::enforced
-                      : sandbox::enforcement_level::not_enforced,
+    .network_deny = config.deny_network ? sandbox::enforcement_level::enforced
+                                        : sandbox::enforcement_level::not_enforced,
   };
 #else
   (void)config;
@@ -146,16 +141,13 @@ restricted_process_backend_configured_contract(
 #endif
 }
 
-restricted_process_backend_availability
-evaluate_restricted_process_backend_availability(
+restricted_process_backend_availability evaluate_restricted_process_backend_availability(
   const restricted_process_backend_config& config) {
   return evaluate_restricted_process_backend_availability(
-    config,
-    restricted_process_backend_registration::descriptor_only);
+    config, restricted_process_backend_registration::descriptor_only);
 }
 
-restricted_process_backend_availability
-evaluate_restricted_process_backend_availability(
+restricted_process_backend_availability evaluate_restricted_process_backend_availability(
   const restricted_process_backend_config& config,
   restricted_process_backend_registration registration) {
   restricted_process_backend_availability result {
@@ -163,67 +155,33 @@ evaluate_restricted_process_backend_availability(
   };
 
 #ifndef _WIN32
+  (void)registration;
   result.blockers.emplace_back("restricted_process_unsupported_platform");
   return result;
 #else
   add_if_not_enforced(
-    result.blockers,
-    result.contract.shell_execution,
-    "shell_execution_not_enforced");
+    result.blockers, result.contract.shell_execution, "shell_execution_not_enforced");
+  add_if_not_enforced(result.blockers, result.contract.timeout, "timeout_not_enforced");
+  add_if_not_enforced(result.blockers, result.contract.cancellation, "cancellation_not_enforced");
+  add_if_not_enforced(result.blockers, result.contract.stdout_limit, "stdout_limit_not_enforced");
+  add_if_not_enforced(result.blockers, result.contract.stderr_limit, "stderr_limit_not_enforced");
   add_if_not_enforced(
-    result.blockers,
-    result.contract.timeout,
-    "timeout_not_enforced");
+    result.blockers, result.contract.environment_allowlist, "environment_allowlist_not_enforced");
   add_if_not_enforced(
-    result.blockers,
-    result.contract.cancellation,
-    "cancellation_not_enforced");
+    result.blockers, result.contract.working_directory, "working_directory_not_enforced");
   add_if_not_enforced(
-    result.blockers,
-    result.contract.stdout_limit,
-    "stdout_limit_not_enforced");
+    result.blockers, result.contract.process_tree_cleanup, "process_tree_cleanup_not_enforced");
   add_if_not_enforced(
-    result.blockers,
-    result.contract.stderr_limit,
-    "stderr_limit_not_enforced");
+    result.blockers, result.contract.process_count_limit, "process_count_limit_not_enforced");
   add_if_not_enforced(
-    result.blockers,
-    result.contract.environment_allowlist,
-    "environment_allowlist_not_enforced");
+    result.blockers, result.contract.cpu_time_limit, "cpu_time_limit_not_enforced");
+  add_if_not_enforced(result.blockers, result.contract.memory_limit, "memory_limit_not_enforced");
   add_if_not_enforced(
-    result.blockers,
-    result.contract.working_directory,
-    "working_directory_not_enforced");
+    result.blockers, result.contract.filesystem_read_deny, "filesystem_read_deny_not_enforced");
   add_if_not_enforced(
-    result.blockers,
-    result.contract.process_tree_cleanup,
-    "process_tree_cleanup_not_enforced");
-  add_if_not_enforced(
-    result.blockers,
-    result.contract.process_count_limit,
-    "process_count_limit_not_enforced");
-  add_if_not_enforced(
-    result.blockers,
-    result.contract.cpu_time_limit,
-    "cpu_time_limit_not_enforced");
-  add_if_not_enforced(
-    result.blockers,
-    result.contract.memory_limit,
-    "memory_limit_not_enforced");
-  add_if_not_enforced(
-    result.blockers,
-    result.contract.filesystem_read_deny,
-    "filesystem_read_deny_not_enforced");
-  add_if_not_enforced(
-    result.blockers,
-    result.contract.filesystem_write_deny,
-    "filesystem_write_deny_not_enforced");
-  add_if_not_enforced(
-    result.blockers,
-    result.contract.network_deny,
-    "network_deny_not_enforced");
-  if (registration !=
-      restricted_process_backend_registration::registered_factory) {
+    result.blockers, result.contract.filesystem_write_deny, "filesystem_write_deny_not_enforced");
+  add_if_not_enforced(result.blockers, result.contract.network_deny, "network_deny_not_enforced");
+  if (registration != restricted_process_backend_registration::registered_factory) {
     result.blockers.emplace_back("restricted_process_backend_not_registered");
   }
 
@@ -265,8 +223,7 @@ sandbox::sandbox_backend_info restricted_process_backend_descriptor() {
 std::unique_ptr<execution_backend> make_restricted_process_backend(
   restricted_process_backend_config config) {
   const auto availability = evaluate_restricted_process_backend_availability(
-    config,
-    restricted_process_backend_registration::registered_factory);
+    config, restricted_process_backend_registration::registered_factory);
   if (!availability.available) {
     return nullptr;
   }

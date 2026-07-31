@@ -1,5 +1,5 @@
-#include <stdexcept>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -45,8 +45,10 @@ void runner_aggregates_weighted_metrics_and_suites() {
   });
   runner.add(std::make_shared<exact_match_evaluator>(), 2.0, true);
   runner.add(std::make_shared<contains_terms_evaluator>(contains_terms_options {
-    .terms = { "hello", "world" },
-  }), 1.0, true);
+               .terms = { "hello", "world" },
+             }),
+    1.0,
+    true);
 
   const auto suite = runner.run({
     { .id = "pass", .output = "Hello World", .expected_output = "hello world" },
@@ -77,8 +79,8 @@ void trajectory_evaluator_checks_required_forbidden_and_budgets() {
       { { "type", "tool_completed" } },
     }),
   });
-  require(passed.passed && passed.score == 1.0,
-    "trajectory evaluator accepts a compliant trajectory");
+  require(
+    passed.passed && passed.score == 1.0, "trajectory evaluator accepts a compliant trajectory");
 
   const auto failed = evaluator.evaluate({
     .id = "trajectory-fail",
@@ -91,7 +93,8 @@ void trajectory_evaluator_checks_required_forbidden_and_budgets() {
 void runner_can_execute_an_evaluation_target() {
   evaluation_runner runner;
   runner.add(std::make_shared<exact_match_evaluator>());
-  const auto suite = runner.run({
+  const auto suite = runner.run(
+    {
       { .id = "target", .input = "question", .expected_output = "answer" },
     },
     [](const evaluation_case& seed) {
@@ -102,11 +105,11 @@ void runner_can_execute_an_evaluation_target() {
       };
     });
   require(suite.successful(), "evaluation runner can execute and score a target");
-  require(suite.cases.front().checks.size() == 1,
-    "target output is evaluated by configured evaluators");
+  require(
+    suite.cases.front().checks.size() == 1, "target output is evaluated by configured evaluators");
 
-  const auto failed = runner.run({ { .id = "target-error" } },
-    [](const evaluation_case&) -> evaluation_case {
+  const auto failed =
+    runner.run({ { .id = "target-error" } }, [](const evaluation_case&) -> evaluation_case {
       throw std::runtime_error("target unavailable");
     });
   require(failed.failed == 1 && failed.cases.front().error == "target unavailable",
@@ -115,8 +118,7 @@ void runner_can_execute_an_evaluation_target() {
 
 void evaluator_failures_are_isolated_by_policy() {
   auto throwing = std::make_shared<function_evaluator>(
-    "throwing",
-    [](const evaluation_case&) -> evaluation_metric_result {
+    "throwing", [](const evaluation_case&) -> evaluation_metric_result {
       throw std::runtime_error("evaluator unavailable");
     });
 
@@ -148,13 +150,12 @@ void reasoning_adapter_preserves_trace_and_usage() {
     .type = wuwe::agent::reasoning::reasoning_event_type::model_started,
   });
 
-  const auto value = evaluation_case_from_reasoning(
-    "reasoning-case", "question", result, "answer");
+  const auto value = evaluation_case_from_reasoning("reasoning-case", "question", result, "answer");
   require(value.output == "answer" && value.expected_output == "answer",
     "reasoning adapter maps output expectations");
   require(value.trajectory.size() == 1, "reasoning adapter exposes the trajectory");
-  require(value.actual.at("completed").get<bool>(),
-    "reasoning adapter exposes structured result data");
+  require(
+    value.actual.at("completed").get<bool>(), "reasoning adapter exposes structured result data");
 }
 
 void fail_fast_respects_optional_required_checks_policy() {
@@ -165,24 +166,20 @@ void fail_fast_respects_optional_required_checks_policy() {
       .fail_fast = true,
     },
   });
-  runner.add(std::make_shared<function_evaluator>(
-    "first",
-    [](const evaluation_case&) {
-      return evaluation_metric_result {
-        .name = "first",
-        .score = 0.0,
-        .passed = false,
-      };
-    }));
-  runner.add(std::make_shared<function_evaluator>(
-    "second",
-    [](const evaluation_case&) {
-      return evaluation_metric_result {
-        .name = "second",
-        .score = 1.0,
-        .passed = true,
-      };
-    }));
+  runner.add(std::make_shared<function_evaluator>("first", [](const evaluation_case&) {
+    return evaluation_metric_result {
+      .name = "first",
+      .score = 0.0,
+      .passed = false,
+    };
+  }));
+  runner.add(std::make_shared<function_evaluator>("second", [](const evaluation_case&) {
+    return evaluation_metric_result {
+      .name = "second",
+      .score = 1.0,
+      .passed = true,
+    };
+  }));
 
   const auto result = runner.evaluate({ .id = "optional-required-checks" });
   require(result.checks.size() == 2,
@@ -204,46 +201,38 @@ void rejects_non_finite_values_and_controls_telemetry_failures() {
   }
 
   evaluation_runner runner({
-    .observer = [](const evaluation_case_result&) {
-      throw std::runtime_error("observer unavailable");
-    },
+    .observer =
+      [](const evaluation_case_result&) { throw std::runtime_error("observer unavailable"); },
   });
   bool invalid_weight = false;
   try {
     runner.add(std::make_shared<function_evaluator>(
-      "weight",
-      [](const evaluation_case&) { return evaluation_metric_result {}; }),
+                 "weight", [](const evaluation_case&) { return evaluation_metric_result {}; }),
       std::numeric_limits<double>::infinity());
   }
   catch (const std::invalid_argument&) {
     invalid_weight = true;
   }
-  runner.add(std::make_shared<function_evaluator>(
-    "non-finite",
-    [](const evaluation_case&) {
-      return evaluation_metric_result {
-        .score = std::numeric_limits<double>::quiet_NaN(),
-        .passed = true,
-      };
-    }));
+  runner.add(std::make_shared<function_evaluator>("non-finite", [](const evaluation_case&) {
+    return evaluation_metric_result {
+      .score = std::numeric_limits<double>::quiet_NaN(),
+      .passed = true,
+    };
+  }));
   const auto result = runner.evaluate({ .id = "finite" });
   require(invalid_threshold && invalid_weight && !result.passed &&
-      result.checks.front().error.find("non-finite") != std::string::npos &&
-      result.metadata.at("telemetry_error_count") == "1",
+            result.checks.front().error.find("non-finite") != std::string::npos &&
+            result.metadata.at("telemetry_error_count") == "1",
     "evaluation rejects non-finite configuration and isolates telemetry by default");
 
   evaluation_runner strict({
-    .observer = [](const evaluation_case_result&) {
-      throw std::runtime_error("observer unavailable");
-    },
-    .telemetry_failure_mode =
-      wuwe::agent::observability::telemetry_failure_mode::propagate,
+    .observer =
+      [](const evaluation_case_result&) { throw std::runtime_error("observer unavailable"); },
+    .telemetry_failure_mode = wuwe::agent::observability::telemetry_failure_mode::propagate,
   });
-  strict.add(std::make_shared<function_evaluator>(
-    "ok",
-    [](const evaluation_case&) {
-      return evaluation_metric_result { .score = 1.0, .passed = true };
-    }));
+  strict.add(std::make_shared<function_evaluator>("ok", [](const evaluation_case&) {
+    return evaluation_metric_result { .score = 1.0, .passed = true };
+  }));
   bool propagated = false;
   try {
     (void)strict.evaluate({ .id = "strict" });
@@ -268,8 +257,8 @@ void evaluator_registration_has_stable_identity_and_bounded_weights() {
   auto stable = std::make_shared<custom_named_evaluator>("stable");
   runner.add(stable, (std::numeric_limits<double>::max)());
   const auto result = runner.evaluate({ .id = "stable-name" });
-  require(result.passed && result.checks.front().evaluator_name == "stable" &&
-      stable->name_calls == 1,
+  require(
+    result.passed && result.checks.front().evaluator_name == "stable" && stable->name_calls == 1,
     "evaluation validates and freezes evaluator identity at registration");
 
   bool aggregate_overflow = false;

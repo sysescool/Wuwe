@@ -10,20 +10,19 @@ namespace {
 
 restricted_python_runtime_staging_result make_result(
   const restricted_python_runtime_staging_request& request,
-  restricted_python_runtime_staging_status status,
-  std::error_code error = {},
+  restricted_python_runtime_staging_status status, std::error_code error = {},
   std::string detail = {}) {
   return {
     .status = status,
     .source_home = request.source_python.parent_path(),
     .destination_home = request.destination_home,
-    .python_executable =
-      request.destination_home / request.source_python.filename(),
+    .python_executable = request.destination_home / request.source_python.filename(),
     .system_error = error,
     .detail = std::move(detail),
   };
 }
 
+#ifdef _WIN32
 std::wstring lowercase(std::wstring text) {
   std::transform(text.begin(), text.end(), text.begin(), [](wchar_t ch) {
     return static_cast<wchar_t>(std::towlower(ch));
@@ -38,8 +37,7 @@ bool is_windows_runtime_dll(const std::filesystem::path& path) {
   }
 
   const auto filename = lowercase(path.filename().wstring());
-  return filename.rfind(L"python", 0) == 0 ||
-         filename.rfind(L"vcruntime", 0) == 0;
+  return filename.rfind(L"python", 0) == 0 || filename.rfind(L"vcruntime", 0) == 0;
 }
 
 bool is_python_runtime_dll(const std::filesystem::path& path) {
@@ -48,8 +46,7 @@ bool is_python_runtime_dll(const std::filesystem::path& path) {
   return extension == L".dll" && filename.rfind(L"python", 0) == 0;
 }
 
-std::filesystem::path resolve_source_python(
-  const std::filesystem::path& source_python) {
+std::filesystem::path resolve_source_python(const std::filesystem::path& source_python) {
   if (lowercase(source_python.filename().wstring()) != L"python3.exe") {
     return source_python;
   }
@@ -65,39 +62,31 @@ std::filesystem::path resolve_source_python(
 }
 
 bool write_python_path_configuration(
-  const std::filesystem::path& path,
-  restricted_python_runtime_staging_result& result) {
+  const std::filesystem::path& path, restricted_python_runtime_staging_result& result) {
   // Keep the staged interpreter independent of machine-wide Python registry
   // entries, including unregistered installations used by CI tool caches.
   std::ofstream output(path, std::ios::binary | std::ios::trunc);
   if (!output || !(output << "Lib\r\n")) {
-    result.status =
-      restricted_python_runtime_staging_status::write_configuration_failed;
+    result.status = restricted_python_runtime_staging_status::write_configuration_failed;
     result.detail = path.string();
     return false;
   }
   return true;
 }
 
-bool copy_required_file(
-  const std::filesystem::path& source,
-  const std::filesystem::path& destination,
-  restricted_python_runtime_staging_result& result) {
+bool copy_required_file(const std::filesystem::path& source,
+  const std::filesystem::path& destination, restricted_python_runtime_staging_result& result) {
   std::error_code error;
   std::filesystem::create_directories(destination.parent_path(), error);
   if (error) {
-    result.status =
-      restricted_python_runtime_staging_status::create_destination_failed;
+    result.status = restricted_python_runtime_staging_status::create_destination_failed;
     result.system_error = error;
     result.detail = destination.parent_path().string();
     return false;
   }
 
   const auto copied = std::filesystem::copy_file(
-    source,
-    destination,
-    std::filesystem::copy_options::overwrite_existing,
-    error);
+    source, destination, std::filesystem::copy_options::overwrite_existing, error);
   if (error || !copied) {
     result.status = restricted_python_runtime_staging_status::copy_failed;
     result.system_error = error;
@@ -108,10 +97,8 @@ bool copy_required_file(
   return true;
 }
 
-bool copy_directory_tree(
-  const std::filesystem::path& source,
-  const std::filesystem::path& destination,
-  restricted_python_runtime_staging_result& result) {
+bool copy_directory_tree(const std::filesystem::path& source,
+  const std::filesystem::path& destination, restricted_python_runtime_staging_result& result) {
   std::error_code error;
   if (!std::filesystem::exists(source, error)) {
     result.status = restricted_python_runtime_staging_status::source_lib_missing;
@@ -122,8 +109,7 @@ bool copy_directory_tree(
 
   std::filesystem::create_directories(destination, error);
   if (error) {
-    result.status =
-      restricted_python_runtime_staging_status::create_destination_failed;
+    result.status = restricted_python_runtime_staging_status::create_destination_failed;
     result.system_error = error;
     result.detail = destination.string();
     return false;
@@ -137,9 +123,7 @@ bool copy_directory_tree(
     return false;
   }
 
-  for (std::filesystem::recursive_directory_iterator end;
-       it != end;
-       it.increment(error)) {
+  for (std::filesystem::recursive_directory_iterator end; it != end; it.increment(error)) {
     if (error) {
       result.status = restricted_python_runtime_staging_status::copy_failed;
       result.system_error = error;
@@ -159,8 +143,7 @@ bool copy_directory_tree(
     if (it->is_directory(error)) {
       std::filesystem::create_directories(target, error);
       if (error) {
-        result.status =
-          restricted_python_runtime_staging_status::create_destination_failed;
+        result.status = restricted_python_runtime_staging_status::create_destination_failed;
         result.system_error = error;
         result.detail = target.string();
         return false;
@@ -188,6 +171,7 @@ bool copy_directory_tree(
   }
   return true;
 }
+#endif
 
 } // namespace
 
@@ -219,36 +203,27 @@ const char* to_string(restricted_python_runtime_staging_status status) noexcept 
   return "unknown";
 }
 
-restricted_python_runtime_staging_result
-stage_minimal_python_runtime_for_restricted_process(
+restricted_python_runtime_staging_result stage_minimal_python_runtime_for_restricted_process(
   const restricted_python_runtime_staging_request& request) {
   if (request.source_python.empty()) {
-    return make_result(
-      request,
-      restricted_python_runtime_staging_status::empty_source_python);
+    return make_result(request, restricted_python_runtime_staging_status::empty_source_python);
   }
   if (request.destination_home.empty()) {
-    return make_result(
-      request,
-      restricted_python_runtime_staging_status::empty_destination_home);
+    return make_result(request, restricted_python_runtime_staging_status::empty_destination_home);
   }
 
 #ifndef _WIN32
-  return make_result(
-    request,
-    restricted_python_runtime_staging_status::unsupported_platform);
+  return make_result(request, restricted_python_runtime_staging_status::unsupported_platform);
 #else
   std::error_code error;
   if (!std::filesystem::exists(request.source_python, error)) {
-    return make_result(
-      request,
+    return make_result(request,
       restricted_python_runtime_staging_status::source_python_not_found,
       error,
       request.source_python.string());
   }
   if (!std::filesystem::is_regular_file(request.source_python, error)) {
-    return make_result(
-      request,
+    return make_result(request,
       restricted_python_runtime_staging_status::source_python_not_regular_file,
       error,
       request.source_python.string());
@@ -257,25 +232,20 @@ stage_minimal_python_runtime_for_restricted_process(
   const auto source_python = resolve_source_python(request.source_python);
   const auto source_home = source_python.parent_path();
   if (source_home.empty() || !std::filesystem::exists(source_home, error)) {
-    return make_result(
-      request,
+    return make_result(request,
       restricted_python_runtime_staging_status::source_home_missing,
       error,
       source_home.string());
   }
 
-  auto result = make_result(
-    request,
-    restricted_python_runtime_staging_status::ok);
+  auto result = make_result(request, restricted_python_runtime_staging_status::ok);
   result.source_home = source_home;
-  result.python_executable =
-    request.destination_home / source_python.filename();
+  result.python_executable = request.destination_home / source_python.filename();
 
   if (request.replace_existing) {
     std::filesystem::remove_all(request.destination_home, error);
     if (error) {
-      result.status =
-        restricted_python_runtime_staging_status::create_destination_failed;
+      result.status = restricted_python_runtime_staging_status::create_destination_failed;
       result.system_error = error;
       result.detail = request.destination_home.string();
       return result;
@@ -284,23 +254,17 @@ stage_minimal_python_runtime_for_restricted_process(
 
   std::filesystem::create_directories(request.destination_home, error);
   if (error) {
-    result.status =
-      restricted_python_runtime_staging_status::create_destination_failed;
+    result.status = restricted_python_runtime_staging_status::create_destination_failed;
     result.system_error = error;
     result.detail = request.destination_home.string();
     return result;
   }
 
-  if (!copy_required_file(
-        source_python,
-        result.python_executable,
-        result)) {
+  if (!copy_required_file(source_python, result.python_executable, result)) {
     return result;
   }
   if (!write_python_path_configuration(
-        request.destination_home /
-          (source_python.stem().wstring() + L"._pth"),
-        result)) {
+        request.destination_home / (source_python.stem().wstring() + L"._pth"), result)) {
     return result;
   }
 
@@ -322,16 +286,12 @@ stage_minimal_python_runtime_for_restricted_process(
 
     if (it->is_regular_file(error) && is_windows_runtime_dll(it->path())) {
       if (!copy_required_file(
-            it->path(),
-            request.destination_home / it->path().filename(),
-            result)) {
+            it->path(), request.destination_home / it->path().filename(), result)) {
         return result;
       }
       if (is_python_runtime_dll(it->path()) &&
           !write_python_path_configuration(
-            request.destination_home /
-              (it->path().stem().wstring() + L"._pth"),
-            result)) {
+            request.destination_home / (it->path().stem().wstring() + L"._pth"), result)) {
         return result;
       }
     }
@@ -345,18 +305,13 @@ stage_minimal_python_runtime_for_restricted_process(
 
   const auto source_lib = source_home / "Lib";
   if (!copy_directory_tree(
-        source_lib / "encodings",
-        request.destination_home / "Lib" / "encodings",
-        result)) {
+        source_lib / "encodings", request.destination_home / "Lib" / "encodings", result)) {
     return result;
   }
 
   const auto codecs = source_lib / "codecs.py";
   if (std::filesystem::exists(codecs, error)) {
-    if (!copy_required_file(
-          codecs,
-          request.destination_home / "Lib" / "codecs.py",
-          result)) {
+    if (!copy_required_file(codecs, request.destination_home / "Lib" / "codecs.py", result)) {
       return result;
     }
   }
@@ -369,10 +324,7 @@ stage_minimal_python_runtime_for_restricted_process(
 
   const auto os = source_lib / "os.py";
   if (std::filesystem::exists(os, error)) {
-    if (!copy_required_file(
-          os,
-          request.destination_home / "Lib" / "os.py",
-          result)) {
+    if (!copy_required_file(os, request.destination_home / "Lib" / "os.py", result)) {
       return result;
     }
   }

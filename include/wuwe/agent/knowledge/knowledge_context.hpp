@@ -10,16 +10,14 @@
 
 #include <wuwe/agent/core/content.hpp>
 #include <wuwe/agent/core/execution_context.hpp>
-#include <wuwe/agent/knowledge/knowledge_retriever.hpp>
 #include <wuwe/agent/knowledge/knowledge_result_processor.hpp>
+#include <wuwe/agent/knowledge/knowledge_retriever.hpp>
 #include <wuwe/agent/llm/llm_types.h>
 
 namespace wuwe::agent::knowledge {
 
-[[nodiscard]] inline knowledge_access_scope
-knowledge_access_from_execution_context(
-  knowledge_access_scope base,
-  const core::agent_execution_context& context) {
+[[nodiscard]] inline knowledge_access_scope knowledge_access_from_execution_context(
+  knowledge_access_scope base, const core::agent_execution_context& context) {
   if (context.tenant_id.empty() && context.user_id.empty()) {
     return base;
   }
@@ -47,8 +45,7 @@ struct knowledge_policy {
 class knowledge_context {
 public:
   explicit knowledge_context(
-    std::shared_ptr<knowledge_retriever> retriever,
-    knowledge_policy policy = {})
+    std::shared_ptr<knowledge_retriever> retriever, knowledge_policy policy = {})
       : retriever_(std::move(retriever)), policy_(std::move(policy)) {
     if (!retriever_) {
       throw std::invalid_argument("knowledge_context requires a knowledge_retriever");
@@ -56,14 +53,11 @@ public:
   }
 
   std::string build_context_block(
-    std::string_view query_text,
-    core::content_trust_level* block_trust = nullptr) const {
+    std::string_view query_text, core::content_trust_level* block_trust = nullptr) const {
     return build_context_block(query_text, policy_.access, block_trust);
   }
 
-  std::string build_context_block(
-    std::string_view query_text,
-    const knowledge_access_scope& access,
+  std::string build_context_block(std::string_view query_text, const knowledge_access_scope& access,
     core::content_trust_level* block_trust = nullptr) const {
     knowledge_query query;
     query.text = std::string(query_text);
@@ -81,8 +75,7 @@ public:
 
     knowledge_result_processor processor(policy_.result_processing);
     auto results = retriever_->retrieve(query);
-    results = retriever_->expand_with_neighbors(
-      std::move(results),
+    results = retriever_->expand_with_neighbors(std::move(results),
       policy_.surrounding_chunks_before,
       policy_.surrounding_chunks_after,
       access);
@@ -150,11 +143,9 @@ public:
       output << rendered;
       remaining -= (std::min)(remaining, rendered.size());
       wrote_any = true;
-      selected_trust = core::least_trusted(
-        selected_trust,
+      selected_trust = core::least_trusted(selected_trust,
         core::content_trust_from_metadata(
-          result.chunk.metadata,
-          core::content_trust_level::retrieved_untrusted));
+          result.chunk.metadata, core::content_trust_level::retrieved_untrusted));
       if (remaining == 0) {
         break;
       }
@@ -173,30 +164,26 @@ public:
     return augment(std::move(request), query_text, policy_.access);
   }
 
-  llm_request augment(
-    llm_request request,
-    std::string_view query_text,
+  llm_request augment(llm_request request, std::string_view query_text,
     const core::agent_execution_context& context) const {
-    return augment(std::move(request), query_text,
+    return augment(std::move(request),
+      query_text,
       knowledge_access_from_execution_context(policy_.access, context));
   }
 
   llm_request augment(
-    llm_request request,
-    std::string_view query_text,
-    const knowledge_access_scope& access) const {
+    llm_request request, std::string_view query_text, const knowledge_access_scope& access) const {
     auto trust = core::content_trust_level::system_trusted;
     auto block = build_context_block(query_text, access, &trust);
     if (block.empty()) {
       return request;
     }
 
-    const bool system_message = policy_.inject_as_system_message &&
-      (policy_.allow_untrusted_system_message ||
-       core::trusted_for_system_message(trust));
+    const bool system_message =
+      policy_.inject_as_system_message &&
+      (policy_.allow_untrusted_system_message || core::trusted_for_system_message(trust));
     if (!system_message) {
-      block = core::render_context_boundary(
-        "knowledge", trust, std::move(block));
+      block = core::render_context_boundary("knowledge", trust, std::move(block));
     }
 
     chat_message knowledge_message {

@@ -7,8 +7,8 @@
 #include <string>
 #include <utility>
 
-#include <wuwe/agent/reflection/reflector.hpp>
 #include <wuwe/agent/reflection/reflection_store.hpp>
+#include <wuwe/agent/reflection/reflector.hpp>
 
 namespace wuwe::agent::reflection {
 
@@ -80,14 +80,13 @@ public:
     }
   }
 
-  reflection_run_result run(
-    reflection_request request,
-    reflection_run_options run_options = {}) {
+  reflection_run_result run(reflection_request request, reflection_run_options run_options = {}) {
     const auto started = std::chrono::steady_clock::now();
     auto services = runtime_services();
     services.notify({ .type = reflection_event_type::reflection_started, .request = &request });
 
-    auto result = reflection_policy_engine(options_.policy).apply(options_.reflector->reflect(request));
+    auto result =
+      reflection_policy_engine(options_.policy).apply(options_.reflector->reflect(request));
 
     reflection_record record {
       .id = services.next_id(),

@@ -53,8 +53,7 @@ public:
   sqlite_memory_store(const sqlite_memory_store&) = delete;
   sqlite_memory_store& operator=(const sqlite_memory_store&) = delete;
 
-  [[nodiscard]] core::storage_capabilities capabilities()
-    const noexcept override {
+  [[nodiscard]] core::storage_capabilities capabilities() const noexcept override {
     return {
       .declared = true,
       .durable = true,
@@ -93,7 +92,8 @@ public:
       statement insert(db_,
         "INSERT INTO memory_records "
         "(id, kind, visibility, content, summary, tenant_id, user_id, application_id, "
-        "conversation_id, agent_id, score, priority, created_at, updated_at, expires_at, metadata_json) "
+        "conversation_id, agent_id, score, priority, created_at, updated_at, expires_at, "
+        "metadata_json) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
       bind_record(insert.get(), record);
       step_done(insert.get(), "insert memory record");
@@ -101,8 +101,11 @@ public:
       return record;
     }
     catch (...) {
-      try { exec("ROLLBACK"); }
-      catch (...) {}
+      try {
+        exec("ROLLBACK");
+      }
+      catch (...) {
+      }
       throw;
     }
   }
@@ -113,7 +116,8 @@ public:
 
     statement select(db_,
       "SELECT id, kind, visibility, content, summary, tenant_id, user_id, application_id, "
-      "conversation_id, agent_id, score, priority, created_at, updated_at, expires_at, metadata_json "
+      "conversation_id, agent_id, score, priority, created_at, updated_at, expires_at, "
+      "metadata_json "
       "FROM memory_records "
       "WHERE id = ? "
       "AND (? = '' OR tenant_id = ?) "
@@ -140,7 +144,8 @@ public:
 
     statement select(db_,
       "SELECT id, kind, visibility, content, summary, tenant_id, user_id, application_id, "
-      "conversation_id, agent_id, score, priority, created_at, updated_at, expires_at, metadata_json "
+      "conversation_id, agent_id, score, priority, created_at, updated_at, expires_at, "
+      "metadata_json "
       "FROM memory_records "
       "WHERE (? = '' OR tenant_id = ?) "
       "AND (? = '' OR user_id = ?) "
@@ -312,19 +317,20 @@ private:
   void initialize_schema() {
     exec("BEGIN IMMEDIATE");
     try {
-      exec(
-        "CREATE TABLE IF NOT EXISTS wuwe_storage_schema ("
-        "component TEXT PRIMARY KEY, version INTEGER NOT NULL)");
-      core::validate_sqlite_table(db_, "wuwe_storage_schema", {
-        { "component", "TEXT", false, 1 },
-        { "version", "INTEGER", true, 0 },
-      }, "sqlite memory store");
+      exec("CREATE TABLE IF NOT EXISTS wuwe_storage_schema ("
+           "component TEXT PRIMARY KEY, version INTEGER NOT NULL)");
+      core::validate_sqlite_table(db_,
+        "wuwe_storage_schema",
+        {
+          { "component", "TEXT", false, 1 },
+          { "version", "INTEGER", true, 0 },
+        },
+        "sqlite memory store");
       auto version = current_schema_version().value_or(0);
       if (version > latest_schema_version) {
-        throw std::runtime_error(
-          "sqlite memory store schema version " + std::to_string(version) +
-          " is newer than supported version " +
-          std::to_string(latest_schema_version));
+        throw std::runtime_error("sqlite memory store schema version " + std::to_string(version) +
+                                 " is newer than supported version " +
+                                 std::to_string(latest_schema_version));
       }
       while (version < latest_schema_version) {
         switch (version) {
@@ -338,8 +344,7 @@ private:
             break;
           default:
             throw std::runtime_error(
-              "no sqlite memory store migration from version " +
-              std::to_string(version));
+              "no sqlite memory store migration from version " + std::to_string(version));
         }
         set_schema_version(version);
       }
@@ -347,51 +352,52 @@ private:
       exec("COMMIT");
     }
     catch (...) {
-      try { exec("ROLLBACK"); }
-      catch (...) {}
+      try {
+        exec("ROLLBACK");
+      }
+      catch (...) {
+      }
       throw;
     }
   }
 
   void migrate_0_to_1() {
-    exec(
-      "CREATE TABLE IF NOT EXISTS memory_records ("
-      "id TEXT PRIMARY KEY,"
-      "kind TEXT NOT NULL,"
-      "visibility TEXT NOT NULL,"
-      "content TEXT NOT NULL,"
-      "summary TEXT NOT NULL,"
-      "tenant_id TEXT NOT NULL,"
-      "user_id TEXT NOT NULL,"
-      "application_id TEXT NOT NULL,"
-      "conversation_id TEXT NOT NULL,"
-      "agent_id TEXT NOT NULL,"
-      "score REAL NOT NULL,"
-      "priority INTEGER NOT NULL,"
-      "created_at INTEGER NOT NULL,"
-      "updated_at INTEGER NOT NULL,"
-      "expires_at INTEGER,"
-      "metadata_json TEXT NOT NULL"
-      ")");
-    exec(
-      "CREATE INDEX IF NOT EXISTS idx_memory_scope "
-      "ON memory_records (tenant_id, user_id, application_id, conversation_id, agent_id)");
+    exec("CREATE TABLE IF NOT EXISTS memory_records ("
+         "id TEXT PRIMARY KEY,"
+         "kind TEXT NOT NULL,"
+         "visibility TEXT NOT NULL,"
+         "content TEXT NOT NULL,"
+         "summary TEXT NOT NULL,"
+         "tenant_id TEXT NOT NULL,"
+         "user_id TEXT NOT NULL,"
+         "application_id TEXT NOT NULL,"
+         "conversation_id TEXT NOT NULL,"
+         "agent_id TEXT NOT NULL,"
+         "score REAL NOT NULL,"
+         "priority INTEGER NOT NULL,"
+         "created_at INTEGER NOT NULL,"
+         "updated_at INTEGER NOT NULL,"
+         "expires_at INTEGER,"
+         "metadata_json TEXT NOT NULL"
+         ")");
+    exec("CREATE INDEX IF NOT EXISTS idx_memory_scope "
+         "ON memory_records (tenant_id, user_id, application_id, conversation_id, agent_id)");
     exec("CREATE INDEX IF NOT EXISTS idx_memory_kind ON memory_records (kind)");
     exec("CREATE INDEX IF NOT EXISTS idx_memory_expiry ON memory_records (expires_at)");
   }
 
   void migrate_1_to_2() {
-    exec(
-      "CREATE TABLE IF NOT EXISTS wuwe_memory_sequence ("
-      "name TEXT PRIMARY KEY,"
-      "last_value INTEGER NOT NULL"
-      ")");
+    exec("CREATE TABLE IF NOT EXISTS wuwe_memory_sequence ("
+         "name TEXT PRIMARY KEY,"
+         "last_value INTEGER NOT NULL"
+         ")");
 
     std::uint64_t maximum_id = 0;
     statement select(db_, "SELECT id FROM memory_records WHERE id LIKE 'mem-%'");
     while (true) {
       const auto rc = sqlite3_step(select.get());
-      if (rc == SQLITE_DONE) break;
+      if (rc == SQLITE_DONE)
+        break;
       if (rc != SQLITE_ROW) {
         throw_sqlite("initialize memory id sequence", db_);
       }
@@ -409,34 +415,43 @@ private:
   }
 
   void validate_schema() const {
-    core::validate_sqlite_table(db_, "wuwe_storage_schema", {
-      { "component", "TEXT", false, 1 },
-      { "version", "INTEGER", true, 0 },
-    }, "sqlite memory store");
-    core::validate_sqlite_table(db_, "memory_records", {
-      { "id", "TEXT", false, 1 },
-      { "kind", "TEXT", true, 0 },
-      { "visibility", "TEXT", true, 0 },
-      { "content", "TEXT", true, 0 },
-      { "summary", "TEXT", true, 0 },
-      { "tenant_id", "TEXT", true, 0 },
-      { "user_id", "TEXT", true, 0 },
-      { "application_id", "TEXT", true, 0 },
-      { "conversation_id", "TEXT", true, 0 },
-      { "agent_id", "TEXT", true, 0 },
-      { "score", "REAL", true, 0 },
-      { "priority", "INTEGER", true, 0 },
-      { "created_at", "INTEGER", true, 0 },
-      { "updated_at", "INTEGER", true, 0 },
-      { "expires_at", "INTEGER", false, 0 },
-      { "metadata_json", "TEXT", true, 0 },
-    }, "sqlite memory store");
-    core::validate_sqlite_table(db_, "wuwe_memory_sequence", {
-      { "name", "TEXT", false, 1 },
-      { "last_value", "INTEGER", true, 0 },
-    }, "sqlite memory store");
-    statement sequence(db_,
-      "SELECT last_value FROM wuwe_memory_sequence WHERE name = 'memory_record'");
+    core::validate_sqlite_table(db_,
+      "wuwe_storage_schema",
+      {
+        { "component", "TEXT", false, 1 },
+        { "version", "INTEGER", true, 0 },
+      },
+      "sqlite memory store");
+    core::validate_sqlite_table(db_,
+      "memory_records",
+      {
+        { "id", "TEXT", false, 1 },
+        { "kind", "TEXT", true, 0 },
+        { "visibility", "TEXT", true, 0 },
+        { "content", "TEXT", true, 0 },
+        { "summary", "TEXT", true, 0 },
+        { "tenant_id", "TEXT", true, 0 },
+        { "user_id", "TEXT", true, 0 },
+        { "application_id", "TEXT", true, 0 },
+        { "conversation_id", "TEXT", true, 0 },
+        { "agent_id", "TEXT", true, 0 },
+        { "score", "REAL", true, 0 },
+        { "priority", "INTEGER", true, 0 },
+        { "created_at", "INTEGER", true, 0 },
+        { "updated_at", "INTEGER", true, 0 },
+        { "expires_at", "INTEGER", false, 0 },
+        { "metadata_json", "TEXT", true, 0 },
+      },
+      "sqlite memory store");
+    core::validate_sqlite_table(db_,
+      "wuwe_memory_sequence",
+      {
+        { "name", "TEXT", false, 1 },
+        { "last_value", "INTEGER", true, 0 },
+      },
+      "sqlite memory store");
+    statement sequence(
+      db_, "SELECT last_value FROM wuwe_memory_sequence WHERE name = 'memory_record'");
     const auto rc = sqlite3_step(sequence.get());
     if (rc != SQLITE_ROW || sqlite3_column_type(sequence.get(), 0) != SQLITE_INTEGER ||
         sqlite3_column_int64(sequence.get(), 0) < 0) {
@@ -449,7 +464,8 @@ private:
       "SELECT version FROM wuwe_storage_schema "
       "WHERE component = 'memory_store'");
     const auto rc = sqlite3_step(select.get());
-    if (rc == SQLITE_DONE) return std::nullopt;
+    if (rc == SQLITE_DONE)
+      return std::nullopt;
     if (rc != SQLITE_ROW) {
       throw_sqlite("read memory store schema version", db_);
     }
@@ -476,10 +492,12 @@ private:
 
   [[nodiscard]] static std::optional<std::uint64_t> parse_generated_id(
     const std::string& id) noexcept {
-    if (id.size() <= 4 || id.compare(0, 4, "mem-") != 0) return std::nullopt;
+    if (id.size() <= 4 || id.compare(0, 4, "mem-") != 0)
+      return std::nullopt;
     std::uint64_t value = 0;
     for (auto iterator = id.begin() + 4; iterator != id.end(); ++iterator) {
-      if (*iterator < '0' || *iterator > '9') return std::nullopt;
+      if (*iterator < '0' || *iterator > '9')
+        return std::nullopt;
       const auto digit = static_cast<std::uint64_t>(*iterator - '0');
       if (value > ((std::numeric_limits<std::uint64_t>::max)() - digit) / 10) {
         return std::nullopt;
@@ -493,8 +511,8 @@ private:
   }
 
   [[nodiscard]] std::uint64_t allocate_memory_id_unlocked() {
-    statement select(db_,
-      "SELECT last_value FROM wuwe_memory_sequence WHERE name = 'memory_record'");
+    statement select(
+      db_, "SELECT last_value FROM wuwe_memory_sequence WHERE name = 'memory_record'");
     const auto rc = sqlite3_step(select.get());
     if (rc != SQLITE_ROW) {
       if (rc == SQLITE_DONE) {
@@ -503,13 +521,12 @@ private:
       throw_sqlite("read memory id sequence", db_);
     }
     const auto last_value = sqlite3_column_int64(select.get(), 0);
-    if (last_value < 0 ||
-        last_value == (std::numeric_limits<sqlite3_int64>::max)()) {
+    if (last_value < 0 || last_value == (std::numeric_limits<sqlite3_int64>::max)()) {
       throw std::overflow_error("sqlite memory store id sequence is exhausted or invalid");
     }
     const auto next_value = last_value + 1;
-    statement update(db_,
-      "UPDATE wuwe_memory_sequence SET last_value = ? WHERE name = 'memory_record'");
+    statement update(
+      db_, "UPDATE wuwe_memory_sequence SET last_value = ? WHERE name = 'memory_record'");
     sqlite3_bind_int64(update.get(), 1, next_value);
     step_done(update.get(), "advance memory id sequence");
     if (sqlite3_changes(db_) != 1) {
@@ -533,7 +550,8 @@ private:
     const std::string& id, const memory_scope& scope) const {
     statement select(db_,
       "SELECT id, kind, visibility, content, summary, tenant_id, user_id, application_id, "
-      "conversation_id, agent_id, score, priority, created_at, updated_at, expires_at, metadata_json "
+      "conversation_id, agent_id, score, priority, created_at, updated_at, expires_at, "
+      "metadata_json "
       "FROM memory_records "
       "WHERE id = ? "
       "AND (? = '' OR tenant_id = ?) "
@@ -618,9 +636,7 @@ private:
   }
 
   static void bind_optional_time(
-    sqlite3_stmt* stmt,
-    int index,
-    std::optional<std::chrono::system_clock::time_point> value) {
+    sqlite3_stmt* stmt, int index, std::optional<std::chrono::system_clock::time_point> value) {
     if (value) {
       sqlite3_bind_int64(stmt, index, to_unix_millis(*value));
       return;

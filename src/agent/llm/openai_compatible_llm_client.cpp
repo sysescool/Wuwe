@@ -4,8 +4,8 @@
 #include "llm_stream_timeouts.hpp"
 
 #include <wuwe/agent/llm/llm_error.h>
-#include <wuwe/net/net_errc.h>
 #include <wuwe/net/default_http_client.h>
+#include <wuwe/net/net_errc.h>
 #include <wuwe/net/sse_event_parser.h>
 
 #include <chrono>
@@ -36,10 +36,7 @@ json build_tool_choice_json(const llm_tool_choice& tool_choice) {
     case llm_tool_choice_mode::required:
       return "required";
     case llm_tool_choice_mode::named:
-      return {
-        {"type", "function"},
-        {"function", {{"name", tool_choice.name}}}
-      };
+      return { { "type", "function" }, { "function", { { "name", tool_choice.name } } } };
     default:
       return "auto";
   }
@@ -49,12 +46,12 @@ void emit_stream_event(const llm_stream_callbacks& callbacks, llm_stream_event e
   if (callbacks.on_event) {
     callbacks.on_event(event);
   }
-  if (event.type == llm_stream_event_type::reasoning_delta &&
-      callbacks.on_reasoning_delta && !event.reasoning_delta.empty()) {
+  if (event.type == llm_stream_event_type::reasoning_delta && callbacks.on_reasoning_delta &&
+      !event.reasoning_delta.empty()) {
     callbacks.on_reasoning_delta(event.reasoning_delta);
   }
-  if (event.type == llm_stream_event_type::reasoning_done &&
-      callbacks.on_reasoning_done && !event.reasoning_summary.empty()) {
+  if (event.type == llm_stream_event_type::reasoning_done && callbacks.on_reasoning_done &&
+      !event.reasoning_summary.empty()) {
     callbacks.on_reasoning_done(event.reasoning_summary);
   }
 }
@@ -103,15 +100,16 @@ std::string first_string_field(const json& object, std::initializer_list<const c
 }
 
 std::string reasoning_text_from_object(const json& object) {
-  const auto direct = first_string_field(object, {
-    "reasoning_delta",
-    "reasoning_summary_delta",
-    "reasoning_content",
-    "reasoning_summary",
-    "reasoning",
-    "thinking_delta",
-    "thinking",
-  });
+  const auto direct = first_string_field(object,
+    {
+      "reasoning_delta",
+      "reasoning_summary_delta",
+      "reasoning_content",
+      "reasoning_summary",
+      "reasoning",
+      "thinking_delta",
+      "thinking",
+    });
   if (!direct.empty()) {
     return direct;
   }
@@ -135,11 +133,12 @@ std::map<std::string, std::string> reasoning_metadata_from_object(const json& ob
     return metadata;
   }
 
-  const auto signature = first_string_field(object, {
-    "reasoning_signature",
-    "thinking_signature",
-    "signature",
-  });
+  const auto signature = first_string_field(object,
+    {
+      "reasoning_signature",
+      "thinking_signature",
+      "signature",
+    });
   if (!signature.empty()) {
     metadata["signature"] = signature;
   }
@@ -159,16 +158,15 @@ std::map<std::string, std::string> reasoning_metadata_from_object(const json& ob
   return metadata;
 }
 
-void merge_reasoning_metadata(
-  std::map<std::string, std::string>& destination,
+void merge_reasoning_metadata(std::map<std::string, std::string>& destination,
   const std::map<std::string, std::string>& source) {
   for (const auto& [key, value] : source) {
     destination[key] = value;
   }
 }
 
-std::error_code classify_openai_error(const std::error_code& transport_or_http_error,
-  const json& body) {
+std::error_code classify_openai_error(
+  const std::error_code& transport_or_http_error, const json& body) {
   if (transport_or_http_error == net_errc::unauthorized ||
       transport_or_http_error == net_errc::forbidden) {
     return agent::make_error_code(agent::llm_error_code::authentication_failed);
@@ -188,17 +186,16 @@ std::error_code classify_openai_error(const std::error_code& transport_or_http_e
     const auto code = object_scalar_value(error, "code");
     const auto type = object_scalar_value(error, "type");
 
-    if (code == "invalid_api_key" || type == "invalid_api_key" ||
-        code == "unauthorized" || type == "authentication_error" ||
-        code == "401" || code == "403") {
+    if (code == "invalid_api_key" || type == "invalid_api_key" || code == "unauthorized" ||
+        type == "authentication_error" || code == "401" || code == "403") {
       return agent::make_error_code(agent::llm_error_code::authentication_failed);
     }
-    if (code == "rate_limit_exceeded" || type == "rate_limit_exceeded" ||
-        code == "rate_limited" || code == "429") {
+    if (code == "rate_limit_exceeded" || type == "rate_limit_exceeded" || code == "rate_limited" ||
+        code == "429") {
       return agent::make_error_code(agent::llm_error_code::rate_limited);
     }
-    if (code == "model_not_found" || type == "model_not_found" ||
-        code == "model_unavailable" || code == "404") {
+    if (code == "model_not_found" || type == "model_not_found" || code == "model_unavailable" ||
+        code == "404") {
       return agent::make_error_code(agent::llm_error_code::model_unavailable);
     }
 
@@ -241,9 +238,8 @@ std::string invalid_stream_event_message() {
 }
 
 std::string build_chat_completions_url(const llm_client_config& config) {
-  const auto path = config.chat_completions_path.empty()
-                      ? std::string { "/v1/chat/completions" }
-                      : config.chat_completions_path;
+  const auto path = config.chat_completions_path.empty() ? std::string { "/v1/chat/completions" }
+                                                         : config.chat_completions_path;
   if (config.base_url.empty()) {
     return path.front() == '/' ? path : "/" + path;
   }
@@ -264,14 +260,12 @@ std::string build_chat_completions_url(const llm_client_config& config) {
 } // namespace
 
 openai_compatible_llm_client::openai_compatible_llm_client(llm_client_config config)
-    : config_(normalize_config(std::move(config))),
-      http_(std::make_shared<default_http_client>()) {}
+    : config_(normalize_config(std::move(config))), http_(std::make_shared<default_http_client>()) {
+}
 
 openai_compatible_llm_client::openai_compatible_llm_client(
-  llm_client_config config,
-  std::shared_ptr<http_client> http)
-    : config_(normalize_config(std::move(config))),
-      http_(std::move(http)) {
+  llm_client_config config, std::shared_ptr<http_client> http)
+    : config_(normalize_config(std::move(config))), http_(std::move(http)) {
   if (!http_) {
     http_ = std::make_shared<default_http_client>();
   }
@@ -288,7 +282,8 @@ llm_response openai_compatible_llm_client::complete(const llm_request& request) 
   return complete(request, {});
 }
 
-llm_response openai_compatible_llm_client::complete(const llm_request& request, std::stop_token stop_token) {
+llm_response openai_compatible_llm_client::complete(
+  const llm_request& request, std::stop_token stop_token) {
   if (auto rejected = agent::llm::llm_request_rejection(request, capabilities())) {
     return std::move(*rejected);
   }
@@ -307,9 +302,7 @@ llm_response openai_compatible_llm_client::complete(const llm_request& request, 
     .headers = build_headers(),
     .body = payload.dump(),
     .timeout = config_.timeout,
-    .trace_id = request.execution_context
-      ? request.execution_context->trace_id
-      : std::string {},
+    .trace_id = request.execution_context ? request.execution_context->trace_id : std::string {},
   };
 
   const int max_retries = config_.max_retries < 0 ? 0 : config_.max_retries;
@@ -321,12 +314,10 @@ llm_response openai_compatible_llm_client::complete(const llm_request& request, 
     const auto response = http_->send(req);
     llm_response parsed = parse_openai_response(response);
     agent::llm_detail::apply_retry_metadata(parsed, response);
-    apply_reasoning_language_metadata(
-      parsed,
+    apply_reasoning_language_metadata(parsed,
       request.language,
-      has_language_preferences(request.language)
-        ? llm_reasoning_language_control::prompt_contract
-        : llm_reasoning_language_control::unsupported);
+      has_language_preferences(request.language) ? llm_reasoning_language_control::prompt_contract
+                                                 : llm_reasoning_language_control::unsupported);
     if (stop_token.stop_requested()) {
       return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
     }
@@ -337,8 +328,7 @@ llm_response openai_compatible_llm_client::complete(const llm_request& request, 
       return parsed;
     }
     if (!agent::llm_detail::wait_for_retry(
-          stop_token,
-          agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
+          stop_token, agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
       return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
     }
   }
@@ -349,9 +339,7 @@ llm_response openai_compatible_llm_client::complete(const llm_request& request, 
 }
 
 llm_response openai_compatible_llm_client::complete_stream(
-  const llm_request& request,
-  const llm_stream_callbacks& callbacks,
-    std::stop_token stop_token) {
+  const llm_request& request, const llm_stream_callbacks& callbacks, std::stop_token stop_token) {
   if (auto rejected = agent::llm::llm_request_rejection(request, capabilities())) {
     agent::llm::emit_llm_request_rejection(callbacks, *rejected);
     return std::move(*rejected);
@@ -360,22 +348,24 @@ llm_response openai_compatible_llm_client::complete_stream(
     auto response = llm_response {
       .error_code = agent::make_error_code(agent::llm_error_code::cancelled),
     };
-    emit_stream_event(callbacks, {
-      .type = llm_stream_event_type::error,
-      .response = response,
-      .error_code = response.error_code,
-    });
+    emit_stream_event(callbacks,
+      {
+        .type = llm_stream_event_type::error,
+        .response = response,
+        .error_code = response.error_code,
+      });
     return response;
   }
   if (config_.require_api_key && config_.api_key.empty()) {
     auto response = llm_response {
       .error_code = agent::make_error_code(agent::llm_error_code::missing_api_key),
     };
-    emit_stream_event(callbacks, {
-      .type = llm_stream_event_type::error,
-      .response = response,
-      .error_code = response.error_code,
-    });
+    emit_stream_event(callbacks,
+      {
+        .type = llm_stream_event_type::error,
+        .response = response,
+        .error_code = response.error_code,
+      });
     return response;
   }
 
@@ -390,9 +380,7 @@ llm_response openai_compatible_llm_client::complete_stream(
     .body = payload.dump(),
     .timeout = config_.timeout,
     .timeouts = agent::llm_detail::make_stream_http_timeouts(config_),
-    .trace_id = request.execution_context
-      ? request.execution_context->trace_id
-      : std::string {},
+    .trace_id = request.execution_context ? request.execution_context->trace_id : std::string {},
   };
 
   const int max_retries = config_.max_retries < 0 ? 0 : config_.max_retries;
@@ -402,19 +390,19 @@ llm_response openai_compatible_llm_client::complete_stream(
       auto response = llm_response {
         .error_code = agent::make_error_code(agent::llm_error_code::cancelled),
       };
-      emit_stream_event(callbacks, {
-        .type = llm_stream_event_type::error,
-        .response = response,
-        .error_code = response.error_code,
-      });
+      emit_stream_event(callbacks,
+        {
+          .type = llm_stream_event_type::error,
+          .response = response,
+          .error_code = response.error_code,
+        });
       return response;
     }
 
     llm_response result;
-    const auto reasoning_language_control =
-      has_language_preferences(request.language)
-        ? llm_reasoning_language_control::prompt_contract
-        : llm_reasoning_language_control::unsupported;
+    const auto reasoning_language_control = has_language_preferences(request.language)
+                                              ? llm_reasoning_language_control::prompt_contract
+                                              : llm_reasoning_language_control::unsupported;
     sse_event_parser parser;
     std::map<int, llm_tool_call> tool_calls;
     bool emitted_output = false;
@@ -427,22 +415,21 @@ llm_response openai_compatible_llm_client::complete_stream(
       result.error_code = error_code;
       result.content = std::move(content);
       stream_parse_failed = true;
-      emit_stream_event(callbacks, {
-        .type = llm_stream_event_type::error,
-        .response = result,
-        .error_code = result.error_code,
-        .message = result.content,
-      });
+      emit_stream_event(callbacks,
+        {
+          .type = llm_stream_event_type::error,
+          .response = result,
+          .error_code = result.error_code,
+          .message = result.content,
+        });
       return false;
     };
-    const auto fail_stream_timeout =
-      [&](std::string phase, int timeout_ms) {
-        result.metadata["timeout_phase"] = phase;
-        result.metadata["timeout_ms"] = std::to_string(timeout_ms);
-        return fail_stream(
-          agent::make_error_code(agent::llm_error_code::timeout),
-          "OpenAI-compatible streaming " + phase + " timeout.");
-      };
+    const auto fail_stream_timeout = [&](std::string phase, int timeout_ms) {
+      result.metadata["timeout_phase"] = phase;
+      result.metadata["timeout_ms"] = std::to_string(timeout_ms);
+      return fail_stream(agent::make_error_code(agent::llm_error_code::timeout),
+        "OpenAI-compatible streaming " + phase + " timeout.");
+    };
 
     const auto process_event = [&](const sse_event& event) {
       if (const auto timeout = timeout_guard.check_before_event()) {
@@ -461,19 +448,14 @@ llm_response openai_compatible_llm_client::complete_stream(
           result.metadata["ignored_invalid_stream_event"] = "true";
           return true;
         }
-        return fail_stream(
-          agent::make_error_code(agent::llm_error_code::invalid_response),
+        return fail_stream(agent::make_error_code(agent::llm_error_code::invalid_response),
           invalid_stream_event_message());
       }
 
       if (data.contains("error") && data["error"].is_object()) {
         return fail_stream(
-          classify_openai_error(
-            agent::make_error_code(agent::llm_error_code::api_error),
-            data),
-          openai_error_message(
-            agent::make_error_code(agent::llm_error_code::api_error),
-            data));
+          classify_openai_error(agent::make_error_code(agent::llm_error_code::api_error), data),
+          openai_error_message(agent::make_error_code(agent::llm_error_code::api_error), data));
       }
 
       if (data.contains("usage") && data["usage"].is_object()) {
@@ -481,8 +463,7 @@ llm_response openai_compatible_llm_client::complete_stream(
         result.usage.prompt_tokens = usage.value("prompt_tokens", 0);
         result.usage.completion_tokens = usage.value("completion_tokens", 0);
         result.usage.total_tokens = usage.value("total_tokens", 0);
-        if (usage.contains("prompt_tokens_details") &&
-            usage["prompt_tokens_details"].is_object()) {
+        if (usage.contains("prompt_tokens_details") && usage["prompt_tokens_details"].is_object()) {
           result.usage.cached_prompt_tokens =
             usage["prompt_tokens_details"].value("cached_tokens", 0);
         }
@@ -513,19 +494,18 @@ llm_response openai_compatible_llm_client::complete_stream(
         if (!reasoning_delta.empty()) {
           result.reasoning_summary += reasoning_delta;
           merge_reasoning_metadata(
-            result.reasoning_metadata,
-            reasoning_metadata_from_object(delta));
-          merge_reasoning_language_metadata(
-            result.reasoning_metadata,
+            result.reasoning_metadata, reasoning_metadata_from_object(delta));
+          merge_reasoning_language_metadata(result.reasoning_metadata,
             request.language,
             reasoning_language_control,
             reasoning_delta);
           emitted_output = true;
-          emit_stream_event(callbacks, {
-            .type = llm_stream_event_type::reasoning_delta,
-            .reasoning_delta = reasoning_delta,
-            .reasoning_metadata = result.reasoning_metadata,
-          });
+          emit_stream_event(callbacks,
+            {
+              .type = llm_stream_event_type::reasoning_delta,
+              .reasoning_delta = reasoning_delta,
+              .reasoning_metadata = result.reasoning_metadata,
+            });
         }
 
         if (delta.contains("content") && delta["content"].is_string()) {
@@ -533,10 +513,11 @@ llm_response openai_compatible_llm_client::complete_stream(
           if (!content_delta.empty()) {
             result.content += content_delta;
             emitted_output = true;
-            emit_stream_event(callbacks, {
-              .type = llm_stream_event_type::content_delta,
-              .content_delta = content_delta,
-            });
+            emit_stream_event(callbacks,
+              {
+                .type = llm_stream_event_type::content_delta,
+                .content_delta = content_delta,
+              });
           }
         }
 
@@ -560,8 +541,7 @@ llm_response openai_compatible_llm_client::complete_stream(
               call_delta.id = tool_call.id;
             }
 
-            if (call_delta_json.contains("function") &&
-                call_delta_json["function"].is_object()) {
+            if (call_delta_json.contains("function") && call_delta_json["function"].is_object()) {
               const auto& function = call_delta_json["function"];
               if (function.contains("name") && function["name"].is_string()) {
                 call_delta.name_delta = function["name"].get<std::string>();
@@ -576,10 +556,11 @@ llm_response openai_compatible_llm_client::complete_stream(
             if (!call_delta.id.empty() || !call_delta.name_delta.empty() ||
                 !call_delta.arguments_delta.empty()) {
               emitted_output = true;
-              emit_stream_event(callbacks, {
-                .type = llm_stream_event_type::tool_call_delta,
-                .tool_call_delta = call_delta,
-              });
+              emit_stream_event(callbacks,
+                {
+                  .type = llm_stream_event_type::tool_call_delta,
+                  .tool_call_delta = call_delta,
+                });
             }
           }
         }
@@ -605,11 +586,12 @@ llm_response openai_compatible_llm_client::complete_stream(
 
     if (stop_token.stop_requested()) {
       result.error_code = agent::make_error_code(agent::llm_error_code::cancelled);
-      emit_stream_event(callbacks, {
-        .type = llm_stream_event_type::error,
-        .response = result,
-        .error_code = result.error_code,
-      });
+      emit_stream_event(callbacks,
+        {
+          .type = llm_stream_event_type::error,
+          .response = result,
+          .error_code = result.error_code,
+        });
       return result;
     }
 
@@ -627,26 +609,25 @@ llm_response openai_compatible_llm_client::complete_stream(
         result.metadata["ignored_stream_transport_error"] = response.error_code.message();
       }
       else {
-        result.content = openai_error_message(
-          result.error_code,
-          body.is_discarded() ? json::object() : body);
+        result.content =
+          openai_error_message(result.error_code, body.is_discarded() ? json::object() : body);
       }
 
       if (result.error_code && attempt < max_retries && !emitted_output &&
           agent::llm_detail::is_retryable_error(result.error_code) &&
           agent::llm_detail::wait_for_retry(
-            stop_token,
-            agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
+            stop_token, agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
         continue;
       }
 
       if (result.error_code) {
-        emit_stream_event(callbacks, {
-          .type = llm_stream_event_type::error,
-          .response = result,
-          .error_code = result.error_code,
-          .message = result.content,
-        });
+        emit_stream_event(callbacks,
+          {
+            .type = llm_stream_event_type::error,
+            .response = result,
+            .error_code = result.error_code,
+            .message = result.content,
+          });
         return result;
       }
     }
@@ -655,76 +636,86 @@ llm_response openai_compatible_llm_client::complete_stream(
       result = parse_openai_response(response);
       apply_reasoning_language_metadata(result, request.language, reasoning_language_control);
       if (result.error_code) {
-        emit_stream_event(callbacks, {
-          .type = llm_stream_event_type::error,
-          .response = result,
-          .error_code = result.error_code,
-          .message = result.content,
-        });
+        emit_stream_event(callbacks,
+          {
+            .type = llm_stream_event_type::error,
+            .response = result,
+            .error_code = result.error_code,
+            .message = result.content,
+          });
         return result;
       }
       if (!result.content.empty()) {
-        emit_stream_event(callbacks, {
-          .type = llm_stream_event_type::content_delta,
-          .content_delta = result.content,
-        });
+        emit_stream_event(callbacks,
+          {
+            .type = llm_stream_event_type::content_delta,
+            .content_delta = result.content,
+          });
       }
       if (!result.reasoning_summary.empty()) {
-        emit_stream_event(callbacks, {
-          .type = llm_stream_event_type::reasoning_done,
-          .reasoning_summary = result.reasoning_summary,
-          .reasoning_metadata = result.reasoning_metadata,
-          .response = result,
-        });
+        emit_stream_event(callbacks,
+          {
+            .type = llm_stream_event_type::reasoning_done,
+            .reasoning_summary = result.reasoning_summary,
+            .reasoning_metadata = result.reasoning_metadata,
+            .response = result,
+          });
       }
       for (const auto& call : result.tool_calls) {
-        emit_stream_event(callbacks, {
-          .type = llm_stream_event_type::tool_call_done,
-          .tool_call = call,
-        });
+        emit_stream_event(callbacks,
+          {
+            .type = llm_stream_event_type::tool_call_done,
+            .tool_call = call,
+          });
       }
-      emit_stream_event(callbacks, {
-        .type = llm_stream_event_type::done,
-        .response = result,
-      });
+      emit_stream_event(callbacks,
+        {
+          .type = llm_stream_event_type::done,
+          .response = result,
+        });
       return result;
     }
 
     for (auto& [index, call] : tool_calls) {
       (void)index;
       result.tool_calls.push_back(call);
-      emit_stream_event(callbacks, {
-        .type = llm_stream_event_type::tool_call_done,
-        .tool_call = call,
-      });
+      emit_stream_event(callbacks,
+        {
+          .type = llm_stream_event_type::tool_call_done,
+          .tool_call = call,
+        });
     }
 
     if (!saw_done && result.content.empty() && result.reasoning_summary.empty() &&
         result.tool_calls.empty()) {
       result.error_code = agent::make_error_code(agent::llm_error_code::invalid_response);
-      result.content = "OpenAI-compatible streaming response ended without content, tool calls, or [DONE].";
-      emit_stream_event(callbacks, {
-        .type = llm_stream_event_type::error,
-        .response = result,
-        .error_code = result.error_code,
-        .message = result.content,
-      });
+      result.content =
+        "OpenAI-compatible streaming response ended without content, tool calls, or [DONE].";
+      emit_stream_event(callbacks,
+        {
+          .type = llm_stream_event_type::error,
+          .response = result,
+          .error_code = result.error_code,
+          .message = result.content,
+        });
       return result;
     }
 
     if (!result.reasoning_summary.empty()) {
       apply_reasoning_language_metadata(result, request.language, reasoning_language_control);
-      emit_stream_event(callbacks, {
-        .type = llm_stream_event_type::reasoning_done,
-        .reasoning_summary = result.reasoning_summary,
-        .reasoning_metadata = result.reasoning_metadata,
+      emit_stream_event(callbacks,
+        {
+          .type = llm_stream_event_type::reasoning_done,
+          .reasoning_summary = result.reasoning_summary,
+          .reasoning_metadata = result.reasoning_metadata,
+          .response = result,
+        });
+    }
+    emit_stream_event(callbacks,
+      {
+        .type = llm_stream_event_type::done,
         .response = result,
       });
-    }
-    emit_stream_event(callbacks, {
-      .type = llm_stream_event_type::done,
-      .response = result,
-    });
     return result;
   }
 
@@ -737,17 +728,11 @@ json openai_compatible_llm_client::build_openai_payload(const llm_request& reque
   auto messages = json::array();
   const auto language_contract = llm_language_contract(request.language);
   if (!language_contract.empty()) {
-    messages.push_back({
-      {"role", "system"},
-      {"content", language_contract}
-    });
+    messages.push_back({ { "role", "system" }, { "content", language_contract } });
   }
 
   for (const auto& msg : request.messages) {
-    json message = {
-      {"role", msg.role},
-      {"content", msg.content}
-    };
+    json message = { { "role", msg.role }, { "content", msg.content } };
     if (msg.name.has_value()) {
       message["name"] = *msg.name;
     }
@@ -757,14 +742,9 @@ json openai_compatible_llm_client::build_openai_payload(const llm_request& reque
     if (!msg.tool_calls.empty()) {
       auto tool_calls = json::array();
       for (const auto& call : msg.tool_calls) {
-        tool_calls.push_back({
-          {"id", call.id},
-          {"type", "function"},
-          {"function", {
-            {"name", call.name},
-            {"arguments", call.arguments_json}
-          }}
-        });
+        tool_calls.push_back({ { "id", call.id },
+          { "type", "function" },
+          { "function", { { "name", call.name }, { "arguments", call.arguments_json } } } });
       }
       message["tool_calls"] = std::move(tool_calls);
     }
@@ -796,25 +776,24 @@ json openai_compatible_llm_client::build_openai_payload(const llm_request& reque
   else if (request.json_schema_output) {
     payload["response_format"] = {
       { "type", "json_schema" },
-      { "json_schema", {
-        { "name", request.json_schema_output->name },
-        { "strict", request.json_schema_output->strict },
-        { "schema", request.json_schema_output->schema },
-      } },
+      { "json_schema",
+        {
+          { "name", request.json_schema_output->name },
+          { "strict", request.json_schema_output->strict },
+          { "schema", request.json_schema_output->schema },
+        } },
     };
   }
 
   if (!request.tools.empty()) {
     auto tools = json::array();
     for (const auto& tool : request.tools) {
-      tools.push_back({
-        {"type", "function"},
-        {"function", {
-          {"name", tool.name},
-          {"description", tool.description},
-          {"parameters", parse_json_object_or_default(tool.parameters_json_schema, json::object())}
-        }}
-      });
+      tools.push_back({ { "type", "function" },
+        { "function",
+          { { "name", tool.name },
+            { "description", tool.description },
+            { "parameters",
+              parse_json_object_or_default(tool.parameters_json_schema, json::object()) } } } });
     }
     payload["tools"] = std::move(tools);
   }
@@ -826,34 +805,35 @@ json openai_compatible_llm_client::build_openai_payload(const llm_request& reque
   return payload;
 }
 
-std::vector<std::pair<std::string, std::string>> openai_compatible_llm_client::build_headers() const {
+std::vector<std::pair<std::string, std::string>>
+openai_compatible_llm_client::build_headers() const {
   std::vector<std::pair<std::string, std::string>> headers {
-    {"Content-Type", "application/json"},
+    { "Content-Type", "application/json" },
   };
   if (!config_.api_key.empty()) {
-    headers.push_back({"Authorization", "Bearer " + config_.api_key});
+    headers.push_back({ "Authorization", "Bearer " + config_.api_key });
   }
   if (config_.base_url.find("openrouter.ai") != std::string::npos) {
     if (config_.referer_url.has_value() && !config_.referer_url->empty()) {
-      headers.push_back({"HTTP-Referer", *config_.referer_url});
+      headers.push_back({ "HTTP-Referer", *config_.referer_url });
     }
     if (config_.app_title.has_value() && !config_.app_title->empty()) {
-      headers.push_back({"X-Title", *config_.app_title});
+      headers.push_back({ "X-Title", *config_.app_title });
     }
   }
   return headers;
 }
 
-llm_response openai_compatible_llm_client::parse_openai_response(const http_response& response) const {
+llm_response openai_compatible_llm_client::parse_openai_response(
+  const http_response& response) const {
   llm_response result;
 
   if (response.error_code) {
     const auto body = json::parse(response.body, nullptr, false);
     result.error_code =
       classify_openai_error(response.error_code, body.is_discarded() ? json::object() : body);
-    result.content = openai_error_message(
-      result.error_code,
-      body.is_discarded() ? json::object() : body);
+    result.content =
+      openai_error_message(result.error_code, body.is_discarded() ? json::object() : body);
     return result;
   }
 
@@ -865,9 +845,8 @@ llm_response openai_compatible_llm_client::parse_openai_response(const http_resp
   }
 
   if (data.contains("error") && data["error"].is_object()) {
-    result.error_code = classify_openai_error(
-      agent::make_error_code(agent::llm_error_code::api_error),
-      data);
+    result.error_code =
+      classify_openai_error(agent::make_error_code(agent::llm_error_code::api_error), data);
     result.content = openai_error_message(result.error_code, data);
     return result;
   }
@@ -918,10 +897,8 @@ llm_response openai_compatible_llm_client::parse_openai_response(const http_resp
     result.usage.prompt_tokens = usage.value("prompt_tokens", 0);
     result.usage.completion_tokens = usage.value("completion_tokens", 0);
     result.usage.total_tokens = usage.value("total_tokens", 0);
-    if (usage.contains("prompt_tokens_details") &&
-        usage["prompt_tokens_details"].is_object()) {
-      result.usage.cached_prompt_tokens =
-        usage["prompt_tokens_details"].value("cached_tokens", 0);
+    if (usage.contains("prompt_tokens_details") && usage["prompt_tokens_details"].is_object()) {
+      result.usage.cached_prompt_tokens = usage["prompt_tokens_details"].value("cached_tokens", 0);
     }
     if (usage.contains("completion_tokens_details") &&
         usage["completion_tokens_details"].is_object()) {

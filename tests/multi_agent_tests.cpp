@@ -10,23 +10,23 @@
 #include <thread>
 #include <vector>
 
+#include <wuwe/agent/core/observability.hpp>
 #include <wuwe/agent/multi_agent/multi_agent.hpp>
 #include <wuwe/agent/multi_agent/planning_adapter.hpp>
-#include <wuwe/agent/core/observability.hpp>
 #include <wuwe/common/print.h>
 
 namespace {
 namespace ma = wuwe::agent::multi_agent;
 
 void require(bool condition, const std::string& message) {
-  if (!condition) throw std::runtime_error(message);
+  if (!condition)
+    throw std::runtime_error(message);
 }
 
 std::shared_ptr<ma::function_agent_executor> echo(std::string prefix) {
   return std::make_shared<ma::function_agent_executor>(
     [prefix = std::move(prefix)](
-      const ma::agent_task_request& request,
-      const ma::agent_execution_context&) {
+      const ma::agent_task_request& request, const ma::agent_execution_context&) {
       return ma::agent_task_result {
         .output = prefix + request.input,
         .artifacts = { {
@@ -39,9 +39,7 @@ std::shared_ptr<ma::function_agent_executor> echo(std::string prefix) {
 }
 
 ma::agent_descriptor descriptor(
-  std::string id,
-  std::string skill,
-  std::size_t max_concurrency = 1) {
+  std::string id, std::string skill, std::size_t max_concurrency = 1) {
   return {
     .id = id,
     .name = id,
@@ -80,12 +78,14 @@ void registry_enforces_capacity_and_releases_leases() {
     std::make_shared<ma::function_agent_executor>(
       [&](const ma::agent_task_request&, const ma::agent_execution_context&) {
         entered = true;
-        while (!release) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        while (!release)
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
         return ma::agent_task_result { .output = "done" };
       }));
   ma::team_runtime runtime({ .registry = registry });
   auto first = runtime.run_async({ .input = "first", .preferred_agent = "serial" });
-  while (!entered) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  while (!entered)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   const auto second = runtime.run({ .input = "second", .preferred_agent = "serial" });
   require(!second && second.error_code == ma::agent_task_error_code::capacity_exhausted,
     "agent max_concurrency is enforced");
@@ -99,8 +99,7 @@ void registry_rejects_inconsistent_concurrency_contracts() {
   bool rejected = false;
   try {
     ma::agent_registry registry;
-    registry.add(
-      descriptor("serial", "work", 2),
+    registry.add(descriptor("serial", "work", 2),
       std::make_shared<ma::function_agent_executor>(
         [](const ma::agent_task_request&, const ma::agent_execution_context&) {
           return ma::agent_task_result {};
@@ -110,8 +109,7 @@ void registry_rejects_inconsistent_concurrency_contracts() {
   catch (const std::invalid_argument&) {
     rejected = true;
   }
-  require(rejected,
-    "non-concurrent executors cannot advertise multiple concurrent tasks");
+  require(rejected, "non-concurrent executors cannot advertise multiple concurrent tasks");
 }
 
 void session_task_admission_is_atomic() {
@@ -122,7 +120,8 @@ void session_task_admission_is_atomic() {
     std::make_shared<ma::function_agent_executor>(
       [&](const ma::agent_task_request&, const ma::agent_execution_context&) {
         entered = true;
-        while (!release) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        while (!release)
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
         return ma::agent_task_result { .output = "done" };
       }));
   ma::team_runtime runtime({ .registry = registry });
@@ -132,7 +131,8 @@ void session_task_admission_is_atomic() {
     .input = "first",
     .preferred_agent = "worker",
   });
-  while (!entered) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  while (!entered)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   const auto duplicate = runtime.run({
     .id = "shared-task",
     .session_id = "admission-session",
@@ -140,8 +140,8 @@ void session_task_admission_is_atomic() {
     .preferred_agent = "worker",
   });
   require(!duplicate && duplicate.error_code == ma::agent_task_error_code::invalid_request &&
-      runtime.find_session("admission-session")->snapshot().tasks.at("shared-task") ==
-        ma::agent_task_status::working,
+            runtime.find_session("admission-session")->snapshot().tasks.at("shared-task") ==
+              ma::agent_task_status::working,
     "concurrent duplicate task IDs are rejected without overwriting active state");
   release = true;
   require(static_cast<bool>(first.get()), "the admitted task completes normally");
@@ -152,8 +152,8 @@ void session_task_admission_is_atomic() {
     .preferred_agent = "worker",
   });
   require(!completed_duplicate &&
-      runtime.find_session("admission-session")->snapshot().tasks.at("shared-task") ==
-        ma::agent_task_status::completed,
+            runtime.find_session("admission-session")->snapshot().tasks.at("shared-task") ==
+              ma::agent_task_status::completed,
     "completed task IDs cannot be executed a second time");
 
   std::atomic<int> attempts { 0 };
@@ -195,11 +195,11 @@ void sessions_and_consensus_are_first_class() {
   });
   const auto snapshot = session->snapshot();
   require(consensus && consensus.final_result.output == "same:answer" &&
-      consensus.final_result.metadata.at("matching_votes") == "2",
+            consensus.final_result.metadata.at("matching_votes") == "2",
     "default consensus performs deterministic exact-output voting");
-  require(snapshot.shared_state.at("topic") == "agents" &&
-      snapshot.messages.size() == 7 && snapshot.artifacts.size() == 3 &&
-      snapshot.tasks.at(consensus.final_result.task_id) == ma::agent_task_status::completed,
+  require(snapshot.shared_state.at("topic") == "agents" && snapshot.messages.size() == 7 &&
+            snapshot.artifacts.size() == 3 &&
+            snapshot.tasks.at(consensus.final_result.task_id) == ma::agent_task_status::completed,
     "shared sessions commit participant work and the final consensus task");
 }
 
@@ -222,7 +222,7 @@ void synchronous_executor_contract_is_enforced() {
 
   const auto pending = runtime.run({ .input = "work", .preferred_agent = "pending" });
   require(!pending && pending.status == ma::agent_task_status::failed &&
-      pending.error_code == ma::agent_task_error_code::execution_failed,
+            pending.error_code == ma::agent_task_error_code::execution_failed,
     "synchronous executors cannot release capacity with an in-progress result");
   const auto invalid = runtime.run({
     .session_id = "invalid-result-session",
@@ -231,7 +231,7 @@ void synchronous_executor_contract_is_enforced() {
   });
   const auto snapshot = runtime.find_session("invalid-result-session")->snapshot();
   require(!invalid && invalid.error_code == ma::agent_task_error_code::execution_failed &&
-      invalid.output.empty() && snapshot.artifacts.empty() && snapshot.messages.size() == 1,
+            invalid.output.empty() && snapshot.artifacts.empty() && snapshot.messages.size() == 1,
     "invalid executor artifacts fail atomically without partial result publication");
 }
 
@@ -252,8 +252,8 @@ void consensus_resolver_failures_are_structured() {
   });
   const auto snapshot = runtime.find_session("resolver-session")->snapshot();
   require(!result && result.error_code == ma::agent_task_error_code::execution_failed &&
-      result.error.find("resolver unavailable") != std::string::npos &&
-      snapshot.tasks.at("resolver-consensus") == ma::agent_task_status::failed,
+            result.error.find("resolver unavailable") != std::string::npos &&
+            snapshot.tasks.at("resolver-consensus") == ma::agent_task_status::failed,
     "resolver exceptions become structured consensus failures");
   const auto retried = runtime.reach_consensus({
     .task = {
@@ -290,9 +290,9 @@ void consensus_cancellation_is_preserved() {
   }, stop_source.get_token());
   const auto snapshot = runtime.find_session("cancelled-consensus-session")->snapshot();
   require(!result && result.error_code == ma::agent_task_error_code::cancelled &&
-      snapshot.tasks.at("cancelled-consensus") == ma::agent_task_status::cancelled &&
-      registry->find("a")->active_tasks == 0 &&
-      events == std::vector { ma::team_event_type::consensus_cancelled },
+            snapshot.tasks.at("cancelled-consensus") == ma::agent_task_status::cancelled &&
+            registry->find("a")->active_tasks == 0 &&
+            events == std::vector { ma::team_event_type::consensus_cancelled },
     "pre-dispatch consensus cancellation remains distinct from failed agreement");
 }
 
@@ -316,12 +316,13 @@ void telemetry_and_planning_adapter_are_integrated() {
     .input = "draft",
   };
   const std::map<std::string, nlohmann::json> artifacts;
-  const auto result = executor.execute(step, {
-    .current_plan = plan,
-    .artifacts = artifacts,
-  });
+  const auto result = executor.execute(step,
+    {
+      .current_plan = plan,
+      .artifacts = artifacts,
+    });
   require(result.status == wuwe::agent::planning::plan_step_status::completed &&
-      result.output == "plan:draft" && result.metadata.at("agent_id") == "writer",
+            result.output == "plan:draft" && result.metadata.at("agent_id") == "writer",
     "Planning dispatches assigned steps through team runtime");
 }
 
@@ -341,19 +342,21 @@ void common_telemetry_propagates_trace_without_content() {
     .metadata = { { "trace_id", "trace-1" } },
   });
   const auto events = sink.events();
-  require(result && events.size() == 4,
-    "team runtime publishes lifecycle events to the common sink");
+  require(
+    result && events.size() == 4, "team runtime publishes lifecycle events to the common sink");
   for (const auto& event : events) {
     require(event.trace_id == "trace-1" &&
-        std::none_of(event.attributes.begin(), event.attributes.end(), [](const auto& item) {
-          return item.second.find("secret-input") != std::string::npos ||
-                 item.second.find("secret-output") != std::string::npos;
-        }),
+              std::none_of(event.attributes.begin(),
+                event.attributes.end(),
+                [](const auto& item) {
+                  return item.second.find("secret-input") != std::string::npos ||
+                         item.second.find("secret-output") != std::string::npos;
+                }),
       "common team telemetry propagates trace IDs without task content");
   }
   for (const auto& event : typed_events) {
     require(event.message.find("secret-input") == std::string::npos &&
-        event.message.find("secret-output") == std::string::npos,
+              event.message.find("secret-output") == std::string::npos,
       "typed lifecycle events do not carry successful task content");
   }
 }
@@ -369,8 +372,7 @@ void runtime_enforces_global_concurrency_and_bounded_execution() {
         saw_deadline = saw_deadline || context.deadline.has_value();
         const auto current = active.fetch_add(1) + 1;
         auto maximum = maximum_active.load();
-        while (current > maximum &&
-               !maximum_active.compare_exchange_weak(maximum, current)) {
+        while (current > maximum && !maximum_active.compare_exchange_weak(maximum, current)) {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(35));
         active.fetch_sub(1);
@@ -415,8 +417,8 @@ void runtime_enforces_global_concurrency_and_bounded_execution() {
     .timeout = std::chrono::milliseconds(20),
   });
   require(!timed && timed.status == ma::agent_task_status::timed_out &&
-      timed.error_code == ma::agent_task_error_code::timed_out && timed.detached &&
-      std::chrono::steady_clock::now() - started < std::chrono::milliseconds(100),
+            timed.error_code == ma::agent_task_error_code::timed_out && timed.detached &&
+            std::chrono::steady_clock::now() - started < std::chrono::milliseconds(100),
     "uncooperative executors time out promptly with explicit detached state");
   const auto duplicate = timeout_runtime.run({
     .id = "timed-task",
@@ -426,9 +428,9 @@ void runtime_enforces_global_concurrency_and_bounded_execution() {
   });
   require(!duplicate && duplicate.error_code == ma::agent_task_error_code::invalid_request,
     "timed-out task IDs cannot duplicate detached work");
-  while (!finished) std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  for (int attempt = 0;
-       attempt < 500 && timeout_registry->find("slow")->active_tasks != 0;
+  while (!finished)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  for (int attempt = 0; attempt < 500 && timeout_registry->find("slow")->active_tasks != 0;
        ++attempt) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
@@ -454,12 +456,13 @@ void run_parallel_uses_a_bounded_coordinator_worker_set() {
   std::set<std::thread::id> coordinator_threads;
   ma::team_runtime runtime({
     .registry = registry,
-    .observer = [&](const ma::team_event& event) {
-      if (event.type == ma::team_event_type::task_submitted) {
-        std::scoped_lock lock(mutex);
-        coordinator_threads.insert(std::this_thread::get_id());
-      }
-    },
+    .observer =
+      [&](const ma::team_event& event) {
+        if (event.type == ma::team_event_type::task_submitted) {
+          std::scoped_lock lock(mutex);
+          coordinator_threads.insert(std::this_thread::get_id());
+        }
+      },
     .max_parallel_tasks = 3,
   });
   std::vector<ma::agent_task_request> requests;
@@ -471,9 +474,10 @@ void run_parallel_uses_a_bounded_coordinator_worker_set() {
   }
   const auto results = runtime.run_parallel(std::move(requests));
   require(results.size() == 40 &&
-      std::all_of(results.begin(), results.end(), [](const auto& result) {
-        return static_cast<bool>(result);
-      }) && coordinator_threads.size() <= 3,
+            std::all_of(results.begin(),
+              results.end(),
+              [](const auto& result) { return static_cast<bool>(result); }) &&
+            coordinator_threads.size() <= 3,
     "run_parallel bounds coordinator threads by max_parallel_tasks");
 }
 
@@ -483,13 +487,13 @@ void strict_telemetry_failure_releases_task_admission() {
   std::atomic<int> failures_remaining { 1 };
   ma::team_runtime runtime({
     .registry = registry,
-    .observer = [&](const ma::team_event&) {
-      if (failures_remaining.fetch_sub(1) > 0) {
-        throw std::runtime_error("strict telemetry unavailable");
-      }
-    },
-    .telemetry_failure_mode =
-      wuwe::agent::observability::telemetry_failure_mode::propagate,
+    .observer =
+      [&](const ma::team_event&) {
+        if (failures_remaining.fetch_sub(1) > 0) {
+          throw std::runtime_error("strict telemetry unavailable");
+        }
+      },
+    .telemetry_failure_mode = wuwe::agent::observability::telemetry_failure_mode::propagate,
   });
   bool propagated = false;
   try {
@@ -527,10 +531,8 @@ int main() {
       registry_rejects_inconsistent_concurrency_contracts);
     run("session task admission is atomic", session_task_admission_is_atomic);
     run("sessions and consensus are first class", sessions_and_consensus_are_first_class);
-    run("synchronous executor contract is enforced",
-      synchronous_executor_contract_is_enforced);
-    run("consensus resolver failures are structured",
-      consensus_resolver_failures_are_structured);
+    run("synchronous executor contract is enforced", synchronous_executor_contract_is_enforced);
+    run("consensus resolver failures are structured", consensus_resolver_failures_are_structured);
     run("consensus cancellation is preserved", consensus_cancellation_is_preserved);
     run("telemetry and Planning adapter are integrated",
       telemetry_and_planning_adapter_are_integrated);
@@ -538,12 +540,11 @@ int main() {
       common_telemetry_propagates_trace_without_content);
     run("runtime concurrency and bounded execution",
       runtime_enforces_global_concurrency_and_bounded_execution);
-    run("function executor validation",
-      function_agent_executor_rejects_empty_callbacks);
+    run("function executor validation", function_agent_executor_rejects_empty_callbacks);
     run("bounded run_parallel coordinator workers",
       run_parallel_uses_a_bounded_coordinator_worker_set);
-    run("strict telemetry releases task admission",
-      strict_telemetry_failure_releases_task_admission);
+    run(
+      "strict telemetry releases task admission", strict_telemetry_failure_releases_task_admission);
   }
   catch (const std::exception& ex) {
     wuwe::println("[FAIL] {}", ex.what());

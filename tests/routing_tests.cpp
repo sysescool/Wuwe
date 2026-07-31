@@ -17,11 +17,7 @@ void require(bool condition, const char* message) {
 }
 
 model_resource_profile profile(
-  std::string model,
-  double input_price,
-  double output_price,
-  double quality,
-  double latency) {
+  std::string model, double input_price, double output_price, double quality, double latency) {
   return {
     .model = std::move(model),
     .provider = "test",
@@ -60,7 +56,7 @@ void strategy_selects_expected_models() {
     "lowest-cost routing selects the least expensive eligible model");
   const auto serialized = model_route_decision_to_json(cheapest);
   require(serialized.at("selected_profile").at("model") == "economy" &&
-      serialized.at("candidates").size() == 2,
+            serialized.at("candidates").size() == 2,
     "routing decisions provide a stable structured report");
 
   const auto highest_quality = router.route({
@@ -104,8 +100,8 @@ void capabilities_context_and_cost_are_hard_constraints() {
     .estimated_output_tokens = 1'000,
     .max_estimated_cost_usd = 0.0001,
   });
-  require(!too_expensive &&
-      too_expensive.error == model_route_error_code::estimated_cost_budget_exceeded,
+  require(
+    !too_expensive && too_expensive.error == model_route_error_code::estimated_cost_budget_exceeded,
     "routing fails explicitly when no model fits the cost budget");
 
   const auto too_large = router.route({
@@ -143,11 +139,72 @@ void preferred_model_pinning_is_explicit() {
     "missing pinned models return a stable routing error");
 }
 
+void provider_bindings_are_distinct_and_explicitly_pinned() {
+  resource_aware_router router;
+  auto primary = profile("shared-model", 2.0, 2.0, 0.9, 0.8);
+  primary.provider = "primary";
+  auto economy = profile("shared-model", 0.1, 0.1, 0.8, 0.8);
+  economy.provider = "economy";
+  router.add(primary).add(economy);
+
+  require(router.size() == 2 && router.find("shared-model", "primary").has_value() &&
+            router.find("shared-model", "economy").has_value() &&
+            router.find_all("shared-model").size() == 2,
+    "the same model can be registered as distinct provider bindings");
+
+  const auto pinned = router.route({
+    .preferred_model = "shared-model",
+    .estimated_input_tokens = 1'000,
+    .estimated_output_tokens = 500,
+    .requirements = {
+      .strategy = model_selection_strategy::lowest_cost,
+      .allow_model_override = false,
+    },
+    .preferred_provider = "primary",
+  });
+  require(
+    pinned && pinned.selected_model == "shared-model" && pinned.selected_provider == "primary",
+    "an explicit provider is pinned unless provider override is enabled");
+
+  const auto override_allowed = router.route({
+    .preferred_model = "shared-model",
+    .estimated_input_tokens = 1'000,
+    .estimated_output_tokens = 500,
+    .requirements = {
+      .strategy = model_selection_strategy::lowest_cost,
+      .allow_model_override = false,
+      .allow_provider_override = true,
+    },
+    .preferred_provider = "primary",
+  });
+  require(override_allowed && override_allowed.selected_provider == "economy",
+    "provider override is an explicit routing opt-in");
+
+  const auto missing = router.route({
+    .preferred_model = "shared-model",
+    .estimated_input_tokens = 100,
+    .estimated_output_tokens = 100,
+    .requirements = { .allow_model_override = false },
+    .preferred_provider = "missing",
+  });
+  require(!missing && missing.error == model_route_error_code::preferred_provider_unavailable,
+    "missing pinned providers return a stable routing error");
+
+  bool duplicate_binding_rejected = false;
+  try {
+    router.add(primary);
+  }
+  catch (const std::invalid_argument&) {
+    duplicate_binding_rejected = true;
+  }
+  require(duplicate_binding_rejected, "an exact provider and model binding remains unique");
+}
+
 void token_estimation_handles_ascii_unicode_and_tools() {
-  require(approximate_text_tokens("abcdefgh") == 2,
-    "ASCII token estimation uses four-character units");
-  require(approximate_text_tokens("你好") == 2,
-    "non-ASCII code points are estimated conservatively");
+  require(
+    approximate_text_tokens("abcdefgh") == 2, "ASCII token estimation uses four-character units");
+  require(
+    approximate_text_tokens("你好") == 2, "non-ASCII code points are estimated conservatively");
 
   llm_request request;
   request.messages.push_back({ .role = "user", .content = "hello" });
@@ -164,9 +221,8 @@ void token_estimation_handles_ascii_unicode_and_tools() {
 void telemetry_failures_are_isolated() {
   throwing_event_sink event_sink;
   resource_aware_router router({
-    .observer = [](const model_route_decision&) {
-      throw std::runtime_error("observer unavailable");
-    },
+    .observer =
+      [](const model_route_decision&) { throw std::runtime_error("observer unavailable"); },
     .event_sink = &event_sink,
   });
   router.add(profile("economy", 0.10, 0.40, 0.55, 0.95));
@@ -228,8 +284,7 @@ void non_finite_scores_and_weights_are_rejected() {
   catch (const std::invalid_argument&) {
     invalid_weight_rejected = true;
   }
-  require(invalid_weight_rejected,
-    "routing weights reject non-finite values");
+  require(invalid_weight_rejected, "routing weights reject non-finite values");
 
   bool invalid_score_rejected = false;
   try {
@@ -241,8 +296,7 @@ void non_finite_scores_and_weights_are_rejected() {
   catch (const std::invalid_argument&) {
     invalid_score_rejected = true;
   }
-  require(invalid_score_rejected,
-    "model profiles reject non-finite quality and latency scores");
+  require(invalid_score_rejected, "model profiles reject non-finite quality and latency scores");
 }
 
 void extreme_cost_estimates_remain_finite_and_orderable() {
@@ -254,11 +308,8 @@ void extreme_cost_estimates_remain_finite_and_orderable() {
     .latency_score = 0.5,
   };
   const auto estimate = estimate_model_cost_usd(
-    extreme,
-    (std::numeric_limits<std::size_t>::max)(),
-    (std::numeric_limits<std::size_t>::max)());
-  require(estimate && std::isfinite(*estimate) &&
-      *estimate == (std::numeric_limits<double>::max)(),
+    extreme, (std::numeric_limits<std::size_t>::max)(), (std::numeric_limits<std::size_t>::max)());
+  require(estimate && std::isfinite(*estimate) && *estimate == (std::numeric_limits<double>::max)(),
     "cost estimation saturates instead of producing infinity");
 
   resource_aware_router router;
@@ -268,9 +319,8 @@ void extreme_cost_estimates_remain_finite_and_orderable() {
     .estimated_output_tokens = (std::numeric_limits<std::size_t>::max)(),
     .requirements = { .strategy = model_selection_strategy::lowest_cost },
   });
-  require(decision && decision.estimated_cost_usd &&
-      std::isfinite(*decision.estimated_cost_usd) &&
-      std::isfinite(decision.candidates.front().score),
+  require(decision && decision.estimated_cost_usd && std::isfinite(*decision.estimated_cost_usd) &&
+            std::isfinite(decision.candidates.front().score),
     "extreme finite profiles still produce a deterministic routing decision");
 }
 
@@ -297,6 +347,7 @@ int main() {
   strategy_selects_expected_models();
   capabilities_context_and_cost_are_hard_constraints();
   preferred_model_pinning_is_explicit();
+  provider_bindings_are_distinct_and_explicitly_pinned();
   token_estimation_handles_ascii_unicode_and_tools();
   telemetry_failures_are_isolated();
   pricing_requirements_are_explicit();

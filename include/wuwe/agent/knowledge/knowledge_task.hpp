@@ -3,8 +3,8 @@
 
 #include <atomic>
 #include <chrono>
-#include <cstddef>
 #include <condition_variable>
+#include <cstddef>
 #include <functional>
 #include <future>
 #include <mutex>
@@ -30,8 +30,7 @@ struct knowledge_task_progress {
   std::vector<std::string> errors;
 };
 
-using knowledge_task_progress_callback =
-  std::function<void(const knowledge_task_progress&)>;
+using knowledge_task_progress_callback = std::function<void(const knowledge_task_progress&)>;
 
 struct knowledge_task_policy {
   std::size_t max_retries {};
@@ -72,11 +71,10 @@ public:
   }
 
   bool wait_for_cancel(std::chrono::milliseconds duration) const {
-    if (cancel_requested()) return true;
+    if (cancel_requested())
+      return true;
     std::unique_lock lock(cancellation_mutex_);
-    return cancellation_condition_.wait_for(lock, duration, [&] {
-      return cancel_requested();
-    });
+    return cancellation_condition_.wait_for(lock, duration, [&] { return cancel_requested(); });
   }
 
 private:

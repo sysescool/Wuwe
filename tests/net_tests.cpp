@@ -1,5 +1,5 @@
-#include <chrono>
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -59,9 +59,7 @@ public:
 
     port_ = server_.bind_to_any_port("127.0.0.1");
     require(port_ > 0, "local HTTP test server should bind to a port");
-    worker_ = std::thread([this] {
-      server_.listen_after_bind();
-    });
+    worker_ = std::thread([this] { server_.listen_after_bind(); });
     while (!server_.is_running()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
@@ -98,9 +96,7 @@ public:
 
     port_ = server_.bind_to_any_port("127.0.0.1");
     require(port_ > 0, "local proxy test server should bind to a port");
-    worker_ = std::thread([this] {
-      server_.listen_after_bind();
-    });
+    worker_ = std::thread([this] { server_.listen_after_bind(); });
     while (!server_.is_running()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
@@ -187,9 +183,7 @@ public:
 
     port_ = server_.bind_to_any_port("127.0.0.1");
     require(port_ > 0, "local HTTPS test server should bind to a port");
-    worker_ = std::thread([this] {
-      server_.listen_after_bind();
-    });
+    worker_ = std::thread([this] { server_.listen_after_bind(); });
     while (!server_.is_running()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
@@ -331,8 +325,7 @@ void exercise_client(http_client& client, const local_http_server& server) {
       return true;
     });
   require(!stream.error_code, "streaming GET should succeed: " + stream.error_code.message());
-  require(stream.body == "stream-one\nstream-two\n",
-    "streaming GET should preserve full body");
+  require(stream.body == "stream-one\nstream-two\n", "streaming GET should preserve full body");
   require(streamed == stream.body, "streaming callback should receive the response body");
 
   const auto aborted = client.send_stream(
@@ -341,9 +334,7 @@ void exercise_client(http_client& client, const local_http_server& server) {
       .url = server.url("/stream"),
       .timeout = 5000,
     },
-    [](std::string_view) {
-      return false;
-    });
+    [](std::string_view) { return false; });
   require(!!aborted.error_code, "callback abort should return an error");
 
   std::stop_source stop_source;
@@ -357,9 +348,7 @@ void exercise_client(http_client& client, const local_http_server& server) {
       .url = server.url("/slow-stream"),
       .timeout = 5000,
     },
-    [](std::string_view) {
-      return true;
-    },
+    [](std::string_view) { return true; },
     stop_source.get_token());
   if (stopper.joinable()) {
     stopper.join();
@@ -371,8 +360,7 @@ void exercise_client(http_client& client, const local_http_server& server) {
     .url = "not-a-url",
     .timeout = 100,
   });
-  require(!!malformed.error_code,
-    "malformed URL should return an error");
+  require(!!malformed.error_code, "malformed URL should return an error");
 
   const auto unsupported_method = client.send({
     .method = "TRACE",
@@ -409,9 +397,10 @@ void exercise_http_proxy(http_client& client) {
     .method = "GET",
     .url = "http://wuwe-proxy-test.invalid/proxy-target",
     .timeout = 5000,
-    .proxy = http_proxy_options {
-      .url = proxy.url(),
-    },
+    .proxy =
+      http_proxy_options {
+        .url = proxy.url(),
+      },
   });
   require(!response.error_code,
     "HTTP proxy request should be served by the configured proxy: " +
@@ -440,8 +429,8 @@ void test_httplib_http_client() {
 
 void test_default_http_client_reports_backend() {
   const std::string backend = default_http_client::backend_name();
-  require(backend == "cpr" || backend == "httplib",
-    "default HTTP backend should be cpr or httplib");
+  require(
+    backend == "cpr" || backend == "httplib", "default HTTP backend should be cpr or httplib");
 }
 
 void test_default_http_client_uses_selected_backend() {
@@ -585,7 +574,8 @@ int main() {
     run("cpr HTTP client", test_cpr_http_client);
     run("httplib HTTP client", test_httplib_http_client);
     run("default HTTP client reports backend", test_default_http_client_reports_backend);
-    run("default HTTP client uses selected backend", test_default_http_client_uses_selected_backend);
+    run(
+      "default HTTP client uses selected backend", test_default_http_client_uses_selected_backend);
     run("httplib HTTPS capability is explicit", test_httplib_https_capability_is_explicit);
 #ifdef WUWE_NET_TESTS_HAS_OPENSSL
     run("TLS verification errors are classified", test_tls_verification_errors_are_classified);

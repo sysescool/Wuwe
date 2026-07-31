@@ -7,8 +7,8 @@
 #include <exception>
 #include <functional>
 #include <limits>
-#include <memory>
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
@@ -22,15 +22,14 @@
 
 namespace wuwe::agent::learning {
 
-using learning_proposer = std::function<std::vector<learning_candidate>(
-  const learning_request&, const learning_context&)>;
-using learning_evaluator = std::function<learning_evaluation(
-  const learning_candidate&, const learning_context&)>;
-using learning_activator = std::function<learning_activation_result(
-  const learning_candidate&, const learning_context&)>;
+using learning_proposer =
+  std::function<std::vector<learning_candidate>(const learning_request&, const learning_context&)>;
+using learning_evaluator =
+  std::function<learning_evaluation(const learning_candidate&, const learning_context&)>;
+using learning_activator =
+  std::function<learning_activation_result(const learning_candidate&, const learning_context&)>;
 using learning_candidate_selector = std::function<std::optional<std::size_t>(
-  const std::vector<learning_record>&,
-  const std::vector<std::size_t>&)>;
+  const std::vector<learning_record>&, const std::vector<std::size_t>&)>;
 using learning_observer = std::function<void(const learning_record&)>;
 
 struct learning_policy {
@@ -42,9 +41,7 @@ struct learning_policy {
   double minimum_score_improvement { 0.0 };
   double minimum_pass_rate_improvement { 0.0 };
   std::size_t maximum_regressions { 0 };
-  learning_activation_mode activation_mode {
-    learning_activation_mode::stage_only
-  };
+  learning_activation_mode activation_mode { learning_activation_mode::stage_only };
   bool persist_rejected { true };
 };
 
@@ -69,8 +66,7 @@ struct learning_run_options {
 
 class learning_runner {
 public:
-  explicit learning_runner(learning_runner_options options)
-      : options_(std::move(options)) {
+  explicit learning_runner(learning_runner_options options) : options_(std::move(options)) {
     if (!options_.proposer) {
       throw std::invalid_argument("learning_runner requires a proposer");
     }
@@ -80,13 +76,11 @@ public:
   }
 
   [[nodiscard]] learning_run_result run(
-    learning_request request,
-    learning_run_options run_options = {}) const {
+    learning_request request, learning_run_options run_options = {}) const {
     validate(run_options.policy);
     if (run_options.policy.activation_mode != learning_activation_mode::stage_only &&
         !options_.activator) {
-      throw std::invalid_argument(
-        "learning activation mode requires an activator callback");
+      throw std::invalid_argument("learning activation mode requires an activator callback");
     }
 
     const auto started = std::chrono::steady_clock::now();
@@ -101,15 +95,14 @@ public:
       return output;
     }
 
-    auto proposed = run_proposer(
-      request, run_options.policy, run_options.stop_token, started);
-    if (proposed.stop_reason != fan_out_stop_reason::none ||
-        proposed.items.empty() || !proposed.items.front()) {
+    auto proposed = run_proposer(request, run_options.policy, run_options.stop_token, started);
+    if (proposed.stop_reason != fan_out_stop_reason::none || proposed.items.empty() ||
+        !proposed.items.front()) {
       output.stop_reason = proposed.stop_reason == fan_out_stop_reason::timed_out
                              ? learning_stop_reason::timed_out
                              : (proposed.stop_reason == fan_out_stop_reason::cancelled
-                                  ? learning_stop_reason::cancelled
-                                  : learning_stop_reason::proposal_failed);
+                                   ? learning_stop_reason::cancelled
+                                   : learning_stop_reason::proposal_failed);
       output.error = proposed.items.empty() || proposed.items.front().error.empty()
                        ? "learning proposal failed"
                        : proposed.items.front().error;
@@ -131,27 +124,44 @@ public:
       return output;
     }
 
-    const auto evaluation_timeout = remaining_time(
-      started, run_options.policy.timeout);
+    const auto evaluation_deadline = deadline_for(started, run_options.policy.timeout);
     const auto candidate_snapshot = candidates;
+    if (evaluation_deadline && std::chrono::steady_clock::now() >= *evaluation_deadline) {
+      output.stop_reason = learning_stop_reason::timed_out;
+      output.error = "learning run timed out before evaluation";
+      output.records.reserve(candidate_snapshot.size());
+      for (const auto& candidate : candidate_snapshot) {
+        output.records.push_back({
+          .id = make_learning_id("learning-record"),
+          .run_id = output.run_id,
+          .candidate = candidate,
+          .status = learning_candidate_status::timed_out,
+          .error = output.error,
+        });
+      }
+      output.telemetry_error_count = persist_and_publish(output.records, run_options.policy);
+      summarize(output);
+      finalize(output, started);
+      return output;
+    }
     auto evaluate = fan_out_each(
       fan_out_options {
         .max_concurrency = run_options.policy.max_concurrency,
         .failure_mode = fan_out_failure_mode::collect_all,
-        .timeout = evaluation_timeout,
+        .deadline = evaluation_deadline,
       },
       [evaluator = options_.evaluator, run_id = output.run_id](
-        const learning_candidate& candidate,
-        const fan_out_context& context) {
+        const learning_candidate& candidate, const fan_out_context& context) {
         learning_record record {
           .id = make_learning_id("learning-record"),
           .run_id = run_id,
           .candidate = candidate,
         };
-        record.evaluation = evaluator(candidate, {
-          .stop_token = context.stop_token,
-          .deadline = context.deadline,
-        });
+        record.evaluation = evaluator(candidate,
+          {
+            .stop_token = context.stop_token,
+            .deadline = context.deadline,
+          });
         return record;
       });
     auto evaluated = evaluate.run(std::move(candidates), run_options.stop_token);
@@ -171,8 +181,8 @@ public:
         .status = item.status == fan_out_item_status::timed_out
                     ? learning_candidate_status::timed_out
                     : (item.status == fan_out_item_status::cancelled
-                         ? learning_candidate_status::cancelled
-                         : learning_candidate_status::evaluation_failed),
+                          ? learning_candidate_status::cancelled
+                          : learning_candidate_status::evaluation_failed),
         .error = item.error.empty() ? "learning evaluation failed" : item.error,
         .detached = item.detached,
       };
@@ -192,8 +202,7 @@ public:
       activate_candidates(output, run_options, started);
     }
 
-    output.telemetry_error_count =
-      persist_and_publish(output.records, run_options.policy);
+    output.telemetry_error_count = persist_and_publish(output.records, run_options.policy);
     output.completed = output.stop_reason == learning_stop_reason::none;
     summarize(output);
     finalize(output, started);
@@ -201,38 +210,35 @@ public:
   }
 
 private:
-  fan_out_result<std::vector<learning_candidate>> run_proposer(
-    const learning_request& request,
-    const learning_policy& policy,
-    std::stop_token stop_token,
+  fan_out_result<std::vector<learning_candidate>> run_proposer(const learning_request& request,
+    const learning_policy& policy, std::stop_token stop_token,
     std::chrono::steady_clock::time_point started) const {
     auto operation = fan_out(
       fan_out_options {
         .max_concurrency = 1,
         .failure_mode = fan_out_failure_mode::collect_all,
-        .timeout = remaining_time(started, policy.timeout),
+        .deadline = deadline_for(started, policy.timeout),
       },
       [proposer = options_.proposer](
-        const learning_request& value,
-        const fan_out_context& context) {
-        return proposer(value, {
-          .stop_token = context.stop_token,
-          .deadline = context.deadline,
-        });
+        const learning_request& value, const fan_out_context& context) {
+        return proposer(value,
+          {
+            .stop_token = context.stop_token,
+            .deadline = context.deadline,
+          });
       });
     return operation.run(request, stop_token);
   }
 
-  void activate_candidates(
-    learning_run_result& output,
-    const learning_run_options& run_options,
+  void activate_candidates(learning_run_result& output, const learning_run_options& run_options,
     std::chrono::steady_clock::time_point started) const {
     if (run_options.policy.activation_mode == learning_activation_mode::stage_only) {
       return;
     }
     select_activation_candidates(output.records);
     for (auto& record : output.records) {
-      if (record.status != learning_candidate_status::accepted) continue;
+      if (record.status != learning_candidate_status::accepted)
+        continue;
       if (run_options.stop_token.stop_requested()) {
         record.status = learning_candidate_status::cancelled;
         record.error = "learning activation cancelled";
@@ -240,8 +246,7 @@ private:
         output.error = record.error;
         return;
       }
-      if (run_options.policy.activation_mode ==
-          learning_activation_mode::require_approval) {
+      if (run_options.policy.activation_mode == learning_activation_mode::require_approval) {
         if (!options_.approvals) {
           record.status = learning_candidate_status::approval_required;
           record.error = "learning activation requires an approval service";
@@ -272,22 +277,21 @@ private:
         }
         catch (...) {
           record.status = learning_candidate_status::approval_required;
-          record.error =
-            "learning approval failed with an unknown exception";
+          record.error = "learning approval failed with an unknown exception";
           continue;
         }
         if (record.approval->kind != approval::approval_decision_kind::approved) {
-          record.status = record.approval->kind ==
-                              approval::approval_decision_kind::needs_manual_review
-                            ? learning_candidate_status::approval_required
-                            : learning_candidate_status::approval_denied;
+          record.status =
+            record.approval->kind == approval::approval_decision_kind::needs_manual_review
+              ? learning_candidate_status::approval_required
+              : learning_candidate_status::approval_denied;
           record.error = record.approval->reason;
           continue;
         }
       }
 
-      const auto timeout = remaining_time(started, run_options.policy.timeout);
-      if (run_options.policy.timeout.count() > 0 && timeout.count() == 0) {
+      const auto deadline = deadline_for(started, run_options.policy.timeout);
+      if (deadline && std::chrono::steady_clock::now() >= *deadline) {
         record.status = learning_candidate_status::timed_out;
         record.error = "learning activation timed out before start";
         output.stop_reason = learning_stop_reason::timed_out;
@@ -298,15 +302,15 @@ private:
         fan_out_options {
           .max_concurrency = 1,
           .failure_mode = fan_out_failure_mode::collect_all,
-          .timeout = timeout,
+          .deadline = deadline,
         },
         [activator = options_.activator](
-          const learning_candidate& candidate,
-          const fan_out_context& context) {
-          return activator(candidate, {
-            .stop_token = context.stop_token,
-            .deadline = context.deadline,
-          });
+          const learning_candidate& candidate, const fan_out_context& context) {
+          return activator(candidate,
+            {
+              .stop_token = context.stop_token,
+              .deadline = context.deadline,
+            });
         });
       auto activated = activate.run(record.candidate, run_options.stop_token);
       auto& item = activated.items.front();
@@ -314,8 +318,8 @@ private:
         record.status = item.status == fan_out_item_status::timed_out
                           ? learning_candidate_status::timed_out
                           : (item.status == fan_out_item_status::cancelled
-                               ? learning_candidate_status::cancelled
-                               : learning_candidate_status::activation_failed);
+                                ? learning_candidate_status::cancelled
+                                : learning_candidate_status::activation_failed);
         record.error = item.error.empty() ? "learning activation failed" : item.error;
         record.detached = item.detached;
         output.detached_count += item.detached ? 1U : 0U;
@@ -332,9 +336,8 @@ private:
         continue;
       }
       record.activation = std::move(*item.value);
-      record.status = record.activation->activated
-                        ? learning_candidate_status::activated
-                        : learning_candidate_status::activation_failed;
+      record.status = record.activation->activated ? learning_candidate_status::activated
+                                                   : learning_candidate_status::activation_failed;
       record.error = record.activation->error;
       record.updated_at = std::chrono::system_clock::now();
     }
@@ -351,54 +354,50 @@ private:
     for (const auto& [target, eligible] : eligible_by_target) {
       std::optional<std::size_t> selected;
       try {
-        selected = options_.selector
-                     ? options_.selector(records, eligible)
-                     : select_best_candidate(records, eligible);
+        selected = options_.selector ? options_.selector(records, eligible)
+                                     : select_best_candidate(records, eligible);
       }
       catch (const std::exception& ex) {
-        mark_selection_failed(records, eligible,
-          std::string("learning candidate selection failed: ") + ex.what());
+        mark_selection_failed(
+          records, eligible, std::string("learning candidate selection failed: ") + ex.what());
         continue;
       }
       catch (...) {
-        mark_selection_failed(records, eligible,
-          "learning candidate selection failed with an unknown exception");
+        mark_selection_failed(
+          records, eligible, "learning candidate selection failed with an unknown exception");
         continue;
       }
 
       if (!selected || std::find(eligible.begin(), eligible.end(), *selected) == eligible.end()) {
-        mark_selection_failed(records, eligible,
-          "learning candidate selector did not return an eligible candidate for target " +
-          target);
+        mark_selection_failed(records,
+          eligible,
+          "learning candidate selector did not return an eligible candidate for target " + target);
         continue;
       }
       for (const auto index : eligible) {
-        if (index == *selected) continue;
+        if (index == *selected)
+          continue;
         records[index].status = learning_candidate_status::not_selected;
-        records[index].error =
-          "another accepted candidate was selected for target " + target;
+        records[index].error = "another accepted candidate was selected for target " + target;
         records[index].updated_at = std::chrono::system_clock::now();
       }
     }
   }
 
   static std::optional<std::size_t> select_best_candidate(
-    const std::vector<learning_record>& records,
-    const std::vector<std::size_t>& eligible) {
-    if (eligible.empty()) return std::nullopt;
+    const std::vector<learning_record>& records, const std::vector<std::size_t>& eligible) {
+    if (eligible.empty())
+      return std::nullopt;
     return *std::max_element(
-      eligible.begin(), eligible.end(),
-      [&](std::size_t lhs, std::size_t rhs) {
+      eligible.begin(), eligible.end(), [&](std::size_t lhs, std::size_t rhs) {
         const auto& left = *records[lhs].evaluation;
         const auto& right = *records[rhs].evaluation;
-        return std::make_tuple(
-                 left.candidate_score,
+        return std::make_tuple(left.candidate_score,
                  left.candidate_pass_rate,
                  left.score_improvement(),
                  left.pass_rate_improvement(),
                  (std::numeric_limits<std::size_t>::max)() - left.regression_count) <
-               std::make_tuple(
-                 right.candidate_score,
+               std::make_tuple(right.candidate_score,
                  right.candidate_pass_rate,
                  right.score_improvement(),
                  right.pass_rate_improvement(),
@@ -406,10 +405,8 @@ private:
       });
   }
 
-  static void mark_selection_failed(
-    std::vector<learning_record>& records,
-    const std::vector<std::size_t>& eligible,
-    const std::string& error) {
+  static void mark_selection_failed(std::vector<learning_record>& records,
+    const std::vector<std::size_t>& eligible, const std::string& error) {
     for (const auto index : eligible) {
       records[index].status = learning_candidate_status::activation_failed;
       records[index].error = error;
@@ -418,11 +415,12 @@ private:
   }
 
   static void normalize_candidates(
-    std::vector<learning_candidate>& candidates,
-    const learning_request& request) {
+    std::vector<learning_candidate>& candidates, const learning_request& request) {
     for (auto& candidate : candidates) {
-      if (candidate.id.empty()) candidate.id = make_learning_id("learning-candidate");
-      if (candidate.target.empty()) candidate.target = request.target;
+      if (candidate.id.empty())
+        candidate.id = make_learning_id("learning-candidate");
+      if (candidate.target.empty())
+        candidate.target = request.target;
       if (candidate.parent_version.empty()) {
         candidate.parent_version = request.baseline_version;
       }
@@ -435,24 +433,22 @@ private:
     }
   }
 
-  static void apply_evaluation_policy(
-    learning_record& record,
-    const learning_policy& policy) {
+  static void apply_evaluation_policy(learning_record& record, const learning_policy& policy) {
     if (!record.evaluation || !valid_evaluation(*record.evaluation)) {
       record.status = learning_candidate_status::evaluation_failed;
       record.error = "learning evaluator returned invalid metrics";
       return;
     }
     const auto& value = *record.evaluation;
-    const bool accepted = value.passed &&
-      value.candidate_score >= policy.minimum_candidate_score &&
-      value.candidate_pass_rate >= policy.minimum_candidate_pass_rate &&
-      value.score_improvement() >= policy.minimum_score_improvement &&
-      value.pass_rate_improvement() >= policy.minimum_pass_rate_improvement &&
-      value.regression_count <= policy.maximum_regressions;
-    record.status = accepted ? learning_candidate_status::accepted
-                             : learning_candidate_status::rejected;
-    if (!accepted) record.error = "learning candidate did not pass promotion policy";
+    const bool accepted = value.passed && value.candidate_score >= policy.minimum_candidate_score &&
+                          value.candidate_pass_rate >= policy.minimum_candidate_pass_rate &&
+                          value.score_improvement() >= policy.minimum_score_improvement &&
+                          value.pass_rate_improvement() >= policy.minimum_pass_rate_improvement &&
+                          value.regression_count <= policy.maximum_regressions;
+    record.status =
+      accepted ? learning_candidate_status::accepted : learning_candidate_status::rejected;
+    if (!accepted)
+      record.error = "learning candidate did not pass promotion policy";
     record.updated_at = std::chrono::system_clock::now();
   }
 
@@ -460,30 +456,25 @@ private:
     const auto valid_unit = [](double metric) {
       return std::isfinite(metric) && metric >= 0.0 && metric <= 1.0;
     };
-    return valid_unit(value.baseline_score) &&
-           valid_unit(value.candidate_score) &&
-           valid_unit(value.baseline_pass_rate) &&
-           valid_unit(value.candidate_pass_rate);
+    return valid_unit(value.baseline_score) && valid_unit(value.candidate_score) &&
+           valid_unit(value.baseline_pass_rate) && valid_unit(value.candidate_pass_rate);
   }
 
   std::size_t persist_and_publish(
-    const std::vector<learning_record>& records,
-    const learning_policy& policy) const {
+    const std::vector<learning_record>& records, const learning_policy& policy) const {
     std::size_t failures = 0;
     for (const auto& record : records) {
       const bool rejected = record.status == learning_candidate_status::rejected;
       if (options_.store && (!rejected || policy.persist_rejected)) {
         options_.store->save(record);
       }
-      if (options_.observer && !observability::invoke_telemetry(
-          options_.telemetry_failure_mode,
-          [&] { options_.observer(record); })) {
+      if (options_.observer && !observability::invoke_telemetry(options_.telemetry_failure_mode,
+                                 [&] { options_.observer(record); })) {
         ++failures;
       }
       if (options_.event_sink) {
-        if (!observability::invoke_telemetry(
-            options_.telemetry_failure_mode,
-            [&] { options_.event_sink->publish({
+        if (!observability::invoke_telemetry(options_.telemetry_failure_mode, [&] {
+              options_.event_sink->publish({
           .module = "learning",
           .name = "candidate_finalized",
           .subject_id = record.id,
@@ -493,7 +484,8 @@ private:
             { "target", record.candidate.target },
             { "version", record.candidate.proposed_version },
           },
-        }); })) {
+        });
+            })) {
           ++failures;
         }
       }
@@ -503,13 +495,18 @@ private:
 
   static void summarize(learning_run_result& output) {
     for (const auto& record : output.records) {
-      if (record.evaluation) ++output.evaluated_count;
+      if (record.evaluation)
+        ++output.evaluated_count;
       switch (record.status) {
-        case learning_candidate_status::accepted: ++output.accepted_count; break;
+        case learning_candidate_status::accepted:
+          ++output.accepted_count;
+          break;
         case learning_candidate_status::not_selected:
           ++output.accepted_count;
           break;
-        case learning_candidate_status::rejected: ++output.rejected_count; break;
+        case learning_candidate_status::rejected:
+          ++output.rejected_count;
+          break;
         case learning_candidate_status::approval_required:
           ++output.accepted_count;
           ++output.approval_required_count;
@@ -531,7 +528,8 @@ private:
         case learning_candidate_status::cancelled:
           ++output.failed_count;
           break;
-        case learning_candidate_status::proposed: break;
+        case learning_candidate_status::proposed:
+          break;
       }
     }
   }
@@ -546,8 +544,7 @@ private:
     if (policy.timeout.count() < 0) {
       throw std::invalid_argument("learning timeout must not be negative");
     }
-    for (const auto value : {
-           policy.minimum_candidate_score,
+    for (const auto value : { policy.minimum_candidate_score,
            policy.minimum_candidate_pass_rate,
            policy.minimum_score_improvement,
            policy.minimum_pass_rate_improvement }) {
@@ -555,27 +552,20 @@ private:
         throw std::invalid_argument("learning thresholds must be finite");
       }
     }
-    if (policy.minimum_candidate_score < 0.0 ||
-        policy.minimum_candidate_score > 1.0 ||
-        policy.minimum_candidate_pass_rate < 0.0 ||
-        policy.minimum_candidate_pass_rate > 1.0) {
+    if (policy.minimum_candidate_score < 0.0 || policy.minimum_candidate_score > 1.0 ||
+        policy.minimum_candidate_pass_rate < 0.0 || policy.minimum_candidate_pass_rate > 1.0) {
       throw std::invalid_argument("learning absolute thresholds must be within [0, 1]");
     }
   }
 
-  static std::chrono::milliseconds remaining_time(
-    std::chrono::steady_clock::time_point started,
-    std::chrono::milliseconds timeout) noexcept {
-    if (timeout.count() == 0) return std::chrono::milliseconds { 0 };
-    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::steady_clock::now() - started);
-    return elapsed >= timeout ? std::chrono::milliseconds { 0 }
-                              : timeout - elapsed;
+  static std::optional<std::chrono::steady_clock::time_point> deadline_for(
+    std::chrono::steady_clock::time_point started, std::chrono::milliseconds timeout) noexcept {
+    return timeout.count() == 0 ? std::optional<std::chrono::steady_clock::time_point> {}
+                                : std::optional(started + timeout);
   }
 
   static void finalize(
-    learning_run_result& output,
-    std::chrono::steady_clock::time_point started) noexcept {
+    learning_run_result& output, std::chrono::steady_clock::time_point started) noexcept {
     output.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - started);
   }

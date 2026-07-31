@@ -2,9 +2,9 @@
 #define WUWE_AGENT_KNOWLEDGE_RERANKER_HPP
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
-#include <cctype>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -28,8 +28,7 @@ public:
   virtual ~knowledge_reranker() = default;
 
   virtual std::vector<knowledge_result> rerank(
-    const knowledge_query& query,
-    std::vector<knowledge_result> candidates) const = 0;
+    const knowledge_query& query, std::vector<knowledge_result> candidates) const = 0;
 };
 
 struct score_knowledge_reranker_policy {
@@ -81,8 +80,7 @@ struct http_cross_encoder_knowledge_scorer_config {
 
 class http_cross_encoder_knowledge_scorer final : public cross_encoder_knowledge_scorer {
 public:
-  http_cross_encoder_knowledge_scorer(
-    http_cross_encoder_knowledge_scorer_config config,
+  http_cross_encoder_knowledge_scorer(http_cross_encoder_knowledge_scorer_config config,
     std::shared_ptr<::wuwe::http_client> http = std::make_shared<::wuwe::default_http_client>())
       : config_(std::move(config)), http_(std::move(http)) {
     if (config_.endpoint_url.empty()) {
@@ -96,14 +94,15 @@ public:
   double score(const knowledge_query& query, const knowledge_result& candidate) const override {
     nlohmann::json body {
       { "query", query.text },
-      { "candidate", {
-        { "id", candidate.chunk.id },
-        { "document_id", candidate.chunk.document_id },
-        { "title", candidate.chunk.title },
-        { "content", candidate.chunk.content },
-        { "source_uri", candidate.chunk.source_uri },
-        { "metadata", candidate.chunk.metadata },
-      } },
+      { "candidate",
+        {
+          { "id", candidate.chunk.id },
+          { "document_id", candidate.chunk.document_id },
+          { "title", candidate.chunk.title },
+          { "content", candidate.chunk.content },
+          { "source_uri", candidate.chunk.source_uri },
+          { "metadata", candidate.chunk.metadata },
+        } },
       { "score", candidate.score },
       { "vector_score", candidate.vector_score },
       { "lexical_score", candidate.lexical_score },
@@ -149,23 +148,22 @@ struct cross_encoder_knowledge_reranker_policy {
 
 class score_knowledge_reranker final : public knowledge_reranker {
 public:
-  explicit score_knowledge_reranker(score_knowledge_reranker_policy policy = {})
-      : policy_(policy) {
+  explicit score_knowledge_reranker(score_knowledge_reranker_policy policy = {}) : policy_(policy) {
   }
 
   std::vector<knowledge_result> rerank(
-    const knowledge_query& query,
-    std::vector<knowledge_result> candidates) const override {
-    std::sort(candidates.begin(), candidates.end(), [](const knowledge_result& lhs,
-                                                       const knowledge_result& rhs) {
-      if (lhs.score != rhs.score) {
-        return lhs.score > rhs.score;
-      }
-      if (lhs.chunk.document_id != rhs.chunk.document_id) {
-        return lhs.chunk.document_id < rhs.chunk.document_id;
-      }
-      return lhs.chunk.start_offset < rhs.chunk.start_offset;
-    });
+    const knowledge_query& query, std::vector<knowledge_result> candidates) const override {
+    std::sort(candidates.begin(),
+      candidates.end(),
+      [](const knowledge_result& lhs, const knowledge_result& rhs) {
+        if (lhs.score != rhs.score) {
+          return lhs.score > rhs.score;
+        }
+        if (lhs.chunk.document_id != rhs.chunk.document_id) {
+          return lhs.chunk.document_id < rhs.chunk.document_id;
+        }
+        return lhs.chunk.start_offset < rhs.chunk.start_offset;
+      });
 
     if (policy_.max_per_document != 0) {
       candidates = cap_per_document(std::move(candidates));
@@ -198,13 +196,11 @@ private:
 
 class bm25_knowledge_reranker final : public knowledge_reranker {
 public:
-  explicit bm25_knowledge_reranker(bm25_knowledge_reranker_policy policy = {})
-      : policy_(policy) {
+  explicit bm25_knowledge_reranker(bm25_knowledge_reranker_policy policy = {}) : policy_(policy) {
   }
 
   std::vector<knowledge_result> rerank(
-    const knowledge_query& query,
-    std::vector<knowledge_result> candidates) const override {
+    const knowledge_query& query, std::vector<knowledge_result> candidates) const override {
     if (query.text.empty() || candidates.empty()) {
       return candidates;
     }
@@ -256,7 +252,8 @@ public:
         }
 
         const auto df_it = document_frequency.find(term);
-        const auto df = df_it == document_frequency.end() ? 0.0 : static_cast<double>(df_it->second);
+        const auto df =
+          df_it == document_frequency.end() ? 0.0 : static_cast<double>(df_it->second);
         const auto idf = std::log(1.0 + ((corpus_size - df + 0.5) / (df + 0.5)));
         const auto tf = static_cast<double>(frequency_it->second);
         const auto denominator =
@@ -266,20 +263,20 @@ public:
 
       candidates[index].lexical_score = bm25;
       candidates[index].score =
-        policy_.existing_score_weight * candidates[index].score +
-        policy_.bm25_weight * bm25;
+        policy_.existing_score_weight * candidates[index].score + policy_.bm25_weight * bm25;
     }
 
-    std::sort(candidates.begin(), candidates.end(), [](const knowledge_result& lhs,
-                                                       const knowledge_result& rhs) {
-      if (lhs.score != rhs.score) {
-        return lhs.score > rhs.score;
-      }
-      if (lhs.chunk.document_id != rhs.chunk.document_id) {
-        return lhs.chunk.document_id < rhs.chunk.document_id;
-      }
-      return lhs.chunk.start_offset < rhs.chunk.start_offset;
-    });
+    std::sort(candidates.begin(),
+      candidates.end(),
+      [](const knowledge_result& lhs, const knowledge_result& rhs) {
+        if (lhs.score != rhs.score) {
+          return lhs.score > rhs.score;
+        }
+        if (lhs.chunk.document_id != rhs.chunk.document_id) {
+          return lhs.chunk.document_id < rhs.chunk.document_id;
+        }
+        return lhs.chunk.start_offset < rhs.chunk.start_offset;
+      });
 
     if (policy_.max_per_document != 0) {
       candidates = cap_per_document(std::move(candidates));
@@ -329,13 +326,11 @@ private:
 
 class mmr_knowledge_reranker final : public knowledge_reranker {
 public:
-  explicit mmr_knowledge_reranker(mmr_knowledge_reranker_policy policy = {})
-      : policy_(policy) {
+  explicit mmr_knowledge_reranker(mmr_knowledge_reranker_policy policy = {}) : policy_(policy) {
   }
 
   std::vector<knowledge_result> rerank(
-    const knowledge_query& query,
-    std::vector<knowledge_result> candidates) const override {
+    const knowledge_query& query, std::vector<knowledge_result> candidates) const override {
     if (candidates.empty()) {
       return candidates;
     }
@@ -392,7 +387,8 @@ private:
       }
     }
     const auto union_size = lhs_tokens.size() + rhs_tokens.size() - intersection;
-    return union_size == 0 ? 0.0 : static_cast<double>(intersection) / static_cast<double>(union_size);
+    return union_size == 0 ? 0.0
+                           : static_cast<double>(intersection) / static_cast<double>(union_size);
   }
 
   static std::unordered_set<std::string> token_set(const std::string& text) {
@@ -418,8 +414,7 @@ private:
 
 class cross_encoder_knowledge_reranker final : public knowledge_reranker {
 public:
-  cross_encoder_knowledge_reranker(
-    std::shared_ptr<cross_encoder_knowledge_scorer> scorer,
+  cross_encoder_knowledge_reranker(std::shared_ptr<cross_encoder_knowledge_scorer> scorer,
     cross_encoder_knowledge_reranker_policy policy = {})
       : scorer_(std::move(scorer)), policy_(policy) {
     if (!scorer_) {
@@ -428,26 +423,25 @@ public:
   }
 
   std::vector<knowledge_result> rerank(
-    const knowledge_query& query,
-    std::vector<knowledge_result> candidates) const override {
+    const knowledge_query& query, std::vector<knowledge_result> candidates) const override {
     for (auto& candidate : candidates) {
       const auto model_score = scorer_->score(query, candidate);
       candidate.lexical_score = model_score;
       candidate.score =
-        policy_.existing_score_weight * candidate.score +
-        policy_.model_score_weight * model_score;
+        policy_.existing_score_weight * candidate.score + policy_.model_score_weight * model_score;
     }
 
-    std::sort(candidates.begin(), candidates.end(), [](const knowledge_result& lhs,
-                                                       const knowledge_result& rhs) {
-      if (lhs.score != rhs.score) {
-        return lhs.score > rhs.score;
-      }
-      if (lhs.chunk.document_id != rhs.chunk.document_id) {
-        return lhs.chunk.document_id < rhs.chunk.document_id;
-      }
-      return lhs.chunk.start_offset < rhs.chunk.start_offset;
-    });
+    std::sort(candidates.begin(),
+      candidates.end(),
+      [](const knowledge_result& lhs, const knowledge_result& rhs) {
+        if (lhs.score != rhs.score) {
+          return lhs.score > rhs.score;
+        }
+        if (lhs.chunk.document_id != rhs.chunk.document_id) {
+          return lhs.chunk.document_id < rhs.chunk.document_id;
+        }
+        return lhs.chunk.start_offset < rhs.chunk.start_offset;
+      });
 
     if (policy_.max_per_document != 0) {
       candidates = cap_per_document(std::move(candidates));

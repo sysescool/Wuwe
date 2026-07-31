@@ -9,8 +9,8 @@
 #include <map>
 #include <optional>
 #include <set>
-#include <stop_token>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -96,9 +96,7 @@ struct tool_heartbeat {
   std::string message;
   std::optional<double> progress;
   std::map<std::string, std::string> metadata;
-  std::chrono::steady_clock::time_point timestamp {
-    std::chrono::steady_clock::now()
-  };
+  std::chrono::steady_clock::time_point timestamp { std::chrono::steady_clock::now() };
 };
 
 // Provider capabilities describe which parts of tool_invocation are honored,
@@ -115,69 +113,90 @@ struct tool_provider_capabilities {
 [[nodiscard]] inline bool valid_tool_provider_capabilities(
   const tool_provider_capabilities& value) noexcept {
   return value.declaration_valid &&
-    (value.invocation_context ||
-      (!value.idempotency_key && !value.heartbeat));
+         (value.invocation_context || (!value.idempotency_key && !value.heartbeat));
 }
 
 [[nodiscard]] inline std::string to_string(tool_side_effect value) {
   switch (value) {
-    case tool_side_effect::none: return "none";
-    case tool_side_effect::read: return "read";
-    case tool_side_effect::write: return "write";
-    case tool_side_effect::destructive: return "destructive";
+    case tool_side_effect::none:
+      return "none";
+    case tool_side_effect::read:
+      return "read";
+    case tool_side_effect::write:
+      return "write";
+    case tool_side_effect::destructive:
+      return "destructive";
   }
   return "none";
 }
 
 [[nodiscard]] inline std::string to_string(tool_idempotency value) {
   switch (value) {
-    case tool_idempotency::unknown: return "unknown";
-    case tool_idempotency::idempotent: return "idempotent";
-    case tool_idempotency::idempotent_with_key: return "idempotent_with_key";
-    case tool_idempotency::non_idempotent: return "non_idempotent";
+    case tool_idempotency::unknown:
+      return "unknown";
+    case tool_idempotency::idempotent:
+      return "idempotent";
+    case tool_idempotency::idempotent_with_key:
+      return "idempotent_with_key";
+    case tool_idempotency::non_idempotent:
+      return "non_idempotent";
   }
   return "unknown";
 }
 
 [[nodiscard]] inline std::string to_string(tool_approval_mode value) {
   switch (value) {
-    case tool_approval_mode::never: return "never";
-    case tool_approval_mode::policy: return "policy";
-    case tool_approval_mode::always: return "always";
+    case tool_approval_mode::never:
+      return "never";
+    case tool_approval_mode::policy:
+      return "policy";
+    case tool_approval_mode::always:
+      return "always";
   }
   return "never";
 }
 
 [[nodiscard]] inline std::string to_string(tool_error_category value) {
   switch (value) {
-    case tool_error_category::none: return "none";
-    case tool_error_category::invalid_input: return "invalid_input";
-    case tool_error_category::not_found: return "not_found";
-    case tool_error_category::permission_denied: return "permission_denied";
-    case tool_error_category::conflict: return "conflict";
-    case tool_error_category::rate_limited: return "rate_limited";
-    case tool_error_category::timeout: return "timeout";
-    case tool_error_category::cancelled: return "cancelled";
-    case tool_error_category::unavailable: return "unavailable";
-    case tool_error_category::internal: return "internal";
+    case tool_error_category::none:
+      return "none";
+    case tool_error_category::invalid_input:
+      return "invalid_input";
+    case tool_error_category::not_found:
+      return "not_found";
+    case tool_error_category::permission_denied:
+      return "permission_denied";
+    case tool_error_category::conflict:
+      return "conflict";
+    case tool_error_category::rate_limited:
+      return "rate_limited";
+    case tool_error_category::timeout:
+      return "timeout";
+    case tool_error_category::cancelled:
+      return "cancelled";
+    case tool_error_category::unavailable:
+      return "unavailable";
+    case tool_error_category::internal:
+      return "internal";
   }
   return "internal";
 }
 
 [[nodiscard]] inline std::string to_string(tool_output_validation_mode value) {
   switch (value) {
-    case tool_output_validation_mode::disabled: return "disabled";
-    case tool_output_validation_mode::warn: return "warn";
-    case tool_output_validation_mode::strict: return "strict";
+    case tool_output_validation_mode::disabled:
+      return "disabled";
+    case tool_output_validation_mode::warn:
+      return "warn";
+    case tool_output_validation_mode::strict:
+      return "strict";
   }
   return "strict";
 }
 
 struct tool_capability_requirement {
   std::string name;
-  capability::capability_risk_level risk {
-    capability::capability_risk_level::low
-  };
+  capability::capability_risk_level risk { capability::capability_risk_level::low };
   std::string summary;
   std::vector<std::string> resources;
   std::map<std::string, std::string> metadata;
@@ -193,9 +212,7 @@ struct tool_descriptor {
   tool_idempotency idempotency { tool_idempotency::unknown };
   tool_approval_mode approval { tool_approval_mode::never };
   std::chrono::milliseconds timeout { 0 };
-  tool_output_validation_mode output_validation {
-    tool_output_validation_mode::strict
-  };
+  tool_output_validation_mode output_validation { tool_output_validation_mode::strict };
   tool_retry_policy retry;
   tool_resource_version_policy resource_version;
   tool_compensation_policy compensation;
@@ -237,26 +254,22 @@ inline void validate_tool_descriptor(const tool_descriptor& value) {
       value.retry.initial_backoff > value.retry.maximum_backoff) {
     throw std::invalid_argument("tool retry backoff range is invalid");
   }
-  if (!std::isfinite(value.retry.backoff_multiplier) ||
-      !std::isfinite(value.retry.jitter_ratio) ||
-      value.retry.backoff_multiplier < 1.0 ||
-      value.retry.jitter_ratio < 0.0 || value.retry.jitter_ratio > 1.0) {
+  if (!std::isfinite(value.retry.backoff_multiplier) || !std::isfinite(value.retry.jitter_ratio) ||
+      value.retry.backoff_multiplier < 1.0 || value.retry.jitter_ratio < 0.0 ||
+      value.retry.jitter_ratio > 1.0) {
     throw std::invalid_argument("tool retry multiplier or jitter is invalid");
   }
   if (value.retry.max_attempts > 1 &&
       (value.idempotency == tool_idempotency::unknown ||
-       value.idempotency == tool_idempotency::non_idempotent) &&
+        value.idempotency == tool_idempotency::non_idempotent) &&
       !value.compensation.enabled) {
-    throw std::invalid_argument(
-      "non-idempotent tool retries require compensation");
+    throw std::invalid_argument("non-idempotent tool retries require compensation");
   }
   if (value.resource_version.require_expected_version &&
       value.resource_version.argument_json_pointer.empty()) {
-    throw std::invalid_argument(
-      "resource version policy requires an argument JSON Pointer");
+    throw std::invalid_argument("resource version policy requires an argument JSON Pointer");
   }
-  for (const auto* pointer : {
-         &value.resource_version.argument_json_pointer,
+  for (const auto* pointer : { &value.resource_version.argument_json_pointer,
          &value.resource_version.outcome_json_pointer }) {
     if (!pointer->empty() && pointer->front() != '/') {
       throw std::invalid_argument("resource version paths must be JSON Pointers");
@@ -284,8 +297,7 @@ inline void validate_tool_descriptor(const tool_descriptor& value) {
       throw std::invalid_argument("tool capability requirement requires a name");
     }
     if (!capability_names.insert(requirement.name).second) {
-      throw std::invalid_argument(
-        "duplicate tool capability requirement: " + requirement.name);
+      throw std::invalid_argument("duplicate tool capability requirement: " + requirement.name);
     }
   }
 }
@@ -322,29 +334,24 @@ struct tool_invocation {
 
 template<typename Provider>
 [[nodiscard]] tool_provider_capabilities resolve_tool_provider_capabilities(
-  Provider& provider,
-  const std::string& name) {
+  Provider& provider, const std::string& name) {
   constexpr bool invocation_aware = requires(
-    Provider& candidate,
-    const tool_invocation& invocation) {
-    candidate.invoke(invocation);
-  };
-  constexpr bool compensating = requires(
-    Provider& candidate,
-    const tool_invocation& invocation,
-    const tool_outcome& outcome) {
-    { candidate.compensate(invocation, outcome) } ->
-      std::convertible_to<tool_outcome>;
-  };
+    Provider & candidate, const tool_invocation& invocation) { candidate.invoke(invocation); };
+  constexpr bool compensating =
+    requires(Provider & candidate, const tool_invocation& invocation, const tool_outcome& outcome) {
+      { candidate.compensate(invocation, outcome) } -> std::convertible_to<tool_outcome>;
+    };
 
   if constexpr (requires {
-                  { provider.contract_capabilities(name) } ->
-                    std::convertible_to<tool_provider_capabilities>;
+                  {
+                    provider.contract_capabilities(name)
+                    } -> std::convertible_to<tool_provider_capabilities>;
                 }) {
-    auto capabilities = static_cast<tool_provider_capabilities>(
-      provider.contract_capabilities(name));
+    auto capabilities =
+      static_cast<tool_provider_capabilities>(provider.contract_capabilities(name));
     if ((capabilities.invocation_context || capabilities.idempotency_key ||
-         capabilities.heartbeat) && !invocation_aware) {
+          capabilities.heartbeat) &&
+        !invocation_aware) {
       capabilities.declaration_valid = false;
     }
     if (capabilities.compensation && !compensating) {
@@ -390,28 +397,32 @@ inline nlohmann::json tool_descriptor_to_json(const tool_descriptor& value) {
     { "approval", to_string(value.approval) },
     { "timeout_ms", value.timeout.count() },
     { "output_validation", to_string(value.output_validation) },
-    { "retry", {
-      { "max_attempts", value.retry.max_attempts },
-      { "initial_backoff_ms", value.retry.initial_backoff.count() },
-      { "maximum_backoff_ms", value.retry.maximum_backoff.count() },
-      { "backoff_multiplier", value.retry.backoff_multiplier },
-      { "jitter_ratio", value.retry.jitter_ratio },
-      { "retryable_categories", std::move(retryable_categories) },
-    } },
-    { "resource_version", {
-      { "require_expected_version", value.resource_version.require_expected_version },
-      { "argument_json_pointer", value.resource_version.argument_json_pointer },
-      { "outcome_json_pointer", value.resource_version.outcome_json_pointer },
-    } },
-    { "compensation", {
-      { "enabled", value.compensation.enabled },
-      { "timeout_ms", value.compensation.timeout.count() },
-      { "max_attempts", value.compensation.max_attempts },
-    } },
-    { "heartbeat", {
-      { "timeout_ms", value.heartbeat.timeout.count() },
-      { "minimum_interval_ms", value.heartbeat.minimum_interval.count() },
-    } },
+    { "retry",
+      {
+        { "max_attempts", value.retry.max_attempts },
+        { "initial_backoff_ms", value.retry.initial_backoff.count() },
+        { "maximum_backoff_ms", value.retry.maximum_backoff.count() },
+        { "backoff_multiplier", value.retry.backoff_multiplier },
+        { "jitter_ratio", value.retry.jitter_ratio },
+        { "retryable_categories", std::move(retryable_categories) },
+      } },
+    { "resource_version",
+      {
+        { "require_expected_version", value.resource_version.require_expected_version },
+        { "argument_json_pointer", value.resource_version.argument_json_pointer },
+        { "outcome_json_pointer", value.resource_version.outcome_json_pointer },
+      } },
+    { "compensation",
+      {
+        { "enabled", value.compensation.enabled },
+        { "timeout_ms", value.compensation.timeout.count() },
+        { "max_attempts", value.compensation.max_attempts },
+      } },
+    { "heartbeat",
+      {
+        { "timeout_ms", value.heartbeat.timeout.count() },
+        { "minimum_interval_ms", value.heartbeat.minimum_interval.count() },
+      } },
     { "capabilities", std::move(capabilities) },
     { "metadata", value.metadata },
   };
@@ -419,12 +430,9 @@ inline nlohmann::json tool_descriptor_to_json(const tool_descriptor& value) {
 
 inline tool_descriptor descriptor_from_llm_tool(const llm_tool& value) {
   auto schema = nlohmann::json::parse(
-    value.parameters_json_schema.empty() ? "{}" : value.parameters_json_schema,
-    nullptr,
-    false);
+    value.parameters_json_schema.empty() ? "{}" : value.parameters_json_schema, nullptr, false);
   if (schema.is_discarded()) {
-    throw std::invalid_argument(
-      "tool '" + value.name + "' has an invalid JSON input schema");
+    throw std::invalid_argument("tool '" + value.name + "' has an invalid JSON input schema");
   }
   tool_descriptor descriptor {
     .name = value.name,

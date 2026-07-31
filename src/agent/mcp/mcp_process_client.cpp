@@ -1,8 +1,8 @@
 #include <wuwe/agent/mcp/mcp_process_client.hpp>
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -68,6 +68,7 @@ std::size_t parse_content_length(std::string_view value) {
   return result;
 }
 
+#ifdef _WIN32
 std::string quote_windows_arg(const std::string& arg) {
   if (arg.empty()) {
     return "\"\"";
@@ -113,9 +114,7 @@ std::string build_command_line(const mcp_process_command& command) {
   return output;
 }
 
-#ifdef _WIN32
-std::string build_windows_environment_block(
-  const std::map<std::string, std::string>& overrides) {
+std::string build_windows_environment_block(const std::map<std::string, std::string>& overrides) {
   if (overrides.empty()) {
     return {};
   }
@@ -240,8 +239,7 @@ struct mcp_process_client::impl {
     auto environment_block = build_windows_environment_block(command.environment);
     const char* working_directory =
       command.working_directory.empty() ? nullptr : command.working_directory.c_str();
-    const BOOL created = CreateProcessA(
-      nullptr,
+    const BOOL created = CreateProcessA(nullptr,
       command_line.data(),
       nullptr,
       nullptr,
@@ -343,8 +341,7 @@ struct mcp_process_client::impl {
     while (offset < size) {
       DWORD read = 0;
       const auto chunk = static_cast<DWORD>((std::min<std::size_t>)(size - offset, 65536));
-      if (!child_stdout ||
-          !ReadFile(child_stdout, output.data() + offset, chunk, &read, nullptr) ||
+      if (!child_stdout || !ReadFile(child_stdout, output.data() + offset, chunk, &read, nullptr) ||
           read == 0) {
         throw std::runtime_error("failed to read MCP process response body");
       }
@@ -423,8 +420,7 @@ struct mcp_process_client::impl {
     }
 
     if (child == 0) {
-      if (!command.working_directory.empty() &&
-          chdir(command.working_directory.c_str()) != 0) {
+      if (!command.working_directory.empty() && chdir(command.working_directory.c_str()) != 0) {
         _exit(127);
       }
       for (const auto& [key, value] : command.environment) {
@@ -591,8 +587,8 @@ struct mcp_process_client::impl {
 
   std::string read_framed_message() {
     std::string header;
-    while (header.find("\r\n\r\n") == std::string::npos &&
-           header.find("\n\n") == std::string::npos) {
+    while (
+      header.find("\r\n\r\n") == std::string::npos && header.find("\n\n") == std::string::npos) {
       header.push_back(read_char());
     }
 
@@ -600,7 +596,8 @@ struct mcp_process_client::impl {
     std::size_t cursor = 0;
     while (cursor < header.size()) {
       const auto next = header.find('\n', cursor);
-      auto line = header.substr(cursor, next == std::string::npos ? std::string::npos : next - cursor);
+      auto line =
+        header.substr(cursor, next == std::string::npos ? std::string::npos : next - cursor);
       cursor = next == std::string::npos ? header.size() : next + 1;
       line = trim(std::move(line));
       if (line.empty()) {
@@ -622,12 +619,10 @@ struct mcp_process_client::impl {
   }
 };
 
-mcp_process_client::mcp_process_client()
-    : impl_(std::make_unique<impl>()) {
+mcp_process_client::mcp_process_client() : impl_(std::make_unique<impl>()) {
 }
 
-mcp_process_client::mcp_process_client(mcp_process_command command)
-    : mcp_process_client() {
+mcp_process_client::mcp_process_client(mcp_process_command command) : mcp_process_client() {
   start(std::move(command));
 }
 
@@ -672,9 +667,7 @@ void mcp_process_client::notify(std::string method, json params) {
 }
 
 json mcp_process_client::initialize(
-  mcp_client_info info,
-  json capabilities,
-  std::string protocol_version) {
+  mcp_client_info info, json capabilities, std::string protocol_version) {
   if (!supports_protocol_version(protocol_version)) {
     throw std::invalid_argument("unsupported MCP protocol version: " + protocol_version);
   }
@@ -686,11 +679,12 @@ json mcp_process_client::initialize(
     client_info["version"] = std::move(info.version);
   }
 
-  return request("initialize", {
-    { "protocolVersion", std::move(protocol_version) },
-    { "clientInfo", std::move(client_info) },
-    { "capabilities", std::move(capabilities) },
-  });
+  return request("initialize",
+    {
+      { "protocolVersion", std::move(protocol_version) },
+      { "clientInfo", std::move(client_info) },
+      { "capabilities", std::move(capabilities) },
+    });
 }
 
 json mcp_process_client::ping() {
@@ -702,10 +696,11 @@ json mcp_process_client::list_tools(json params) {
 }
 
 json mcp_process_client::call_tool(std::string name, json arguments) {
-  return request("tools/call", {
-    { "name", std::move(name) },
-    { "arguments", std::move(arguments) },
-  });
+  return request("tools/call",
+    {
+      { "name", std::move(name) },
+      { "arguments", std::move(arguments) },
+    });
 }
 
 json mcp_process_client::list_resources(json params) {
@@ -737,10 +732,11 @@ json mcp_process_client::list_prompts(json params) {
 }
 
 json mcp_process_client::get_prompt(std::string name, json arguments) {
-  return request("prompts/get", {
-    { "name", std::move(name) },
-    { "arguments", std::move(arguments) },
-  });
+  return request("prompts/get",
+    {
+      { "name", std::move(name) },
+      { "arguments", std::move(arguments) },
+    });
 }
 
 const std::vector<json>& mcp_process_client::notifications() const noexcept {

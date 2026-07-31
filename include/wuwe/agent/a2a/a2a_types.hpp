@@ -12,6 +12,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <wuwe/version.hpp>
+
 namespace wuwe::agent::a2a {
 
 inline constexpr std::string_view default_protocol_version = "0.3.0";
@@ -42,7 +44,7 @@ struct agent_card {
   std::string name;
   std::string description;
   std::string url;
-  std::string version { "0.1.0" };
+  std::string version { ::wuwe::framework_version };
   std::optional<agent_provider> provider;
   std::string documentation_url;
   agent_capabilities capabilities;
@@ -63,9 +65,12 @@ enum class part_kind {
 
 inline std::string to_string(part_kind value) {
   switch (value) {
-    case part_kind::text: return "text";
-    case part_kind::data: return "data";
-    case part_kind::file: return "file";
+    case part_kind::text:
+      return "text";
+    case part_kind::data:
+      return "data";
+    case part_kind::file:
+      return "file";
   }
   return "unknown";
 }
@@ -126,15 +131,24 @@ enum class task_state {
 
 inline std::string to_string(task_state value) {
   switch (value) {
-    case task_state::submitted: return "submitted";
-    case task_state::working: return "working";
-    case task_state::input_required: return "input-required";
-    case task_state::completed: return "completed";
-    case task_state::canceled: return "canceled";
-    case task_state::failed: return "failed";
-    case task_state::rejected: return "rejected";
-    case task_state::auth_required: return "auth-required";
-    case task_state::unknown: return "unknown";
+    case task_state::submitted:
+      return "submitted";
+    case task_state::working:
+      return "working";
+    case task_state::input_required:
+      return "input-required";
+    case task_state::completed:
+      return "completed";
+    case task_state::canceled:
+      return "canceled";
+    case task_state::failed:
+      return "failed";
+    case task_state::rejected:
+      return "rejected";
+    case task_state::auth_required:
+      return "auth-required";
+    case task_state::unknown:
+      return "unknown";
   }
   return "unknown";
 }
@@ -265,8 +279,10 @@ inline nlohmann::json to_json(const message& value) {
     { "parts", std::move(parts) },
     { "metadata", value.metadata },
   };
-  if (!value.task_id.empty()) output["taskId"] = value.task_id;
-  if (!value.context_id.empty()) output["contextId"] = value.context_id;
+  if (!value.task_id.empty())
+    output["taskId"] = value.task_id;
+  if (!value.context_id.empty())
+    output["contextId"] = value.context_id;
   if (!value.reference_task_ids.empty()) {
     output["referenceTaskIds"] = value.reference_task_ids;
   }
@@ -292,16 +308,20 @@ inline nlohmann::json to_json(const task_status& value) {
   nlohmann::json output {
     { "state", to_string(value.state) },
   };
-  if (value.status_message) output["message"] = to_json(*value.status_message);
-  if (!value.timestamp.empty()) output["timestamp"] = value.timestamp;
+  if (value.status_message)
+    output["message"] = to_json(*value.status_message);
+  if (!value.timestamp.empty())
+    output["timestamp"] = value.timestamp;
   return output;
 }
 
 inline nlohmann::json to_json(const task& value) {
   auto artifacts = nlohmann::json::array();
-  for (const auto& item : value.artifacts) artifacts.push_back(to_json(item));
+  for (const auto& item : value.artifacts)
+    artifacts.push_back(to_json(item));
   auto history = nlohmann::json::array();
-  for (const auto& item : value.history) history.push_back(to_json(item));
+  for (const auto& item : value.history)
+    history.push_back(to_json(item));
   return {
     { "kind", "task" },
     { "id", value.id },
@@ -332,11 +352,12 @@ inline nlohmann::json to_json(const agent_card& value) {
     { "description", value.description },
     { "url", value.url },
     { "version", value.version },
-    { "capabilities", {
-      { "streaming", value.capabilities.streaming },
-      { "pushNotifications", value.capabilities.push_notifications },
-      { "stateTransitionHistory", value.capabilities.state_transition_history },
-    } },
+    { "capabilities",
+      {
+        { "streaming", value.capabilities.streaming },
+        { "pushNotifications", value.capabilities.push_notifications },
+        { "stateTransitionHistory", value.capabilities.state_transition_history },
+      } },
     { "defaultInputModes", value.default_input_modes },
     { "defaultOutputModes", value.default_output_modes },
     { "skills", std::move(skills) },
@@ -387,16 +408,18 @@ inline message message_from_json(const nlohmann::json& value) {
   message output;
   output.message_id = value.value("messageId", "");
   const auto role = value.value("role", "user");
-  if (role == "user") output.role = message_role::user;
-  else if (role == "agent") output.role = message_role::agent;
-  else throw std::invalid_argument("unsupported A2A message role: " + role);
+  if (role == "user")
+    output.role = message_role::user;
+  else if (role == "agent")
+    output.role = message_role::agent;
+  else
+    throw std::invalid_argument("unsupported A2A message role: " + role);
   for (const auto& item : value.value("parts", nlohmann::json::array())) {
     output.parts.push_back(part_from_json(item));
   }
   output.task_id = value.value("taskId", "");
   output.context_id = value.value("contextId", "");
-  output.reference_task_ids =
-    value.value("referenceTaskIds", std::vector<std::string> {});
+  output.reference_task_ids = value.value("referenceTaskIds", std::vector<std::string> {});
   output.metadata = value.value("metadata", nlohmann::json::object());
   if (output.message_id.empty() || output.parts.empty()) {
     throw std::invalid_argument("A2A message requires messageId and parts");
@@ -405,14 +428,22 @@ inline message message_from_json(const nlohmann::json& value) {
 }
 
 inline task_state task_state_from_string(std::string_view value) {
-  if (value == "submitted") return task_state::submitted;
-  if (value == "working") return task_state::working;
-  if (value == "input-required") return task_state::input_required;
-  if (value == "completed") return task_state::completed;
-  if (value == "canceled") return task_state::canceled;
-  if (value == "failed") return task_state::failed;
-  if (value == "rejected") return task_state::rejected;
-  if (value == "auth-required") return task_state::auth_required;
+  if (value == "submitted")
+    return task_state::submitted;
+  if (value == "working")
+    return task_state::working;
+  if (value == "input-required")
+    return task_state::input_required;
+  if (value == "completed")
+    return task_state::completed;
+  if (value == "canceled")
+    return task_state::canceled;
+  if (value == "failed")
+    return task_state::failed;
+  if (value == "rejected")
+    return task_state::rejected;
+  if (value == "auth-required")
+    return task_state::auth_required;
   return task_state::unknown;
 }
 
@@ -467,10 +498,8 @@ inline agent_card agent_card_from_json(const nlohmann::json& value) {
   output.documentation_url = value.value("documentationUrl", "");
   const auto capabilities = value.value("capabilities", nlohmann::json::object());
   output.capabilities.streaming = capabilities.value("streaming", false);
-  output.capabilities.push_notifications =
-    capabilities.value("pushNotifications", false);
-  output.capabilities.state_transition_history =
-    capabilities.value("stateTransitionHistory", true);
+  output.capabilities.push_notifications = capabilities.value("pushNotifications", false);
+  output.capabilities.state_transition_history = capabilities.value("stateTransitionHistory", true);
   output.default_input_modes =
     value.value("defaultInputModes", std::vector<std::string> { "text/plain" });
   output.default_output_modes =

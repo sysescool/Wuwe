@@ -28,16 +28,13 @@
 
 namespace wuwe::agent::memory {
 
-[[nodiscard]] inline bool memory_scope_has_identity(
-  const memory_scope& scope) noexcept {
-  return !scope.tenant_id.empty() || !scope.user_id.empty() ||
-         !scope.application_id.empty() || !scope.conversation_id.empty() ||
-         !scope.agent_id.empty();
+[[nodiscard]] inline bool memory_scope_has_identity(const memory_scope& scope) noexcept {
+  return !scope.tenant_id.empty() || !scope.user_id.empty() || !scope.application_id.empty() ||
+         !scope.conversation_id.empty() || !scope.agent_id.empty();
 }
 
 [[nodiscard]] inline memory_scope memory_scope_from_execution_context(
-  const core::agent_execution_context& context,
-  memory_scope fallback = {}) {
+  const core::agent_execution_context& context, memory_scope fallback = {}) {
   const memory_scope projected {
     .tenant_id = context.tenant_id,
     .user_id = context.user_id,
@@ -68,8 +65,7 @@ inline bool memory_record_visible_to_model(const memory_record& record) {
   return sensitivity == record.metadata.end() || sensitivity->second != "secret";
 }
 
-inline core::content_trust_level default_memory_trust(
-  const memory_record& record) noexcept {
+inline core::content_trust_level default_memory_trust(const memory_record& record) noexcept {
   const auto role = record.metadata.find("message_role");
   if (role != record.metadata.end()) {
     if (role->second == "user") {
@@ -89,17 +85,17 @@ inline void ensure_memory_provenance(memory_record& record) {
   if (record.metadata.contains("wuwe.content.trust")) {
     return;
   }
-  core::set_content_provenance(record.metadata, {
-    .trust = default_memory_trust(record),
-    .source = core::content_source_kind::memory,
-    .source_id = record.id,
-  });
+  core::set_content_provenance(record.metadata,
+    {
+      .trust = default_memory_trust(record),
+      .source = core::content_source_kind::memory,
+      .source_id = record.id,
+    });
 }
 
 inline bool same_record_key(const memory_record& lhs, const memory_record& rhs) {
   if (!lhs.id.empty() && !rhs.id.empty()) {
-    return lhs.id == rhs.id && lhs.kind == rhs.kind &&
-           lhs.scope.tenant_id == rhs.scope.tenant_id &&
+    return lhs.id == rhs.id && lhs.kind == rhs.kind && lhs.scope.tenant_id == rhs.scope.tenant_id &&
            lhs.scope.user_id == rhs.scope.user_id &&
            lhs.scope.application_id == rhs.scope.application_id &&
            lhs.scope.conversation_id == rhs.scope.conversation_id &&
@@ -143,16 +139,16 @@ inline bool content_matches_message(const memory_record& record, const chat_mess
 
 inline std::size_t kind_limit(const memory_policy& policy, memory_kind kind) {
   switch (kind) {
-  case memory_kind::conversation:
-    return policy.max_recent_messages;
-  case memory_kind::working:
-    return policy.max_working_records;
-  case memory_kind::summary:
-    return policy.max_summary_records;
-  case memory_kind::long_term:
-    return policy.max_long_term_records;
-  case memory_kind::retrieved:
-    return policy.max_long_term_records;
+    case memory_kind::conversation:
+      return policy.max_recent_messages;
+    case memory_kind::working:
+      return policy.max_working_records;
+    case memory_kind::summary:
+      return policy.max_summary_records;
+    case memory_kind::long_term:
+      return policy.max_long_term_records;
+    case memory_kind::retrieved:
+      return policy.max_long_term_records;
   }
 
   return 0;
@@ -160,15 +156,15 @@ inline std::size_t kind_limit(const memory_policy& policy, memory_kind kind) {
 
 inline bool kind_enabled(const memory_policy& policy, memory_kind kind) {
   switch (kind) {
-  case memory_kind::conversation:
-    return policy.include_conversation;
-  case memory_kind::working:
-    return policy.include_working;
-  case memory_kind::summary:
-    return policy.include_summaries;
-  case memory_kind::long_term:
-  case memory_kind::retrieved:
-    return policy.include_long_term;
+    case memory_kind::conversation:
+      return policy.include_conversation;
+    case memory_kind::working:
+      return policy.include_working;
+    case memory_kind::summary:
+      return policy.include_summaries;
+    case memory_kind::long_term:
+    case memory_kind::retrieved:
+      return policy.include_long_term;
   }
 
   return false;
@@ -187,19 +183,15 @@ public:
   explicit memory_context(memory_policy policy)
       : short_term_store_(std::make_shared<in_memory_store>()),
         long_term_store_(std::make_shared<in_memory_store>()),
-        policy_(std::move(policy)),
-        ranker_(std::make_shared<lexical_memory_ranker>()) {
+        ranker_(std::make_shared<lexical_memory_ranker>()), policy_(std::move(policy)) {
   }
 
-  memory_context(
-    std::shared_ptr<memory_store> short_term_store,
-    std::shared_ptr<memory_store> long_term_store,
-    memory_policy policy = {},
+  memory_context(std::shared_ptr<memory_store> short_term_store,
+    std::shared_ptr<memory_store> long_term_store, memory_policy policy = {},
     std::shared_ptr<memory_ranker> ranker = {})
       : short_term_store_(std::move(short_term_store)),
-        long_term_store_(std::move(long_term_store)),
-        policy_(std::move(policy)),
-        ranker_(std::move(ranker)) {
+        long_term_store_(std::move(long_term_store)), ranker_(std::move(ranker)),
+        policy_(std::move(policy)) {
     if (!short_term_store_) {
       short_term_store_ = std::make_shared<in_memory_store>();
     }
@@ -212,8 +204,7 @@ public:
   }
 
   memory_record remember(memory_record record) {
-    if (!memory_scope_has_identity(record.scope) &&
-        memory_scope_has_identity(active_scope_)) {
+    if (!memory_scope_has_identity(record.scope) && memory_scope_has_identity(active_scope_)) {
       record.scope = active_scope_;
     }
     apply_retention_policy(record);
@@ -221,7 +212,8 @@ public:
     enforce_privacy_policy(record, memory_audit_action::remember);
 
     if (record.kind == memory_kind::long_term || record.kind == memory_kind::retrieved) {
-      if (policy_.require_scope_for_long_term && !detail::scope_has_persistent_anchor(record.scope)) {
+      if (policy_.require_scope_for_long_term &&
+          !detail::scope_has_persistent_anchor(record.scope)) {
         throw std::invalid_argument(
           "long-term memory requires application_id and tenant_id or user_id");
       }
@@ -237,8 +229,7 @@ public:
   }
 
   bool update(memory_record record) {
-    if (!memory_scope_has_identity(record.scope) &&
-        memory_scope_has_identity(active_scope_)) {
+    if (!memory_scope_has_identity(record.scope) && memory_scope_has_identity(active_scope_)) {
       record.scope = active_scope_;
     }
 
@@ -275,9 +266,7 @@ public:
   }
 
   bool erase(
-    const std::string& id,
-    const memory_scope& scope,
-    memory_kind kind = memory_kind::long_term) {
+    const std::string& id, const memory_scope& scope, memory_kind kind = memory_kind::long_term) {
     const bool durable = kind == memory_kind::long_term || kind == memory_kind::retrieved;
     auto& store = durable ? *long_term_store_ : *short_term_store_;
     const bool erased_store = store.erase(id, scope);
@@ -297,7 +286,9 @@ public:
     clear_index(scope);
     memory_record audit_record;
     audit_record.scope = scope;
-    emit_audit(memory_audit_action::clear, true, audit_record,
+    emit_audit(memory_audit_action::clear,
+      true,
+      audit_record,
       "erased=" + std::to_string(erased_short + erased_long));
     return erased_short + erased_long;
   }
@@ -344,15 +335,16 @@ public:
     }
     memory_record audit_record;
     audit_record.scope = query.scope;
-    emit_audit(memory_audit_action::compact_expired, result.errors.empty(), audit_record,
+    emit_audit(memory_audit_action::compact_expired,
+      result.errors.empty(),
+      audit_record,
       "scanned=" + std::to_string(result.scanned) +
         " erased_expired=" + std::to_string(result.erased_expired));
     return result;
   }
 
   memory_record remember_working(
-    std::string content,
-    std::map<std::string, std::string> metadata = {}) {
+    std::string content, std::map<std::string, std::string> metadata = {}) {
     memory_record record;
     record.kind = memory_kind::working;
     record.content = std::move(content);
@@ -362,8 +354,7 @@ public:
   }
 
   memory_record remember_summary(
-    std::string content,
-    std::map<std::string, std::string> metadata = {}) {
+    std::string content, std::map<std::string, std::string> metadata = {}) {
     memory_record record;
     record.kind = memory_kind::summary;
     record.content = std::move(content);
@@ -373,9 +364,7 @@ public:
   }
 
   memory_record remember_long_term(
-    std::string content,
-    memory_scope scope,
-    std::map<std::string, std::string> metadata = {}) {
+    std::string content, memory_scope scope, std::map<std::string, std::string> metadata = {}) {
     memory_record record;
     record.kind = memory_kind::long_term;
     record.content = std::move(content);
@@ -384,14 +373,11 @@ public:
     return remember(std::move(record));
   }
 
-  std::optional<memory_record> get(
-    const std::string& id,
-    const memory_scope& scope,
+  std::optional<memory_record> get(const std::string& id, const memory_scope& scope,
     memory_kind kind = memory_kind::long_term) const {
-    const auto& store =
-      (kind == memory_kind::long_term || kind == memory_kind::retrieved)
-      ? *long_term_store_
-      : *short_term_store_;
+    const auto& store = (kind == memory_kind::long_term || kind == memory_kind::retrieved)
+                          ? *long_term_store_
+                          : *short_term_store_;
     return store.get(id, scope);
   }
 
@@ -416,15 +402,13 @@ public:
       }
     };
 
-    const bool include_short =
-      query.kinds.empty() ||
-      detail::has_kind(query.kinds, memory_kind::conversation) ||
-      detail::has_kind(query.kinds, memory_kind::working) ||
-      detail::has_kind(query.kinds, memory_kind::summary);
-    const bool include_long =
-      query.kinds.empty() ||
-      detail::has_kind(query.kinds, memory_kind::long_term) ||
-      detail::has_kind(query.kinds, memory_kind::retrieved);
+    const bool include_short = query.kinds.empty() ||
+                               detail::has_kind(query.kinds, memory_kind::conversation) ||
+                               detail::has_kind(query.kinds, memory_kind::working) ||
+                               detail::has_kind(query.kinds, memory_kind::summary);
+    const bool include_long = query.kinds.empty() ||
+                              detail::has_kind(query.kinds, memory_kind::long_term) ||
+                              detail::has_kind(query.kinds, memory_kind::retrieved);
 
     memory_query store_query = query;
     store_query.limit = (std::max)(final_limit, final_limit * 2);
@@ -468,8 +452,7 @@ public:
     short_term_store_->add(std::move(record));
   }
 
-  conversation_summary_result summarize_conversation(
-    const conversation_summary_options& options,
+  conversation_summary_result summarize_conversation(const conversation_summary_options& options,
     const std::function<std::string(const std::vector<memory_record>&)>& summarizer) {
     conversation_summary_result result;
     if (!summarizer) {
@@ -505,7 +488,9 @@ public:
     summary.metadata["source_count"] = std::to_string(records.size());
     result.summary = remember(std::move(summary));
     if (result.summary) {
-      emit_audit(memory_audit_action::summarize_conversation, true, *result.summary,
+      emit_audit(memory_audit_action::summarize_conversation,
+        true,
+        *result.summary,
         "source_count=" + std::to_string(records.size()));
     }
 
@@ -527,9 +512,9 @@ public:
 
     auto append_unique = [&](std::vector<memory_record> records) {
       for (auto& record : records) {
-        const bool exists = std::any_of(result.begin(), result.end(), [&](const memory_record& item) {
-          return detail::same_record_key(item, record);
-        });
+        const bool exists = std::any_of(result.begin(),
+          result.end(),
+          [&](const memory_record& item) { return detail::same_record_key(item, record); });
         if (!exists) {
           result.push_back(std::move(record));
         }
@@ -565,9 +550,10 @@ public:
     auto result = rebuild_vector_index_detailed(std::move(query));
     memory_record audit_record;
     audit_record.scope = query.scope;
-    emit_audit(memory_audit_action::reconcile_index, result.errors.empty(), audit_record,
-      "scanned=" + std::to_string(result.scanned) +
-        " rebuilt=" + std::to_string(result.rebuilt));
+    emit_audit(memory_audit_action::reconcile_index,
+      result.errors.empty(),
+      audit_record,
+      "scanned=" + std::to_string(result.scanned) + " rebuilt=" + std::to_string(result.rebuilt));
     return result;
   }
 
@@ -577,9 +563,9 @@ public:
       return result;
     }
 
-    const bool default_query =
-      query.text.empty() && !detail::scope_has_anchor(query.scope) && query.kinds.empty() &&
-      query.filters.empty() && !query.include_expired && query.limit == memory_query {}.limit;
+    const bool default_query = query.text.empty() && !detail::scope_has_anchor(query.scope) &&
+                               query.kinds.empty() && query.filters.empty() &&
+                               !query.include_expired && query.limit == memory_query {}.limit;
 
     if (!detail::scope_has_anchor(query.scope)) {
       query.scope = active_scope_;
@@ -599,8 +585,8 @@ public:
     std::vector<memory_record> batch_records;
     std::vector<std::string> batch_texts;
     const auto batch_size = policy_.vector_rebuild_batch_size == 0
-      ? std::size_t { 1 }
-      : policy_.vector_rebuild_batch_size;
+                              ? std::size_t { 1 }
+                              : policy_.vector_rebuild_batch_size;
 
     const auto flush_batch = [&] {
       if (batch_records.empty()) {
@@ -662,9 +648,10 @@ public:
     flush_batch();
     memory_record audit_record;
     audit_record.scope = query.scope;
-    emit_audit(memory_audit_action::rebuild_index, result.errors.empty(), audit_record,
-      "scanned=" + std::to_string(result.scanned) +
-        " rebuilt=" + std::to_string(result.rebuilt));
+    emit_audit(memory_audit_action::rebuild_index,
+      result.errors.empty(),
+      audit_record,
+      "scanned=" + std::to_string(result.scanned) + " rebuilt=" + std::to_string(result.rebuilt));
     return result;
   }
 
@@ -673,22 +660,19 @@ public:
   }
 
   llm_request augment(
-    llm_request request,
-    std::string_view query_text,
-    const memory_scope& scope) const {
+    llm_request request, std::string_view query_text, const memory_scope& scope) const {
     auto trust = core::content_trust_level::system_trusted;
-    std::string memory_block = build_memory_block_for_scope(
-      std::string(query_text), scope, &request.messages, &trust);
+    std::string memory_block =
+      build_memory_block_for_scope(std::string(query_text), scope, &request.messages, &trust);
     if (memory_block.empty()) {
       return request;
     }
 
-    const bool system_message = policy_.inject_as_system_message &&
-      (policy_.allow_untrusted_system_message ||
-       core::trusted_for_system_message(trust));
+    const bool system_message =
+      policy_.inject_as_system_message &&
+      (policy_.allow_untrusted_system_message || core::trusted_for_system_message(trust));
     if (!system_message) {
-      memory_block = core::render_context_boundary(
-        "memory", trust, std::move(memory_block));
+      memory_block = core::render_context_boundary("memory", trust, std::move(memory_block));
     }
 
     chat_message memory_message {
@@ -714,17 +698,13 @@ public:
     return request;
   }
 
-  std::string build_memory_block(
-    const std::string& query_text,
+  std::string build_memory_block(const std::string& query_text,
     const std::vector<chat_message>* request_messages = nullptr,
     core::content_trust_level* block_trust = nullptr) const {
-    return build_memory_block_for_scope(
-      query_text, active_scope_, request_messages, block_trust);
+    return build_memory_block_for_scope(query_text, active_scope_, request_messages, block_trust);
   }
 
-  std::string build_memory_block_for_scope(
-    const std::string& query_text,
-    const memory_scope& scope,
+  std::string build_memory_block_for_scope(const std::string& query_text, const memory_scope& scope,
     const std::vector<chat_message>* request_messages = nullptr,
     core::content_trust_level* block_trust = nullptr) const {
     std::vector<memory_record> selected;
@@ -732,10 +712,10 @@ public:
     std::size_t remaining = policy_.max_memory_chars;
     if (policy_.max_memory_tokens != 0 && policy_.estimated_chars_per_token != 0) {
       const auto maximum = (std::numeric_limits<std::size_t>::max)();
-      const auto token_chars = policy_.max_memory_tokens >
-          maximum / policy_.estimated_chars_per_token
-        ? maximum
-        : policy_.max_memory_tokens * policy_.estimated_chars_per_token;
+      const auto token_chars =
+        policy_.max_memory_tokens > maximum / policy_.estimated_chars_per_token
+          ? maximum
+          : policy_.max_memory_tokens * policy_.estimated_chars_per_token;
       remaining = (std::min)(remaining, token_chars);
     }
 
@@ -755,8 +735,8 @@ public:
           continue;
         }
         if (policy_.dedupe_request_messages && request_messages) {
-          const bool already_in_request =
-            std::any_of(request_messages->begin(), request_messages->end(), [&](const chat_message& message) {
+          const bool already_in_request = std::any_of(
+            request_messages->begin(), request_messages->end(), [&](const chat_message& message) {
               return detail::content_matches_message(record, message);
             });
           if (already_in_request) {
@@ -785,10 +765,8 @@ public:
 
         record.content = std::move(text);
         record.summary.clear();
-        selected_trust = core::least_trusted(
-          selected_trust,
-          core::content_trust_from_metadata(
-            record.metadata, detail::default_memory_trust(record)));
+        selected_trust = core::least_trusted(selected_trust,
+          core::content_trust_from_metadata(record.metadata, detail::default_memory_trust(record)));
         selected.push_back(std::move(record));
         remaining -= line_size;
       }
@@ -860,9 +838,10 @@ private:
       return;
     }
 
-    const auto ttl = (record.kind == memory_kind::long_term || record.kind == memory_kind::retrieved)
-      ? policy_.default_long_term_ttl
-      : policy_.default_working_ttl;
+    const auto ttl =
+      (record.kind == memory_kind::long_term || record.kind == memory_kind::retrieved)
+        ? policy_.default_long_term_ttl
+        : policy_.default_working_ttl;
     if (ttl.count() > 0) {
       record.expires_at = std::chrono::system_clock::now() + ttl;
     }
@@ -878,16 +857,13 @@ private:
       return;
     }
 
-    emit_audit(memory_audit_action::reject, false, record,
-      reason.empty() ? "memory rejected by privacy filter" : reason);
-    throw std::invalid_argument(
-      reason.empty() ? "memory rejected by privacy filter" : reason);
+    const auto rejection =
+      reason.empty() ? "memory " + to_string(action) + " rejected by privacy filter" : reason;
+    emit_audit(memory_audit_action::reject, false, record, rejection);
+    throw std::invalid_argument(rejection);
   }
 
-  void emit_audit(
-    memory_audit_action action,
-    bool success,
-    const memory_record& record,
+  void emit_audit(memory_audit_action action, bool success, const memory_record& record,
     std::string message = {}) const {
     if (!audit_sink_) {
       return;
@@ -964,9 +940,8 @@ private:
       return {};
     }
 
-    const bool can_search_long_term =
-      detail::has_kind(query.kinds, memory_kind::long_term) ||
-      detail::has_kind(query.kinds, memory_kind::retrieved);
+    const bool can_search_long_term = detail::has_kind(query.kinds, memory_kind::long_term) ||
+                                      detail::has_kind(query.kinds, memory_kind::retrieved);
     if (!can_search_long_term) {
       return {};
     }
@@ -974,9 +949,9 @@ private:
     vector_memory_query vector_query;
     vector_query.embedding = embedding_model_->embed(query.text);
     vector_query.scope = query.scope;
-    vector_query.kinds = query.kinds.empty()
-      ? std::vector<memory_kind> { memory_kind::long_term, memory_kind::retrieved }
-      : query.kinds;
+    vector_query.kinds = query.kinds.empty() ? std::vector<memory_kind> { memory_kind::long_term,
+      memory_kind::retrieved }
+                                             : query.kinds;
     vector_query.limit = query.limit;
     vector_query.filters = query.filters;
     vector_query.include_expired = query.include_expired;

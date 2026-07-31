@@ -1,7 +1,7 @@
 #include <atomic>
 #include <chrono>
-#include <memory>
 #include <filesystem>
+#include <memory>
 #include <stdexcept>
 #include <stop_token>
 #include <string>
@@ -74,9 +74,7 @@ struct stop_aware_tool_provider {
   }
 
   llm_tool_result invoke(
-    const std::string&,
-    const std::string& arguments_json,
-    std::stop_token stop_token) {
+    const std::string&, const std::string& arguments_json, std::stop_token stop_token) {
     saw_stop_possible = saw_stop_possible || stop_token.stop_possible();
     return { .content = arguments_json };
   }
@@ -103,7 +101,8 @@ public:
 
   plan revise_plan(const plan& current, const planning_observation& observation) override {
     revised = true;
-    require(observation.status == plan_step_status::blocked, "observation preserves blocked status");
+    require(
+      observation.status == plan_step_status::blocked, "observation preserves blocked status");
     return {
       .id = current.id,
       .goal = current.goal,
@@ -158,8 +157,7 @@ public:
 class fixed_reflector final : public agent::reflection::reflector {
 public:
   explicit fixed_reflector(
-    agent::reflection::reflection_result result,
-    bool pass_replacement = false)
+    agent::reflection::reflection_result result, bool pass_replacement = false)
       : result_(std::move(result)), pass_replacement_(pass_replacement) {
   }
 
@@ -347,17 +345,18 @@ void reflection_gate_can_retry_step_output() {
     },
   });
   int calls = 0;
-  auto executor = std::make_shared<function_plan_executor>(
-    [&](const plan_step&, const plan_execution_context&) {
+  auto executor =
+    std::make_shared<function_plan_executor>([&](const plan_step&, const plan_execution_context&) {
       ++calls;
       return plan_step_result::completed(calls == 1 ? "thin" : "good answer");
     });
   auto reflector = std::make_shared<reflection::rule_reflector>(reflection::rule_reflector_options {
     .required_substrings = { "good" },
   });
-  auto reflection_runner = std::make_shared<reflection::reflection_runner>(reflection::reflection_runner_options {
-    .reflector = reflector,
-  });
+  auto reflection_runner =
+    std::make_shared<reflection::reflection_runner>(reflection::reflection_runner_options {
+      .reflector = reflector,
+    });
   std::vector<plan_event_type> events;
 
   plan_runner runner({
@@ -399,18 +398,19 @@ void reflection_gate_can_trigger_replanning() {
       }
       return plan_step_result::completed("replacement answer");
     });
-  auto reflector = std::make_shared<fixed_reflector>(reflection::reflection_result::fail(
-    reflection::reflection_action::replan,
-    {
-      .severity = reflection::reflection_severity::error,
-      .code = "wrong_path",
-      .message = "The step result shows this plan path cannot satisfy the goal.",
-    },
-    0.2),
+  auto reflector = std::make_shared<fixed_reflector>(
+    reflection::reflection_result::fail(reflection::reflection_action::replan,
+      {
+        .severity = reflection::reflection_severity::error,
+        .code = "wrong_path",
+        .message = "The step result shows this plan path cannot satisfy the goal.",
+      },
+      0.2),
     true);
-  auto reflection_runner = std::make_shared<reflection::reflection_runner>(reflection::reflection_runner_options {
-    .reflector = reflector,
-  });
+  auto reflection_runner =
+    std::make_shared<reflection::reflection_runner>(reflection::reflection_runner_options {
+      .reflector = reflector,
+    });
 
   plan_runner runner({
     .planner = planner,
@@ -435,8 +435,8 @@ void reflection_gate_can_trigger_replanning() {
 
 void invalid_plans_are_rejected_before_execution() {
   int executions = 0;
-  auto executor = std::make_shared<function_plan_executor>(
-    [&](const plan_step&, const plan_execution_context&) {
+  auto executor =
+    std::make_shared<function_plan_executor>([&](const plan_step&, const plan_execution_context&) {
       ++executions;
       return plan_step_result::completed();
     });
@@ -470,8 +470,8 @@ void invalid_plans_are_rejected_before_execution() {
         .available_tools = { { .name = "echo", .description = "Echo" } },
       },
     });
-    require_throws([&] { runner.run({ .goal = "reject invalid tool input" }); },
-      "invalid_tool_input");
+    require_throws(
+      [&] { runner.run({ .goal = "reject invalid tool input" }); }, "invalid_tool_input");
   }
 
   require(executions == 0, "invalid plans are rejected before executor runs");
@@ -486,7 +486,7 @@ void llm_planner_extracts_json_and_uses_tool_catalog() {
     "\"metadata\":{}}],\"metadata\":{}}\n"
     "```");
 
-  llm_planner planner(client);
+  llm_planner planner(client, { .provider = "planning-provider" });
   auto output = planner.create_plan({
     .goal = "Use a tool",
     .max_steps = 4,
@@ -505,20 +505,23 @@ void llm_planner_extracts_json_and_uses_tool_catalog() {
   require(client.last_request.messages.size() == 2, "llm planner sends system and user messages");
   require(client.last_request.messages.back().content.find("Available tools") != std::string::npos,
     "llm planner prompt includes tool catalog");
+  require(client.last_request.provider == "planning-provider",
+    "llm planner propagates its configured provider");
 }
 
 void llm_planner_rejects_unknown_tools() {
-  fake_llm_client client(
-    "{\"goal\":\"Bad tool\",\"steps\":[{\"id\":\"call\",\"title\":\"Call\","
-    "\"assigned_tool\":\"made_up\",\"input\":\"{}\"}]}");
+  fake_llm_client client("{\"goal\":\"Bad tool\",\"steps\":[{\"id\":\"call\",\"title\":\"Call\","
+                         "\"assigned_tool\":\"made_up\",\"input\":\"{}\"}]}");
 
   llm_planner planner(client);
-  require_throws([&] {
-    planner.create_plan({
-      .goal = "Bad tool",
-      .available_tools = { { .name = "echo", .description = "Echo" } },
-    });
-  }, "unknown_tool");
+  require_throws(
+    [&] {
+      planner.create_plan({
+        .goal = "Bad tool",
+        .available_tools = { { .name = "echo", .description = "Echo" } },
+      });
+    },
+    "unknown_tool");
 }
 
 void plan_serialization_round_trips_execution_state() {
@@ -606,11 +609,12 @@ void runner_stops_for_approval_and_resumes_after_approval() {
   plan_runner runner({
     .planner = planner,
     .executor = executor,
-    .observer = [&](const plan_event& event) {
-      if (event.type == plan_event_type::step_approval_required) {
-        approval_event = true;
-      }
-    },
+    .observer =
+      [&](const plan_event& event) {
+        if (event.type == plan_event_type::step_approval_required) {
+          approval_event = true;
+        }
+      },
   });
 
   auto waiting = runner.run({ .goal = "wait for approval" });
@@ -631,23 +635,25 @@ void runner_can_cancel_before_next_step() {
   auto planner = std::make_shared<static_planner>(std::vector<plan_step> {
     { .id = "one", .title = "One" },
   });
-  auto executor = std::make_shared<function_plan_executor>(
-    [](const plan_step&, const plan_execution_context&) {
+  auto executor =
+    std::make_shared<function_plan_executor>([](const plan_step&, const plan_execution_context&) {
       return plan_step_result::completed("should-not-run");
     });
 
   plan_runner runner({
     .planner = planner,
     .executor = executor,
-    .should_cancel = [&] {
-      ++cancel_checks;
-      return true;
-    },
+    .should_cancel =
+      [&] {
+        ++cancel_checks;
+        return true;
+      },
   });
 
   const auto result = runner.run({ .goal = "cancel" });
   require(!result.completed, "cancelled run does not complete");
-  require(result.stop_reason == plan_run_stop_reason::cancelled, "cancelled run reports cancellation");
+  require(
+    result.stop_reason == plan_run_stop_reason::cancelled, "cancelled run reports cancellation");
   require(result.steps_executed == 0, "cancelled run executes no steps");
   require(cancel_checks > 0, "cancellation callback checked");
 }
@@ -664,7 +670,8 @@ void plan_store_saves_loads_and_erases_plans() {
   require(memory_store.load("stored").has_value(), "in-memory plan store loads saved plan");
   require(memory_store.list().size() == 1, "in-memory plan store lists saved plan");
   require(memory_store.erase("stored"), "in-memory plan store erases saved plan");
-  require(!memory_store.load("stored").has_value(), "in-memory plan store no longer loads erased plan");
+  require(
+    !memory_store.load("stored").has_value(), "in-memory plan store no longer loads erased plan");
 
   const auto path = std::filesystem::temp_directory_path() / "wuwe-planning-tests-store.json";
   std::filesystem::remove(path);
@@ -681,8 +688,8 @@ void runner_persists_and_traces_progress() {
   auto planner = std::make_shared<static_planner>(std::vector<plan_step> {
     { .id = "trace", .title = "Trace" },
   });
-  auto executor = std::make_shared<function_plan_executor>(
-    [](const plan_step&, const plan_execution_context&) {
+  auto executor =
+    std::make_shared<function_plan_executor>([](const plan_step&, const plan_execution_context&) {
       return plan_step_result::completed("traced");
     });
 
@@ -690,9 +697,7 @@ void runner_persists_and_traces_progress() {
     .planner = planner,
     .executor = executor,
     .store = &store,
-    .trace_sink = [&](const plan_trace_event& event) {
-      traces.push_back(event);
-    },
+    .trace_sink = [&](const plan_trace_event& event) { traces.push_back(event); },
   });
 
   const auto result = runner.run({ .goal = "trace me" });
@@ -720,8 +725,7 @@ void runner_executes_ready_steps_in_parallel() {
       }
       const auto concurrent = active.fetch_add(1) + 1;
       auto observed = maximum_active.load();
-      while (concurrent > observed &&
-             !maximum_active.compare_exchange_weak(observed, concurrent)) {
+      while (concurrent > observed && !maximum_active.compare_exchange_weak(observed, concurrent)) {
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
       active.fetch_sub(1);
@@ -739,7 +743,8 @@ void runner_executes_ready_steps_in_parallel() {
   const auto result = runner.run({ .goal = "parallel" });
   require(result.completed, "parallel ready steps complete");
   require(result.steps_executed == 2, "parallel run executes both ready steps");
-  require(result.iterations == 2, "parallel run finishes after one execution iteration and one completion check");
+  require(result.iterations == 2,
+    "parallel run finishes after one execution iteration and one completion check");
   require(maximum_active.load() == 2, "ready steps overlap in execution");
   require(snapshot_is_consistent.load(),
     "parallel executors observe one immutable batch snapshot after all steps start");
@@ -756,8 +761,7 @@ void executor_capability_can_disable_concurrent_calls() {
     [&](const plan_step& step, const plan_execution_context&) {
       const auto concurrent = active.fetch_add(1) + 1;
       auto observed = maximum_active.load();
-      while (concurrent > observed &&
-             !maximum_active.compare_exchange_weak(observed, concurrent)) {
+      while (concurrent > observed && !maximum_active.compare_exchange_weak(observed, concurrent)) {
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       active.fetch_sub(1);
@@ -798,12 +802,14 @@ void executor_exception_becomes_a_step_failure() {
 }
 
 void runner_enforces_step_timeout_without_waiting_for_uncooperative_executor() {
+  auto finished = std::make_shared<std::atomic<bool>>(false);
   auto planner = std::make_shared<static_planner>(std::vector<plan_step> {
     { .id = "slow", .title = "Slow" },
   });
   auto executor = std::make_shared<function_plan_executor>(
-    [](const plan_step&, const plan_execution_context&) {
+    [finished](const plan_step&, const plan_execution_context&) {
       std::this_thread::sleep_for(std::chrono::milliseconds(250));
+      *finished = true;
       return plan_step_result::completed("late");
     });
 
@@ -835,6 +841,10 @@ void runner_enforces_step_timeout_without_waiting_for_uncooperative_executor() {
     "timed out step exposes a stable stop reason");
   require(result.value.steps.front().metadata.at("execution_detached") == "true",
     "timed out step records detached execution");
+  for (int attempt = 0; attempt < 500 && !finished->load(); ++attempt) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  require(finished->load(), "detached test execution finishes before the test process exits");
 }
 
 void step_timeout_requests_cooperative_cancellation_and_exposes_deadline() {
@@ -966,8 +976,8 @@ void resume_does_not_duplicate_detached_execution_without_explicit_policy() {
   auto planner = std::make_shared<static_planner>(std::vector<plan_step> {
     { .id = "detached", .title = "Detached" },
   });
-  auto executor = std::make_shared<function_plan_executor>(
-    [&](const plan_step&, const plan_execution_context&) {
+  auto executor =
+    std::make_shared<function_plan_executor>([&](const plan_step&, const plan_execution_context&) {
       ++executions;
       return plan_step_result::completed("reconciled");
     });
@@ -1007,27 +1017,29 @@ void approval_provider_can_auto_approve() {
   auto planner = std::make_shared<static_planner>(std::vector<plan_step> {
     { .id = "approved", .title = "Approved", .requires_approval = true },
   });
-  auto executor = std::make_shared<function_plan_executor>(
-    [](const plan_step&, const plan_execution_context&) {
+  auto executor =
+    std::make_shared<function_plan_executor>([](const plan_step&, const plan_execution_context&) {
       return plan_step_result::completed("ok");
     });
 
   plan_runner runner({
     .planner = planner,
     .executor = executor,
-    .approval_provider = [](const plan_step&, const plan&) {
-      return plan_approval_result {
-        .approved = true,
-        .reason = "test approval",
-        .metadata = { { "approved_by", "test" } },
-      };
-    },
+    .approval_provider =
+      [](const plan_step&, const plan&) {
+        return plan_approval_result {
+          .approved = true,
+          .reason = "test approval",
+          .metadata = { { "approved_by", "test" } },
+        };
+      },
   });
 
   const auto result = runner.run({ .goal = "auto approve" });
   require(result.completed, "approval provider allows execution");
   require(result.value.steps.front().approved, "approval provider marks step approved");
-  require(result.value.steps.front().metadata.at("approved_by") == "test", "approval metadata is recorded");
+  require(result.value.steps.front().metadata.at("approved_by") == "test",
+    "approval metadata is recorded");
 }
 
 void policy_hook_can_require_approval_or_deny() {
@@ -1044,20 +1056,23 @@ void policy_hook_can_require_approval_or_deny() {
     .planner = planner,
     .executor = executor,
     .policy = { .continue_after_step_failure = true },
-    .policy_check = [](const plan_step& step, const plan&) {
-      if (step.id == "needs-policy-approval" && !step.approved) {
-        return plan_policy_check { .decision = plan_policy_decision::require_approval, .reason = "policy" };
-      }
-      if (step.id == "denied") {
-        return plan_policy_check { .decision = plan_policy_decision::deny, .reason = "denied by policy" };
-      }
-      return plan_policy_check {};
-    },
+    .policy_check =
+      [](const plan_step& step, const plan&) {
+        if (step.id == "needs-policy-approval" && !step.approved) {
+          return plan_policy_check { .decision = plan_policy_decision::require_approval,
+            .reason = "policy" };
+        }
+        if (step.id == "denied") {
+          return plan_policy_check { .decision = plan_policy_decision::deny,
+            .reason = "denied by policy" };
+        }
+        return plan_policy_check {};
+      },
   });
 
   auto waiting = runner.run({ .goal = "policy" });
-  require(waiting.stop_reason == plan_run_stop_reason::approval_required,
-    "policy can require approval");
+  require(
+    waiting.stop_reason == plan_run_stop_reason::approval_required, "policy can require approval");
 
   waiting.value.steps.front().approved = true;
   const auto resumed = runner.resume(waiting.value);
@@ -1086,7 +1101,10 @@ void repair_normalizes_common_plan_issues() {
 void typed_io_and_artifacts_flow_between_steps() {
   auto planner = std::make_shared<static_planner>(std::vector<plan_step> {
     { .id = "produce", .title = "Produce" },
-    { .id = "consume", .title = "Consume", .depends_on = { "produce" }, .input_from_steps = { "produce" } },
+    { .id = "consume",
+      .title = "Consume",
+      .depends_on = { "produce" },
+      .input_from_steps = { "produce" } },
   });
   auto executor = std::make_shared<function_plan_executor>(
     [](const plan_step& step, const plan_execution_context& context) {
@@ -1099,7 +1117,8 @@ void typed_io_and_artifacts_flow_between_steps() {
         };
       }
       require(context.artifacts.at("answer") == 42, "artifact is available to downstream step");
-      require(step.input_json["steps"]["produce"]["value"] == 42, "step input includes upstream output");
+      require(
+        step.input_json["steps"]["produce"]["value"] == 42, "step input includes upstream output");
       return plan_step_result::completed("consumed");
     });
 
@@ -1114,10 +1133,9 @@ void agent_executor_hands_off_to_registered_agent() {
     { .id = "delegate", .title = "Delegate", .assigned_agent = "researcher" },
   });
   auto agent_executor = std::make_shared<agent_plan_executor>();
-  agent_executor->add_agent("researcher",
-    [](const plan_step& step, const plan_execution_context&) {
-      return plan_step_result::completed("agent:" + *step.assigned_agent);
-    });
+  agent_executor->add_agent("researcher", [](const plan_step& step, const plan_execution_context&) {
+    return plan_step_result::completed("agent:" + *step.assigned_agent);
+  });
 
   plan_runner runner({ .planner = planner, .executor = agent_executor });
   const auto result = runner.run({
@@ -1165,14 +1183,13 @@ void prioritization_orders_ready_steps_and_round_trips_signals() {
   });
   const auto result = runner.run({ .goal = "prioritize" });
   require(executed == std::vector<std::string> { "important" } &&
-      result.stop_reason == plan_run_stop_reason::step_budget_exhausted,
+            result.stop_reason == plan_run_stop_reason::step_budget_exhausted,
     "ready steps are dynamically ordered by formal priority signals");
 
   const auto json = plan_step_to_json(planner->create_plan({ .goal = "serialize" }).steps[1]);
   const auto restored = plan_step_from_json(json);
-  require(restored.priority == 5.0 && restored.urgency == 1.0 &&
-      restored.expected_value == 2.0 && restored.estimated_cost == 0.5 &&
-      restored.deadline.has_value(),
+  require(restored.priority == 5.0 && restored.urgency == 1.0 && restored.expected_value == 2.0 &&
+            restored.estimated_cost == 0.5 && restored.deadline.has_value(),
     "priority signals and deadlines round trip through the public plan codec");
 
   plan value {
@@ -1182,10 +1199,10 @@ void prioritization_orders_ready_steps_and_round_trips_signals() {
       { .id = "second", .title = "Second" },
     },
   };
-  plan_prioritizer custom({}, [](const plan_step& step, const plan&,
-      std::chrono::system_clock::time_point) {
-    return step.id == "second" ? 10.0 : 0.0;
-  });
+  plan_prioritizer custom(
+    {}, [](const plan_step& step, const plan&, std::chrono::system_clock::time_point) {
+      return step.id == "second" ? 10.0 : 0.0;
+    });
   require(custom.order(value, { 0, 1 }) == std::vector<std::size_t> { 1, 0 },
     "applications can replace the default priority scoring policy");
 }
@@ -1203,8 +1220,7 @@ void function_plan_executors_reject_empty_callbacks() {
   bool empty_tool_callbacks = false;
   try {
     (void)tool_plan_executor(
-      tool_plan_executor::tools_callback {},
-      tool_plan_executor::invoke_callback {});
+      tool_plan_executor::tools_callback {}, tool_plan_executor::invoke_callback {});
   }
   catch (const std::invalid_argument&) {
     empty_tool_callbacks = true;
@@ -1225,8 +1241,8 @@ void runner_rejects_invalid_execution_policies() {
   auto planner = std::make_shared<static_planner>(std::vector<plan_step> {
     { .id = "step", .title = "Step" },
   });
-  auto executor = std::make_shared<function_plan_executor>(
-    [](const plan_step&, const plan_execution_context&) {
+  auto executor =
+    std::make_shared<function_plan_executor>([](const plan_step&, const plan_execution_context&) {
       return plan_step_result::completed("done");
     });
   bool negative_timeout = false;

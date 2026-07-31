@@ -6,8 +6,8 @@
 #include <memory>
 #include <optional>
 #include <sstream>
-#include <stop_token>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -614,9 +614,7 @@ template<typename T>
   }
   if (descriptor.input_schema.is_object() && descriptor.input_schema.empty()) {
     descriptor.input_schema = nlohmann::json::parse(
-      model_tool.parameters_json_schema.empty()
-        ? "{}"
-        : model_tool.parameters_json_schema);
+      model_tool.parameters_json_schema.empty() ? "{}" : model_tool.parameters_json_schema);
   }
   agent::tools::validate_tool_descriptor(descriptor);
   return descriptor;
@@ -629,7 +627,8 @@ T parse_tool_arguments(const nlohmann::json& arguments) {
 
 template<typename T>
 T parse_tool_arguments(std::string_view arguments_json) {
-  const auto arguments = nlohmann::json::parse(arguments_json.empty() ? "{}" : std::string(arguments_json));
+  const auto arguments =
+    nlohmann::json::parse(arguments_json.empty() ? "{}" : std::string(arguments_json));
   return parse_tool_arguments<T>(arguments);
 }
 
@@ -734,63 +733,60 @@ public:
   template<typename ToolProvider>
   void add(std::shared_ptr<ToolProvider> provider) {
     if (!provider) {
-      throw std::invalid_argument(
-        "composite_tool_provider requires non-null providers");
+      throw std::invalid_argument("composite_tool_provider requires non-null providers");
     }
     providers_.push_back({
-      .descriptors = [provider] {
-        if constexpr (requires { provider->descriptors(); }) {
-          return provider->descriptors();
-        }
-        else {
-          std::vector<agent::tools::tool_descriptor> output;
-          for (const auto& tool : provider->tools()) {
-            output.push_back(agent::tools::descriptor_from_llm_tool(tool));
+      .descriptors =
+        [provider] {
+          if constexpr (requires { provider->descriptors(); }) {
+            return provider->descriptors();
           }
-          return output;
-        }
-      },
-      .invoke = [provider](
-                  const agent::tools::tool_invocation& invocation) {
-        if constexpr (requires { provider->invoke(invocation); }) {
-          return provider->invoke(invocation);
-        }
-        else if constexpr (requires {
-                             provider->invoke(
-                               invocation.name,
-                               invocation.arguments_json,
-                               invocation.stop_token);
-                           }) {
-          return provider->invoke(
-            invocation.name, invocation.arguments_json, invocation.stop_token);
-        }
-        else {
-          return provider->invoke(invocation.name, invocation.arguments_json);
-        }
-      },
-      .capabilities = [provider](const std::string& name) {
-        return agent::tools::resolve_tool_provider_capabilities(
-          *provider, name);
-      },
-      .compensate = [provider](
-                      const agent::tools::tool_invocation& invocation,
-                      const llm_tool_result& outcome) {
-        if constexpr (requires {
-                        { provider->compensate(invocation, outcome) } ->
-                          std::convertible_to<llm_tool_result>;
-                      }) {
-          return provider->compensate(invocation, outcome);
-        }
-        else {
-          return llm_tool_result {
-            .content = "tool provider does not support compensation",
-            .error_code = std::make_error_code(
-              std::errc::function_not_supported),
-            .error_category =
-              agent::tools::tool_error_category::internal,
-          };
-        }
-      },
+          else {
+            std::vector<agent::tools::tool_descriptor> output;
+            for (const auto& tool : provider->tools()) {
+              output.push_back(agent::tools::descriptor_from_llm_tool(tool));
+            }
+            return output;
+          }
+        },
+      .invoke =
+        [provider](const agent::tools::tool_invocation& invocation) {
+          if constexpr (requires { provider->invoke(invocation); }) {
+            return provider->invoke(invocation);
+          }
+          else if constexpr (requires {
+                               provider->invoke(
+                                 invocation.name, invocation.arguments_json, invocation.stop_token);
+                             }) {
+            return provider->invoke(
+              invocation.name, invocation.arguments_json, invocation.stop_token);
+          }
+          else {
+            return provider->invoke(invocation.name, invocation.arguments_json);
+          }
+        },
+      .capabilities =
+        [provider](const std::string& name) {
+          return agent::tools::resolve_tool_provider_capabilities(*provider, name);
+        },
+      .compensate =
+        [provider](
+          const agent::tools::tool_invocation& invocation, const llm_tool_result& outcome) {
+          if constexpr (requires {
+                          {
+                            provider->compensate(invocation, outcome)
+                            } -> std::convertible_to<llm_tool_result>;
+                        }) {
+            return provider->compensate(invocation, outcome);
+          }
+          else {
+            return llm_tool_result {
+              .content = "tool provider does not support compensation",
+              .error_code = std::make_error_code(std::errc::function_not_supported),
+              .error_category = agent::tools::tool_error_category::internal,
+            };
+          }
+        },
     });
   }
 
@@ -817,16 +813,12 @@ public:
     return result;
   }
 
-  llm_tool_result invoke(
-    const std::string& name,
-    const std::string& arguments_json) const {
+  llm_tool_result invoke(const std::string& name, const std::string& arguments_json) const {
     return invoke(name, arguments_json, {});
   }
 
   llm_tool_result invoke(
-    const std::string& name,
-    const std::string& arguments_json,
-    std::stop_token stop_token) const {
+    const std::string& name, const std::string& arguments_json, std::stop_token stop_token) const {
     auto descriptor = descriptor_for(name).value_or(agent::tools::tool_descriptor {
       .name = name,
     });
@@ -856,16 +848,17 @@ public:
   [[nodiscard]] agent::tools::tool_provider_capabilities contract_capabilities(
     const std::string& name) const {
     for (const auto& provider : providers_) {
-      if (provider_has_tool(provider, name)) return provider.capabilities(name);
+      if (provider_has_tool(provider, name))
+        return provider.capabilities(name);
     }
     return {};
   }
 
   llm_tool_result compensate(
-    const agent::tools::tool_invocation& invocation,
-    const llm_tool_result& outcome) const {
+    const agent::tools::tool_invocation& invocation, const llm_tool_result& outcome) const {
     for (const auto& provider : providers_) {
-      if (!provider_has_tool(provider, invocation.name)) continue;
+      if (!provider_has_tool(provider, invocation.name))
+        continue;
       const auto capabilities = provider.capabilities(invocation.name);
       if (!capabilities.compensation) {
         return {
@@ -887,15 +880,12 @@ private:
   struct provider_entry {
     std::function<std::vector<agent::tools::tool_descriptor>()> descriptors;
     std::function<llm_tool_result(const agent::tools::tool_invocation&)> invoke;
-    std::function<agent::tools::tool_provider_capabilities(const std::string&)>
-      capabilities;
-    std::function<llm_tool_result(
-      const agent::tools::tool_invocation&,
-      const llm_tool_result&)> compensate;
+    std::function<agent::tools::tool_provider_capabilities(const std::string&)> capabilities;
+    std::function<llm_tool_result(const agent::tools::tool_invocation&, const llm_tool_result&)>
+      compensate;
   };
 
-  std::optional<agent::tools::tool_descriptor> descriptor_for(
-    const std::string& name) const {
+  std::optional<agent::tools::tool_descriptor> descriptor_for(const std::string& name) const {
     for (const auto& descriptor : descriptors()) {
       if (descriptor.name == name) {
         return descriptor;
@@ -904,9 +894,7 @@ private:
     return std::nullopt;
   }
 
-  static bool contains_name(
-    const std::vector<std::string>& names,
-    const std::string& name) {
+  static bool contains_name(const std::vector<std::string>& names, const std::string& name) {
     for (const auto& existing : names) {
       if (existing == name) {
         return true;
@@ -915,9 +903,7 @@ private:
     return false;
   }
 
-  static bool provider_has_tool(
-    const provider_entry& provider,
-    const std::string& name) {
+  static bool provider_has_tool(const provider_entry& provider, const std::string& name) {
     for (const auto& descriptor : provider.descriptors()) {
       if (descriptor.name == name) {
         return true;

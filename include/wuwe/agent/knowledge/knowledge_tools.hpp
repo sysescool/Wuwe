@@ -1,9 +1,9 @@
 #ifndef WUWE_AGENT_KNOWLEDGE_TOOLS_HPP
 #define WUWE_AGENT_KNOWLEDGE_TOOLS_HPP
 
-#include <optional>
 #include <algorithm>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -123,18 +123,14 @@ private:
 class knowledge_tool_provider {
 public:
   explicit knowledge_tool_provider(
-    knowledge_retriever& retriever,
-    knowledge_tool_options options = {})
+    knowledge_retriever& retriever, knowledge_tool_options options = {})
       : retriever_(retriever), options_(std::move(options)) {
   }
 
-  knowledge_tool_provider(
-    knowledge_retriever& retriever,
-    const core::agent_execution_context& context,
-    knowledge_tool_options options = {})
+  knowledge_tool_provider(knowledge_retriever& retriever,
+    const core::agent_execution_context& context, knowledge_tool_options options = {})
       : retriever_(retriever), options_(std::move(options)) {
-    options_.access = knowledge_access_from_execution_context(
-      std::move(options_.access), context);
+    options_.access = knowledge_access_from_execution_context(std::move(options_.access), context);
   }
 
   std::vector<llm_tool> tools() const {

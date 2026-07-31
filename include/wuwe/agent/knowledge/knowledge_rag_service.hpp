@@ -37,6 +37,7 @@ struct knowledge_answer_request {
   std::string model;
   knowledge_policy policy;
   bool generate_answer { true };
+  std::string provider;
 };
 
 struct knowledge_answer_report {
@@ -52,22 +53,16 @@ struct knowledge_answer_report {
 
 class knowledge_rag_service {
 public:
-  knowledge_rag_service(
-    std::shared_ptr<knowledge_retriever> retriever,
-    knowledge_document_loader loader,
-    std::shared_ptr<::wuwe::llm_client> llm = {})
-      : retriever_(std::move(retriever)),
-        loader_(std::move(loader)),
-        llm_(std::move(llm)) {
+  knowledge_rag_service(std::shared_ptr<knowledge_retriever> retriever,
+    knowledge_document_loader loader, std::shared_ptr<::wuwe::llm_client> llm = {})
+      : retriever_(std::move(retriever)), loader_(std::move(loader)), llm_(std::move(llm)) {
     if (!retriever_) {
       throw std::invalid_argument("knowledge_rag_service requires knowledge_retriever");
     }
   }
 
-  knowledge_upload_report upload_document(
-    const std::filesystem::path& path,
-    knowledge_document_load_options options = {},
-    bool erase_stale = false) {
+  knowledge_upload_report upload_document(const std::filesystem::path& path,
+    knowledge_document_load_options options = {}, bool erase_stale = false) {
     const auto total_start = clock::now();
 
     const auto load_start = clock::now();
@@ -115,13 +110,14 @@ public:
       auto llm_request =
         ::wuwe::make_message()
         << ("system" < ::wuwe::says >
-              "Answer using only the provided knowledge. Include citation numbers like [1] "
-              "for every factual claim. Use only citation numbers that appear in the provided "
-              "knowledge block; do not invent citation numbers. If the knowledge is insufficient, "
-              "say so.")
+             "Answer using only the provided knowledge. Include citation numbers like [1] "
+             "for every factual claim. Use only citation numbers that appear in the provided "
+             "knowledge block; do not invent citation numbers. If the knowledge is insufficient, "
+             "say so.")
         << ("user" < ::wuwe::says > request.query);
       llm_request = context.augment(std::move(llm_request), request.query);
       llm_request.model = request.model;
+      llm_request.provider = request.provider;
       llm_request.temperature = 0.1;
       report.answer = llm_->complete(llm_request);
       report.answer_ms = elapsed_ms(answer_start);
@@ -136,7 +132,7 @@ private:
 
   static double elapsed_ms(clock::time_point start) {
     return static_cast<double>(
-      std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - start).count()) /
+             std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - start).count()) /
            1000.0;
   }
 

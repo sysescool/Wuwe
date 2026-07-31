@@ -86,6 +86,22 @@ Use `list_llm_providers()`, `find_llm_provider()`, and `make_default_llm_config(
 
 Capabilities describe the Wuwe adapter and protocol path. A specific model or upstream account can impose narrower limits, so applications should still handle provider errors and unsupported parameters.
 
+`llm_provider_registry` is the built-in provider catalog. It is intentionally
+separate from `agent::llm::llm_client_registry`, which owns configured runtime
+client instances. A `dispatching_llm_client` selects a runtime binding from
+`llm_request::provider`, a configured default, or an unambiguous single binding.
+Runtime binding IDs are case-sensitive and should be stable deployment identifiers,
+not credentials or endpoint URLs.
+The selected provider's own capability contract is checked before it receives the
+request. See [Resource-aware routing](resource-routing.md) for model-and-provider
+selection.
+Dispatcher graphs may be composed, but request lineage rejects recursive graphs
+even when a wrapper forwards the request through a worker thread. Independent
+requests started by callbacks are not treated as recursion. Exceptions raised by
+stream consumers remain consumer failures and do not produce a false
+backend-failure telemetry event. Dispatch observers may start independent model
+requests without recursively observing the events produced by those requests.
+
 ## Configuration
 
 `llm_client_config` includes:
