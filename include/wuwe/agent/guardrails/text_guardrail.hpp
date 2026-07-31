@@ -28,8 +28,7 @@ struct text_guardrail_options {
 
 class text_guardrail final : public guardrail {
 public:
-  explicit text_guardrail(text_guardrail_options options)
-      : options_(std::move(options)) {
+  explicit text_guardrail(text_guardrail_options options) : options_(std::move(options)) {
     if (options_.name.empty()) {
       throw std::invalid_argument("text_guardrail requires a name");
     }
@@ -106,11 +105,12 @@ private:
     if (!modified) {
       return guardrail_result::allow();
     }
-    return guardrail_result::modify(std::move(output), {
-      .severity = guardrail_severity::warning,
-      .code = "content_redacted",
-      .message = "sensitive content was redacted",
-    });
+    return guardrail_result::modify(std::move(output),
+      {
+        .severity = guardrail_severity::warning,
+        .code = "content_redacted",
+        .message = "sensitive content was redacted",
+      });
   }
 
   static std::optional<std::size_t> utf8_code_point_count(std::string_view value) {
@@ -161,9 +161,7 @@ private:
   }
 
   [[nodiscard]] std::size_t find(
-    std::string_view value,
-    std::string_view needle,
-    std::size_t offset = 0) const {
+    std::string_view value, std::string_view needle, std::size_t offset = 0) const {
     if (options_.case_sensitive) {
       return value.find(needle, offset);
     }

@@ -106,11 +106,8 @@ public:
     return run;
   }
 
-  [[nodiscard]] guardrail_run_result evaluate(
-    guardrail_stage stage,
-    std::string content,
-    std::string subject_id = {},
-    std::map<std::string, std::string> metadata = {}) const {
+  [[nodiscard]] guardrail_run_result evaluate(guardrail_stage stage, std::string content,
+    std::string subject_id = {}, std::map<std::string, std::string> metadata = {}) const {
     return evaluate({
       .stage = stage,
       .subject_id = std::move(subject_id),
@@ -121,8 +118,7 @@ public:
 
 private:
   [[nodiscard]] guardrail_result failure_result(
-    const std::string& name,
-    const std::string& message) const {
+    const std::string& name, const std::string& message) const {
     if (options_.failure_mode == guardrail_failure_mode::open) {
       auto result = guardrail_result::allow();
       result.issues.push_back({
@@ -150,8 +146,8 @@ private:
         result.decision == guardrail_decision::require_approval) {
       run.decision = result.decision;
     }
-    else if ((result.decision == guardrail_decision::modify ||
-              result.replacement_content || result.replacement_data) &&
+    else if ((result.decision == guardrail_decision::modify || result.replacement_content ||
+               result.replacement_data) &&
              run.decision == guardrail_decision::allow) {
       run.decision = guardrail_decision::modify;
     }
@@ -174,7 +170,8 @@ private:
       invoke([&] { options_.observer(run); });
     }
     if (options_.audit_sink) {
-      invoke([&] { options_.audit_sink->publish({
+      invoke([&] {
+        options_.audit_sink->publish({
         .module = "guardrails",
         .name = to_string(run.stage),
         .subject_id = run.subject_id,
@@ -186,10 +183,12 @@ private:
           { "checks", std::to_string(run.checks.size()) },
           { "issues", std::to_string(run.issues.size()) },
         },
-      }); });
+      });
+      });
     }
     if (options_.event_sink) {
-      invoke([&] { options_.event_sink->publish({
+      invoke([&] {
+        options_.event_sink->publish({
         .module = "guardrails",
         .name = "guardrail_evaluated",
         .subject_id = run.subject_id,
@@ -200,15 +199,15 @@ private:
           { "checks", std::to_string(run.checks.size()) },
           { "issues", std::to_string(run.issues.size()) },
         },
-      }); });
+      });
+      });
     }
     if (failures != 0) {
       run.metadata["telemetry_error_count"] = std::to_string(failures);
     }
   }
 
-  static std::chrono::milliseconds elapsed_since(
-    std::chrono::steady_clock::time_point started) {
+  static std::chrono::milliseconds elapsed_since(std::chrono::steady_clock::time_point started) {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - started);
   }

@@ -40,8 +40,7 @@ struct knowledge_benchmark_options {
 };
 
 inline std::vector<knowledge_benchmark_case> load_knowledge_benchmark_cases(
-  const std::filesystem::path& path,
-  std::size_t default_limit = 6) {
+  const std::filesystem::path& path, std::size_t default_limit = 6) {
   std::ifstream input(path);
   if (!input) {
     throw std::runtime_error("failed to open knowledge benchmark query file: " + path.string());
@@ -77,8 +76,7 @@ inline std::vector<knowledge_benchmark_case> load_knowledge_benchmark_cases(
 }
 
 inline knowledge_benchmark_report benchmark_knowledge_retrieval(
-  const knowledge_retriever& retriever,
-  const std::vector<knowledge_benchmark_case>& cases,
+  const knowledge_retriever& retriever, const std::vector<knowledge_benchmark_case>& cases,
   knowledge_benchmark_options options = {}) {
   using clock = std::chrono::steady_clock;
 
@@ -100,16 +98,16 @@ inline knowledge_benchmark_report benchmark_knowledge_retrieval(
       }
       const auto& item = cases[index];
 
-    knowledge_query query;
-    query.text = item.query;
-    query.limit = item.limit;
+      knowledge_query query;
+      query.text = item.query;
+      query.limit = item.limit;
 
-    const auto start = clock::now();
-    const auto results = retriever.retrieve(std::move(query));
-    const auto elapsed =
-      static_cast<double>(
-        std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - start).count()) /
-      1000.0;
+      const auto start = clock::now();
+      const auto results = retriever.retrieve(std::move(query));
+      const auto elapsed =
+        static_cast<double>(
+          std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - start).count()) /
+        1000.0;
       samples[index] = elapsed;
       result_counts[index] = results.size();
     }
@@ -137,8 +135,7 @@ inline knowledge_benchmark_report benchmark_knowledge_retrieval(
     if (sorted.empty()) {
       return 0.0;
     }
-    const auto position =
-      (percentile_value / 100.0) * static_cast<double>(sorted.size() - 1);
+    const auto position = (percentile_value / 100.0) * static_cast<double>(sorted.size() - 1);
     return sorted[static_cast<std::size_t>(position + 0.5)];
   };
 
@@ -152,8 +149,7 @@ inline knowledge_benchmark_report benchmark_knowledge_retrieval(
   return report;
 }
 
-inline std::string knowledge_benchmark_report_to_json(
-  const knowledge_benchmark_report& report) {
+inline std::string knowledge_benchmark_report_to_json(const knowledge_benchmark_report& report) {
   std::ostringstream output;
   output << "{";
   output << "\"query_count\":" << report.query_count << ",";

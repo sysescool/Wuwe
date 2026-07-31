@@ -26,9 +26,7 @@ struct audit_event {
   std::string trace_id;
   std::string subject_id;
   audit_event_outcome outcome { audit_event_outcome::attempted };
-  std::chrono::system_clock::time_point timestamp {
-    std::chrono::system_clock::now()
-  };
+  std::chrono::system_clock::time_point timestamp { std::chrono::system_clock::now() };
   std::chrono::milliseconds elapsed { 0 };
   std::map<std::string, std::string> attributes;
 };

@@ -27,25 +27,20 @@ public:
   virtual ~scheduler() = default;
 
   [[nodiscard]] virtual scheduled_task schedule_at(
-    scheduler_clock::time_point time,
-    scheduled_work work) = 0;
+    scheduler_clock::time_point time, scheduled_work work) = 0;
 
   [[nodiscard]] virtual bool wait_until(
-    scheduler_clock::time_point time,
-    std::stop_token stop_token = {}) = 0;
+    scheduler_clock::time_point time, std::stop_token stop_token = {}) = 0;
 
   [[nodiscard]] scheduled_task schedule_after(
-    scheduler_clock::duration delay,
-    scheduled_work work) {
+    scheduler_clock::duration delay, scheduled_work work) {
     if (delay < scheduler_clock::duration::zero()) {
       delay = scheduler_clock::duration::zero();
     }
     return schedule_at(scheduler_clock::now() + delay, std::move(work));
   }
 
-  [[nodiscard]] bool wait_for(
-    scheduler_clock::duration delay,
-    std::stop_token stop_token = {}) {
+  [[nodiscard]] bool wait_for(scheduler_clock::duration delay, std::stop_token stop_token = {}) {
     if (delay < scheduler_clock::duration::zero()) {
       delay = scheduler_clock::duration::zero();
     }
@@ -57,9 +52,7 @@ class timer_scheduler final : public scheduler {
 public:
   explicit timer_scheduler(std::shared_ptr<executor> dispatch_executor = {})
       : state_(std::make_shared<timer_state>(std::move(dispatch_executor))),
-        worker_([state = state_](std::stop_token stop_token) {
-          run(state, stop_token);
-        }) {
+        worker_([state = state_](std::stop_token stop_token) { run(state, stop_token); }) {
   }
 
   timer_scheduler(const timer_scheduler&) = delete;
@@ -70,15 +63,15 @@ public:
   }
 
   [[nodiscard]] scheduled_task schedule_at(
-    scheduler_clock::time_point time,
-    scheduled_work work) override {
+    scheduler_clock::time_point time, scheduled_work work) override {
     if (!work) {
       throw std::invalid_argument("scheduled work must not be empty");
     }
     scheduled_task_source source;
     const std::weak_ptr<timer_state> weak_state = state_;
     source.set_cancellation_notifier([weak_state] {
-      if (const auto state = weak_state.lock()) state->changed.notify_all();
+      if (const auto state = weak_state.lock())
+        state->changed.notify_all();
     });
     {
       std::scoped_lock lock(state_->mutex);
@@ -98,8 +91,7 @@ public:
   }
 
   [[nodiscard]] bool wait_until(
-    scheduler_clock::time_point time,
-    std::stop_token stop_token = {}) override {
+    scheduler_clock::time_point time, std::stop_token stop_token = {}) override {
     std::mutex mutex;
     std::condition_variable_any wake;
     std::unique_lock lock(mutex);
@@ -129,15 +121,16 @@ public:
       source.request_stop();
       (void)source.complete_without_running();
     }
-    for (const auto& task : active) task.request_stop();
+    for (const auto& task : active)
+      task.request_stop();
 
-    const bool inside_dispatch_domain = state_->dispatch_executor &&
-      state_->dispatch_executor->owns_current_thread();
+    const bool inside_dispatch_domain =
+      state_->dispatch_executor && state_->dispatch_executor->owns_current_thread();
 
     timer_worker.request_stop();
     state_->changed.notify_all();
-    const bool inside_timer_thread = timer_worker.joinable() &&
-      timer_worker.get_id() == std::this_thread::get_id();
+    const bool inside_timer_thread =
+      timer_worker.joinable() && timer_worker.get_id() == std::this_thread::get_id();
     if (timer_worker.joinable()) {
       if (inside_timer_thread) {
         // run() owns timer_state, so self-destruction can safely detach.
@@ -148,7 +141,8 @@ public:
           timer_worker.join();
         }
         catch (...) {
-          if (timer_worker.joinable()) timer_worker.detach();
+          if (timer_worker.joinable())
+            timer_worker.detach();
         }
       }
     }
@@ -183,7 +177,8 @@ private:
 
   struct later {
     bool operator()(const entry& lhs, const entry& rhs) const noexcept {
-      if (lhs.time != rhs.time) return lhs.time > rhs.time;
+      if (lhs.time != rhs.time)
+        return lhs.time > rhs.time;
       return lhs.sequence > rhs.sequence;
     }
   };
@@ -207,18 +202,17 @@ private:
     std::erase_if(tasks, [](const scheduled_task& task) { return task.done(); });
   }
 
-  static void run(
-    const std::shared_ptr<timer_state>& state,
-    std::stop_token stop_token) noexcept {
+  static void run(const std::shared_ptr<timer_state>& state, std::stop_token stop_token) noexcept {
     std::unique_lock lock(state->mutex);
     while (!stop_token.stop_requested()) {
       if (state->queue.empty()) {
-        state->changed.wait(lock, stop_token, [&] {
-          return state->stopping || !state->queue.empty();
-        });
+        state->changed.wait(
+          lock, stop_token, [&] { return state->stopping || !state->queue.empty(); });
       }
-      if (state->stopping || stop_token.stop_requested()) break;
-      if (state->queue.empty()) continue;
+      if (state->stopping || stop_token.stop_requested())
+        break;
+      if (state->queue.empty())
+        continue;
 
       if (state->queue.top().source.stop_token().stop_requested()) {
         auto cancelled = state->queue.top().source;
@@ -231,11 +225,11 @@ private:
 
       const auto due = state->queue.top().time;
       state->changed.wait_until(lock, stop_token, due, [&] {
-        return state->stopping || state->queue.empty() ||
-          state->queue.top().time < due ||
-          state->queue.top().source.stop_token().stop_requested();
+        return state->stopping || state->queue.empty() || state->queue.top().time < due ||
+               state->queue.top().source.stop_token().stop_requested();
       });
-      if (state->stopping || stop_token.stop_requested()) break;
+      if (state->stopping || stop_token.stop_requested())
+        break;
       if (state->queue.empty() || state->queue.top().time > scheduler_clock::now()) {
         continue;
       }
@@ -256,13 +250,11 @@ private:
       }
       else {
         try {
-          (void)dispatch->submit(
-            [source = item.source,
-             work = std::move(item.work)](std::stop_token dispatch_stop) mutable {
-              std::stop_callback cancel(dispatch_stop,
-                [source] { source.request_stop(); });
-              source.execute(std::move(work));
-            });
+          (void)dispatch->submit([source = item.source, work = std::move(item.work)](
+                                   std::stop_token dispatch_stop) mutable {
+            std::stop_callback cancel(dispatch_stop, [source] { source.request_stop(); });
+            source.execute(std::move(work));
+          });
         }
         catch (...) {
           (void)item.source.fail_without_running(std::current_exception());

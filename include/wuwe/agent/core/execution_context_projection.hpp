@@ -16,12 +16,10 @@ struct execution_context_projection_options {
   std::string metadata_prefix { "context.metadata." };
 };
 
-inline void apply_execution_context_attributes(
-  std::map<std::string, std::string>& target,
+inline void apply_execution_context_attributes(std::map<std::string, std::string>& target,
   const agent_execution_context& context,
   const execution_context_projection_options& options = {}) {
-  const auto apply_identifier = [&](std::string_view name,
-                                  const std::string& value) {
+  const auto apply_identifier = [&](std::string_view name, const std::string& value) {
     if (options.include_empty_identifiers || !value.empty()) {
       target[std::string(name)] = value;
     }
@@ -42,16 +40,14 @@ inline void apply_execution_context_attributes(
     return;
   }
   for (const auto& [key, value] : context.metadata) {
-    if (!options.include_sensitive_metadata &&
-        sensitive_execution_context_metadata_key(key)) {
+    if (!options.include_sensitive_metadata && sensitive_execution_context_metadata_key(key)) {
       continue;
     }
     target[options.metadata_prefix + key] = value;
   }
 }
 
-[[nodiscard]] inline std::map<std::string, std::string>
-execution_context_attributes(
+[[nodiscard]] inline std::map<std::string, std::string> execution_context_attributes(
   const agent_execution_context& context,
   const execution_context_projection_options& options = {}) {
   std::map<std::string, std::string> output;

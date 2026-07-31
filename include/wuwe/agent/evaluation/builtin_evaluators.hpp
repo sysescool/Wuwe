@@ -70,8 +70,7 @@ struct contains_terms_options {
 
 class contains_terms_evaluator final : public evaluator {
 public:
-  explicit contains_terms_evaluator(contains_terms_options options)
-      : options_(std::move(options)) {
+  explicit contains_terms_evaluator(contains_terms_options options) : options_(std::move(options)) {
   }
 
   [[nodiscard]] std::string name() const override {
@@ -89,18 +88,17 @@ public:
         missing.push_back(term);
       }
     }
-    const double score = options_.terms.empty()
-                           ? 1.0
-                           : static_cast<double>(matches) /
-                               static_cast<double>(options_.terms.size());
+    const double score = options_.terms.empty() ? 1.0
+                                                : static_cast<double>(matches) /
+                                                    static_cast<double>(options_.terms.size());
     const bool passed = options_.terms.empty() ||
                         (options_.require_all ? matches == options_.terms.size() : matches != 0);
     return {
       .name = name(),
       .score = score,
       .passed = passed,
-      .explanation = passed ? "output contained the required terms"
-                            : "output was missing required terms",
+      .explanation =
+        passed ? "output contained the required terms" : "output was missing required terms",
       .evidence = std::move(missing),
     };
   }
@@ -177,10 +175,9 @@ public:
 
     std::vector<std::string> violations;
     std::size_t satisfied = 0;
-    std::size_t expectations = expectation_.required_events.size() +
-                               expectation_.forbidden_events.size() +
-                               expectation_.maximum_occurrences.size() +
-                               (expectation_.required_sequence.empty() ? 0U : 1U);
+    std::size_t expectations =
+      expectation_.required_events.size() + expectation_.forbidden_events.size() +
+      expectation_.maximum_occurrences.size() + (expectation_.required_sequence.empty() ? 0U : 1U);
     for (const auto& event : expectation_.required_events) {
       if (counts[event] != 0) {
         ++satisfied;
@@ -220,10 +217,8 @@ public:
         violations.push_back("too_many:" + event);
       }
     }
-    const double score = expectations == 0
-                           ? 1.0
-                           : static_cast<double>(satisfied) /
-                               static_cast<double>(expectations);
+    const double score =
+      expectations == 0 ? 1.0 : static_cast<double>(satisfied) / static_cast<double>(expectations);
     return {
       .name = name(),
       .score = score,

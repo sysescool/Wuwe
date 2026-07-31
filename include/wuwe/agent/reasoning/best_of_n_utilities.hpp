@@ -5,13 +5,10 @@
 
 namespace wuwe::agent::reasoning {
 
-inline best_of_n_candidate_generator make_reasoning_candidate_generator(
-  reasoning_runner runner) {
+inline best_of_n_candidate_generator make_reasoning_candidate_generator(reasoning_runner runner) {
   return [runner = std::move(runner)](
-           const reasoning_request& request,
-           const best_of_n_context& context) {
-    const auto isolated =
-      context.side_effects == best_of_n_side_effect_policy::isolate;
+           const reasoning_request& request, const best_of_n_context& context) {
+    const auto isolated = context.side_effects == best_of_n_side_effect_policy::isolate;
     return runner.run(request, reasoning_run_options {
       .stop_token = context.stop_token,
       .effects = {
@@ -26,10 +23,10 @@ inline best_of_n_candidate_generator make_reasoning_candidate_generator(
 }
 
 inline bool commit_best_of_n_result(
-  const reasoning_runner& runner,
-  const best_of_n_result& result) {
+  const reasoning_runner& runner, const best_of_n_result& result) {
   const auto* selected = result.selected_candidate();
-  if (!selected) return false;
+  if (!selected)
+    return false;
   runner.commit_selected_result(selected->result);
   return true;
 }
@@ -39,8 +36,7 @@ inline best_of_n_selector make_majority_vote_selector(best_of_n_vote_key vote_ke
     throw std::invalid_argument("majority vote selector requires a vote key function");
   }
   return [vote_key = std::move(vote_key)](
-           const std::vector<best_of_n_candidate>& candidates)
-           -> std::optional<std::size_t> {
+           const std::vector<best_of_n_candidate>& candidates) -> std::optional<std::size_t> {
     struct vote_group {
       std::size_t count { 0 };
       double total_score { 0.0 };
@@ -48,14 +44,14 @@ inline best_of_n_selector make_majority_vote_selector(best_of_n_vote_key vote_ke
     };
     std::map<std::string, vote_group> groups;
     for (const auto& candidate : candidates) {
-      if (!candidate.eligible()) continue;
+      if (!candidate.eligible())
+        continue;
       auto& group = groups[vote_key(candidate)];
       ++group.count;
       group.total_score += candidate.score->value;
-      if (!group.representative ||
-          candidate.score->value > group.representative->score->value ||
+      if (!group.representative || candidate.score->value > group.representative->score->value ||
           (candidate.score->value == group.representative->score->value &&
-           candidate.index < group.representative->index)) {
+            candidate.index < group.representative->index)) {
         group.representative = &candidate;
       }
     }
@@ -66,7 +62,7 @@ inline best_of_n_selector make_majority_vote_selector(best_of_n_vote_key vote_ke
       if (!best || group.count > best->count ||
           (group.count == best->count && group.total_score > best->total_score) ||
           (group.count == best->count && group.total_score == best->total_score &&
-           group.representative->index < best->representative->index)) {
+            group.representative->index < best->representative->index)) {
         best = &group;
       }
     }
@@ -88,9 +84,8 @@ inline nlohmann::json best_of_n_event_to_json(const best_of_n_event& event) {
   return {
     { "sequence", event.sequence },
     { "type", to_string(event.type) },
-    { "candidate_index", event.candidate_index
-                             ? nlohmann::json(*event.candidate_index)
-                             : nlohmann::json(nullptr) },
+    { "candidate_index",
+      event.candidate_index ? nlohmann::json(*event.candidate_index) : nlohmann::json(nullptr) },
     { "score", event.score ? nlohmann::json(*event.score) : nlohmann::json(nullptr) },
     { "message", event.message },
     { "elapsed_ms", event.elapsed.count() },
@@ -104,9 +99,8 @@ inline nlohmann::json best_of_n_result_to_json(const best_of_n_result& result) {
     candidates.push_back({
       { "index", candidate.index },
       { "status", to_string(candidate.status) },
-      { "score", candidate.score
-                     ? best_of_n_score_to_json(*candidate.score)
-                     : nlohmann::json(nullptr) },
+      { "score",
+        candidate.score ? best_of_n_score_to_json(*candidate.score) : nlohmann::json(nullptr) },
       { "result", reasoning_result_to_json(candidate.result) },
       { "error", candidate.error },
       { "elapsed_ms", candidate.elapsed.count() },
@@ -114,12 +108,12 @@ inline nlohmann::json best_of_n_result_to_json(const best_of_n_result& result) {
     });
   }
   auto trace = nlohmann::json::array();
-  for (const auto& event : result.trace) trace.push_back(best_of_n_event_to_json(event));
+  for (const auto& event : result.trace)
+    trace.push_back(best_of_n_event_to_json(event));
   return {
     { "completed", result.completed },
-    { "selected_index", result.selected_index
-                            ? nlohmann::json(*result.selected_index)
-                            : nlohmann::json(nullptr) },
+    { "selected_index",
+      result.selected_index ? nlohmann::json(*result.selected_index) : nlohmann::json(nullptr) },
     { "stop_reason", to_string(result.stop_reason) },
     { "error", result.error },
     { "elapsed_ms", result.elapsed.count() },
@@ -136,8 +130,7 @@ inline nlohmann::json best_of_n_result_to_json(const best_of_n_result& result) {
     { "telemetry_error_count", result.telemetry_error_count },
     { "aggregate_usage", reasoning_usage_to_json(result.aggregate_usage) },
     { "budget_accounted_usage", reasoning_usage_to_json(result.budget_accounted_usage) },
-    { "outstanding_reserved_usage",
-      reasoning_usage_to_json(result.outstanding_reserved_usage) },
+    { "outstanding_reserved_usage", reasoning_usage_to_json(result.outstanding_reserved_usage) },
     { "candidates", std::move(candidates) },
     { "trace", std::move(trace) },
   };

@@ -41,18 +41,13 @@ struct restricted_acl_grant_result {
   std::size_t files_granted {};
 };
 
-[[nodiscard]] const char* to_string(
-  restricted_acl_grant_status status) noexcept;
+[[nodiscard]] const char* to_string(restricted_acl_grant_status status) noexcept;
 
 [[nodiscard]] restricted_acl_grant_result grant_restricted_file_access(
-  const std::filesystem::path& path,
-  PSID sid,
-  DWORD access_permissions);
+  const std::filesystem::path& path, PSID sid, DWORD access_permissions);
 
 [[nodiscard]] restricted_acl_grant_result grant_restricted_directory_access(
-  const std::filesystem::path& path,
-  PSID sid,
-  DWORD access_permissions);
+  const std::filesystem::path& path, PSID sid, DWORD access_permissions);
 
 [[nodiscard]] restricted_acl_grant_result grant_restricted_tree_access(
   const restricted_acl_grant_request& request);

@@ -7,12 +7,13 @@
 WUWE_NAMESPACE_BEGIN
 
 openrouter_llm_client::openrouter_llm_client(llm_client_config config)
-    : openai_compatible_llm_client(normalize_config(std::move(config))) {}
+    : openai_compatible_llm_client(normalize_config(std::move(config))) {
+}
 
 openrouter_llm_client::openrouter_llm_client(
-  llm_client_config config,
-  std::shared_ptr<http_client> http)
-    : openai_compatible_llm_client(normalize_config(std::move(config)), std::move(http)) {}
+  llm_client_config config, std::shared_ptr<http_client> http)
+    : openai_compatible_llm_client(normalize_config(std::move(config)), std::move(http)) {
+}
 
 llm_client_config openrouter_llm_client::normalize_config(llm_client_config config) {
   if (auto normalized = normalize_llm_client_config("OpenRouter", config)) {

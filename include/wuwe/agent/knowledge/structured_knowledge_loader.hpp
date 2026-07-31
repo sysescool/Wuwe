@@ -30,8 +30,7 @@ struct structured_knowledge_loader_options {
 class structured_knowledge_loader {
 public:
   knowledge_document load_csv(
-    const std::filesystem::path& path,
-    structured_knowledge_loader_options options = {}) const {
+    const std::filesystem::path& path, structured_knowledge_loader_options options = {}) const {
     const auto text = read_file(path);
     auto rows = parse_csv(text);
 
@@ -63,8 +62,7 @@ public:
   }
 
   knowledge_document load_json(
-    const std::filesystem::path& path,
-    structured_knowledge_loader_options options = {}) const {
+    const std::filesystem::path& path, structured_knowledge_loader_options options = {}) const {
     const auto text = read_file(path);
     const auto json = nlohmann::json::parse(text);
 
@@ -78,8 +76,7 @@ public:
   }
 
   knowledge_document load_openapi_json(
-    const std::filesystem::path& path,
-    structured_knowledge_loader_options options = {}) const {
+    const std::filesystem::path& path, structured_knowledge_loader_options options = {}) const {
     const auto text = read_file(path);
     const auto json = nlohmann::json::parse(text);
 
@@ -136,12 +133,11 @@ private:
     return content.str();
   }
 
-  static knowledge_document make_document(
-    const std::filesystem::path& path,
-    structured_knowledge_loader_options options,
-    std::string content) {
+  static knowledge_document make_document(const std::filesystem::path& path,
+    structured_knowledge_loader_options options, std::string content) {
     knowledge_document document;
-    document.id = options.id.empty() ? file_knowledge_loader::default_id(path) : std::move(options.id);
+    document.id =
+      options.id.empty() ? file_knowledge_loader::default_id(path) : std::move(options.id);
     document.title = options.title.empty() ? path.stem().string() : std::move(options.title);
     document.source_uri =
       options.source_uri.empty() ? path.generic_string() : std::move(options.source_uri);
@@ -209,11 +205,8 @@ private:
     return true;
   }
 
-  static void flatten_json(
-    const nlohmann::json& value,
-    const std::string& path,
-    std::ostringstream& output,
-    std::size_t max_scalar_length) {
+  static void flatten_json(const nlohmann::json& value, const std::string& path,
+    std::ostringstream& output, std::size_t max_scalar_length) {
     if (value.is_object()) {
       for (const auto& [key, item] : value.items()) {
         flatten_json(item, path + "." + key, output, max_scalar_length);
@@ -222,7 +215,8 @@ private:
     }
     if (value.is_array()) {
       for (std::size_t index = 0; index < value.size(); ++index) {
-        flatten_json(value[index], path + "[" + std::to_string(index) + "]", output, max_scalar_length);
+        flatten_json(
+          value[index], path + "[" + std::to_string(index) + "]", output, max_scalar_length);
       }
       return;
     }
@@ -235,9 +229,8 @@ private:
   }
 
   static bool is_http_method(const std::string& value) {
-    return value == "get" || value == "put" || value == "post" ||
-           value == "delete" || value == "patch" || value == "head" ||
-           value == "options" || value == "trace";
+    return value == "get" || value == "put" || value == "post" || value == "delete" ||
+           value == "patch" || value == "head" || value == "options" || value == "trace";
   }
 };
 

@@ -62,19 +62,15 @@ struct restricted_appcontainer_launch_request {
 };
 
 struct restricted_appcontainer_launch_result {
-  restricted_appcontainer_launch_status status {
-    restricted_appcontainer_launch_status::ok
-  };
+  restricted_appcontainer_launch_status status { restricted_appcontainer_launch_status::ok };
   restricted_appcontainer_process_capture capture;
   DWORD win32_error { ERROR_SUCCESS };
   std::string detail;
 };
 
-[[nodiscard]] const char* to_string(
-  restricted_appcontainer_launch_status status) noexcept;
+[[nodiscard]] const char* to_string(restricted_appcontainer_launch_status status) noexcept;
 
-[[nodiscard]] restricted_appcontainer_launch_result
-launch_restricted_appcontainer_process(
+[[nodiscard]] restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
   restricted_appcontainer_launch_request request);
 
 } // namespace wuwe::agent::execution::detail

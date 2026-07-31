@@ -54,9 +54,7 @@ struct shell_request {
 };
 
 struct process_result {
-  process_termination_reason termination_reason {
-    process_termination_reason::backend_error
-  };
+  process_termination_reason termination_reason { process_termination_reason::backend_error };
   std::optional<int> exit_code;
   std::optional<std::uint64_t> process_id;
   bool stdout_truncated { false };

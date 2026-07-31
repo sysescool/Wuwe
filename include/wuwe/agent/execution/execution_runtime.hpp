@@ -16,29 +16,21 @@ namespace wuwe::agent::execution {
 
 class execution_runtime {
 public:
-  execution_runtime(
-    std::unique_ptr<execution_backend> backend,
-    execution_policy policy,
-    audit::audit_sink* audit = nullptr,
-    approval::approval_service* approvals = nullptr);
+  execution_runtime(std::unique_ptr<execution_backend> backend, execution_policy policy,
+    audit::audit_sink* audit = nullptr, approval::approval_service* approvals = nullptr);
 
   execution_runtime(const execution_runtime&) = delete;
   execution_runtime& operator=(const execution_runtime&) = delete;
   execution_runtime(execution_runtime&&) = delete;
   execution_runtime& operator=(execution_runtime&&) = delete;
 
-  [[nodiscard]] execution_result run(
-    execution_request request,
-    std::stop_token stop_token = {});
+  [[nodiscard]] execution_result run(execution_request request, std::stop_token stop_token = {});
 
   [[nodiscard]] const execution_policy& policy() const noexcept;
   [[nodiscard]] const execution_backend* backend() const noexcept;
 
-  void audit_tool_rejection(
-    const std::string& event_name,
-    const std::string& tool_name,
-    const std::string& reason,
-    const std::map<std::string, std::string>& attributes = {});
+  void audit_tool_rejection(const std::string& event_name, const std::string& tool_name,
+    const std::string& reason, const std::map<std::string, std::string>& attributes = {});
 
 private:
   std::unique_ptr<execution_backend> backend_;

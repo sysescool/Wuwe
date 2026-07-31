@@ -28,15 +28,14 @@ enum class telemetry_failure_mode {
 };
 
 template<typename Callback>
-[[nodiscard]] bool invoke_telemetry(
-  telemetry_failure_mode mode,
-  Callback&& callback) {
+[[nodiscard]] bool invoke_telemetry(telemetry_failure_mode mode, Callback&& callback) {
   try {
     std::forward<Callback>(callback)();
     return true;
   }
   catch (...) {
-    if (mode == telemetry_failure_mode::propagate) throw;
+    if (mode == telemetry_failure_mode::propagate)
+      throw;
     return false;
   }
 }
@@ -60,8 +59,8 @@ struct agent_event {
 
 inline nlohmann::json agent_event_to_json(const agent_event& event) {
   const auto timestamp_ms =
-    std::chrono::duration_cast<std::chrono::milliseconds>(
-      event.timestamp.time_since_epoch()).count();
+    std::chrono::duration_cast<std::chrono::milliseconds>(event.timestamp.time_since_epoch())
+      .count();
   return {
     { "schemaVersion", event.schema_version },
     { "module", event.module },
@@ -98,10 +97,8 @@ inline agent_event agent_event_from_json(const nlohmann::json& value) {
   event.tool_call_id = value.value("toolCallId", std::string {});
   event.timestamp = std::chrono::system_clock::time_point(
     std::chrono::milliseconds(value.value("timestampUnixMillis", std::int64_t {})));
-  event.elapsed = std::chrono::milliseconds(
-    value.value("elapsedMillis", std::int64_t {}));
-  event.attributes = value.value(
-    "attributes", std::map<std::string, std::string> {});
+  event.elapsed = std::chrono::milliseconds(value.value("elapsedMillis", std::int64_t {}));
+  event.attributes = value.value("attributes", std::map<std::string, std::string> {});
   event.data = value.value("data", nlohmann::json {});
   return event;
 }
@@ -156,10 +153,12 @@ public:
         sink->publish(event);
       }
       catch (...) {
-        if (!first_failure) first_failure = std::current_exception();
+        if (!first_failure)
+          first_failure = std::current_exception();
       }
     }
-    if (first_failure) std::rethrow_exception(first_failure);
+    if (first_failure)
+      std::rethrow_exception(first_failure);
   }
 
 private:
@@ -197,9 +196,7 @@ enum class async_event_overflow_policy {
 
 struct async_event_sink_options {
   std::size_t capacity { 4096 };
-  async_event_overflow_policy overflow_policy {
-    async_event_overflow_policy::drop_newest
-  };
+  async_event_overflow_policy overflow_policy { async_event_overflow_policy::drop_newest };
   telemetry_failure_mode failure_mode { telemetry_failure_mode::ignore };
 };
 
@@ -213,8 +210,7 @@ struct async_event_sink_stats {
 class async_event_sink final : public event_sink {
 public:
   explicit async_event_sink(
-    std::shared_ptr<event_sink> destination,
-    async_event_sink_options options = {})
+    std::shared_ptr<event_sink> destination, async_event_sink_options options = {})
       : destination_(std::move(destination)), options_(options) {
     if (!destination_) {
       throw std::invalid_argument("async event sink requires a destination");
@@ -222,8 +218,7 @@ public:
     if (options_.capacity == 0) {
       throw std::invalid_argument("async event sink capacity must be positive");
     }
-    worker_ = std::jthread(
-      [this](std::stop_token token) { consume(token); });
+    worker_ = std::jthread([this](std::stop_token token) { consume(token); });
   }
 
   ~async_event_sink() override {
@@ -267,7 +262,8 @@ public:
   void close(bool drain) noexcept {
     {
       std::scoped_lock lock(mutex_);
-      if (closed_) return;
+      if (closed_)
+        return;
       closed_ = true;
       if (!drain) {
         dropped_.fetch_add(queue_.size(), std::memory_order_relaxed);
@@ -304,7 +300,8 @@ private:
         std::unique_lock lock(mutex_);
         available_.wait(lock, token, [this] { return closed_ || !queue_.empty(); });
         if (queue_.empty()) {
-          if (closed_ || token.stop_requested()) break;
+          if (closed_ || token.stop_requested())
+            break;
           continue;
         }
         event = std::move(queue_.front());
@@ -318,12 +315,14 @@ private:
       catch (...) {
         failures_.fetch_add(1, std::memory_order_relaxed);
         std::scoped_lock lock(mutex_);
-        if (!failure_) failure_ = std::current_exception();
+        if (!failure_)
+          failure_ = std::current_exception();
       }
       {
         std::scoped_lock lock(mutex_);
         delivering_ = false;
-        if (queue_.empty()) drained_.notify_all();
+        if (queue_.empty())
+          drained_.notify_all();
       }
     }
     std::scoped_lock lock(mutex_);

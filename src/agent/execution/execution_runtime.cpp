@@ -12,11 +12,8 @@ std::string make_execution_id(std::size_t id) {
   return "execution-" + std::to_string(id);
 }
 
-audit::audit_event make_audit_event(
-  const std::string& name,
-  const std::string& execution_id,
-  audit::audit_event_outcome outcome,
-  const execution_request& request,
+audit::audit_event make_audit_event(const std::string& name, const std::string& execution_id,
+  audit::audit_event_outcome outcome, const execution_request& request,
   std::chrono::milliseconds elapsed = std::chrono::milliseconds { 0 }) {
   audit::audit_event event;
   event.module = "execution";
@@ -44,9 +41,7 @@ audit::audit_event make_audit_event(
   return event;
 }
 
-void add_backend_attributes(
-  audit::audit_event& event,
-  const execution_backend* backend) {
+void add_backend_attributes(audit::audit_event& event, const execution_backend* backend) {
   if (backend == nullptr) {
     event.attributes["backend"] = "none";
     return;
@@ -61,14 +56,10 @@ void add_backend_attributes(
   }
   event.attributes["shell_execution_enforcement"] =
     sandbox::to_string(info.enforcement.shell_execution);
-  event.attributes["timeout_enforcement"] =
-    sandbox::to_string(info.enforcement.timeout);
-  event.attributes["cancellation_enforcement"] =
-    sandbox::to_string(info.enforcement.cancellation);
-  event.attributes["stdout_limit_enforcement"] =
-    sandbox::to_string(info.enforcement.stdout_limit);
-  event.attributes["stderr_limit_enforcement"] =
-    sandbox::to_string(info.enforcement.stderr_limit);
+  event.attributes["timeout_enforcement"] = sandbox::to_string(info.enforcement.timeout);
+  event.attributes["cancellation_enforcement"] = sandbox::to_string(info.enforcement.cancellation);
+  event.attributes["stdout_limit_enforcement"] = sandbox::to_string(info.enforcement.stdout_limit);
+  event.attributes["stderr_limit_enforcement"] = sandbox::to_string(info.enforcement.stderr_limit);
   event.attributes["environment_allowlist_enforcement"] =
     sandbox::to_string(info.enforcement.environment_allowlist);
   event.attributes["working_directory_enforcement"] =
@@ -79,18 +70,15 @@ void add_backend_attributes(
     sandbox::to_string(info.enforcement.process_count_limit);
   event.attributes["cpu_time_limit_enforcement"] =
     sandbox::to_string(info.enforcement.cpu_time_limit);
-  event.attributes["memory_limit_enforcement"] =
-    sandbox::to_string(info.enforcement.memory_limit);
+  event.attributes["memory_limit_enforcement"] = sandbox::to_string(info.enforcement.memory_limit);
   event.attributes["file_read_deny_enforcement"] =
     sandbox::to_string(info.enforcement.filesystem_read_deny);
   event.attributes["file_write_deny_enforcement"] =
     sandbox::to_string(info.enforcement.filesystem_write_deny);
-  event.attributes["network_deny_enforcement"] =
-    sandbox::to_string(info.enforcement.network_deny);
+  event.attributes["network_deny_enforcement"] = sandbox::to_string(info.enforcement.network_deny);
 }
 
-std::string policy_event_name(
-  const capability::capability_policy_result& result) {
+std::string policy_event_name(const capability::capability_policy_result& result) {
   const auto denial_kind = result.metadata.find("denial_kind");
   if (denial_kind != result.metadata.end() && denial_kind->second == "input_limit") {
     return "input_limit";
@@ -98,9 +86,7 @@ std::string policy_event_name(
   return "policy_evaluated";
 }
 
-execution_result denied_result(
-  execution_termination_reason reason,
-  std::string message,
+execution_result denied_result(execution_termination_reason reason, std::string message,
   const capability::capability_policy_result& policy_result) {
   return {
     .termination_reason = reason,
@@ -129,33 +115,23 @@ audit::audit_event_outcome outcome_for_result(const execution_result& result) {
 
 } // namespace
 
-execution_runtime::execution_runtime(
-  std::unique_ptr<execution_backend> backend,
-  execution_policy policy,
-  audit::audit_sink* audit,
-  approval::approval_service* approvals)
-    : backend_(std::move(backend)),
-      policy_(std::move(policy)),
-      audit_(audit),
+execution_runtime::execution_runtime(std::unique_ptr<execution_backend> backend,
+  execution_policy policy, audit::audit_sink* audit, approval::approval_service* approvals)
+    : backend_(std::move(backend)), policy_(std::move(policy)), audit_(audit),
       approvals_(approvals) {
 }
 
-execution_result execution_runtime::run(
-  execution_request request,
-  std::stop_token stop_token) {
+execution_result execution_runtime::run(execution_request request, std::stop_token stop_token) {
   const auto execution_id = make_execution_id(next_execution_id_.fetch_add(1));
   request.metadata["execution_id"] = execution_id;
 
-  const auto evaluation =
-    evaluate_execution_policy(std::move(request), policy_, execution_id);
+  const auto evaluation = evaluate_execution_policy(std::move(request), policy_, execution_id);
   auto normalized = evaluation.normalized_request;
 
   if (audit_) {
-    auto event = make_audit_event(
-      policy_event_name(evaluation.capability_result),
+    auto event = make_audit_event(policy_event_name(evaluation.capability_result),
       execution_id,
-      evaluation.capability_result.decision ==
-          capability::capability_policy_decision::deny
+      evaluation.capability_result.decision == capability::capability_policy_decision::deny
         ? audit::audit_event_outcome::denied
         : audit::audit_event_outcome::allowed,
       normalized);
@@ -165,10 +141,8 @@ execution_result execution_runtime::run(
     audit_->publish(event);
   }
 
-  if (evaluation.capability_result.decision ==
-      capability::capability_policy_decision::deny) {
-    return denied_result(
-      execution_termination_reason::policy_denied,
+  if (evaluation.capability_result.decision == capability::capability_policy_decision::deny) {
+    return denied_result(execution_termination_reason::policy_denied,
       evaluation.capability_result.reason,
       evaluation.capability_result);
   }
@@ -178,13 +152,9 @@ execution_result execution_runtime::run(
     if (!approvals_) {
       if (audit_) {
         audit_->publish(make_audit_event(
-          "approval_missing",
-          execution_id,
-          audit::audit_event_outcome::denied,
-          normalized));
+          "approval_missing", execution_id, audit::audit_event_outcome::denied, normalized));
       }
-      return denied_result(
-        execution_termination_reason::approval_denied,
+      return denied_result(execution_termination_reason::approval_denied,
         "approval required but no approval service is configured",
         evaluation.capability_result);
     }
@@ -199,25 +169,18 @@ execution_result execution_runtime::run(
     if (decision.kind != approval::approval_decision_kind::approved) {
       if (audit_) {
         auto event = make_audit_event(
-          "approval_denied",
-          execution_id,
-          audit::audit_event_outcome::denied,
-          normalized);
+          "approval_denied", execution_id, audit::audit_event_outcome::denied, normalized);
         event.attributes["approval_reason"] = decision.reason;
         audit_->publish(event);
       }
-      return denied_result(
-        execution_termination_reason::approval_denied,
+      return denied_result(execution_termination_reason::approval_denied,
         decision.reason.empty() ? "approval denied" : decision.reason,
         evaluation.capability_result);
     }
 
     if (audit_) {
       auto event = make_audit_event(
-        "approval_approved",
-        execution_id,
-        audit::audit_event_outcome::approved,
-        normalized);
+        "approval_approved", execution_id, audit::audit_event_outcome::approved, normalized);
       event.attributes["approval_scope"] = approval::to_string(decision.scope);
       audit_->publish(event);
     }
@@ -231,20 +194,14 @@ execution_result execution_runtime::run(
     };
     if (audit_) {
       audit_->publish(make_audit_event(
-        "backend_missing",
-        execution_id,
-        audit::audit_event_outcome::failed,
-        normalized));
+        "backend_missing", execution_id, audit::audit_event_outcome::failed, normalized));
     }
     return result;
   }
 
   if (audit_) {
     audit_->publish(make_audit_event(
-      "execution_started",
-      execution_id,
-      audit::audit_event_outcome::started,
-      normalized));
+      "execution_started", execution_id, audit::audit_event_outcome::started, normalized));
   }
 
   const auto started = std::chrono::steady_clock::now();
@@ -275,11 +232,7 @@ execution_result execution_runtime::run(
 
   if (audit_) {
     auto event = make_audit_event(
-      "execution_finished",
-      execution_id,
-      outcome_for_result(result),
-      normalized,
-      result.elapsed);
+      "execution_finished", execution_id, outcome_for_result(result), normalized, result.elapsed);
     event.attributes["termination_reason"] = to_string(result.termination_reason);
     event.attributes["stdout_bytes"] = std::to_string(result.stdout_text.size());
     event.attributes["stderr_bytes"] = std::to_string(result.stderr_text.size());
@@ -301,10 +254,8 @@ execution_result execution_runtime::run(
   return result;
 }
 
-void execution_runtime::audit_tool_rejection(
-  const std::string& event_name,
-  const std::string& tool_name,
-  const std::string& reason,
+void execution_runtime::audit_tool_rejection(const std::string& event_name,
+  const std::string& tool_name, const std::string& reason,
   const std::map<std::string, std::string>& attributes) {
   if (!audit_) {
     return;

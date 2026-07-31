@@ -72,9 +72,7 @@ struct mcp_resource_content {
   std::string blob;
 
   static mcp_resource_content text_content(
-    std::string resource_uri,
-    std::string value,
-    std::string mime = "text/plain") {
+    std::string resource_uri, std::string value, std::string mime = "text/plain") {
     return {
       .uri = std::move(resource_uri),
       .mime_type = std::move(mime),
@@ -83,9 +81,7 @@ struct mcp_resource_content {
   }
 
   static mcp_resource_content blob_content(
-    std::string resource_uri,
-    std::string base64_data,
-    std::string mime) {
+    std::string resource_uri, std::string base64_data, std::string mime) {
     return {
       .uri = std::move(resource_uri),
       .mime_type = std::move(mime),

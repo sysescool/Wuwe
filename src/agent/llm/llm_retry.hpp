@@ -36,17 +36,13 @@ inline bool is_retryable_error(const std::error_code& ec) {
 }
 
 inline int compute_backoff_ms(
-  int attempt,
-  int base_backoff_ms,
-  int max_backoff_ms = 30000,
-  double jitter_ratio = 0.0) {
+  int attempt, int base_backoff_ms, int max_backoff_ms = 30000, double jitter_ratio = 0.0) {
   constexpr int max_power = 6;
   const int clamped_attempt = attempt < max_power ? attempt : max_power;
   const auto base = (std::max)(1, base_backoff_ms);
   const auto maximum = (std::max)(base, max_backoff_ms);
   const auto unbounded = static_cast<long long>(base) * (1LL << clamped_attempt);
-  double delay = static_cast<double>((std::min)(
-    unbounded, static_cast<long long>(maximum)));
+  double delay = static_cast<double>((std::min)(unbounded, static_cast<long long>(maximum)));
   if (std::isfinite(jitter_ratio) && jitter_ratio > 0.0) {
     thread_local std::mt19937_64 source(std::random_device {}());
     std::uniform_real_distribution<double> distribution(-1.0, 1.0);
@@ -56,10 +52,8 @@ inline int compute_backoff_ms(
   return static_cast<int>(delay);
 }
 
-inline std::optional<std::chrono::milliseconds> parse_retry_after(
-  const http_response& response,
-  std::chrono::system_clock::time_point now =
-    std::chrono::system_clock::now()) {
+inline std::optional<std::chrono::milliseconds> parse_retry_after(const http_response& response,
+  std::chrono::system_clock::time_point now = std::chrono::system_clock::now()) {
   const auto header = find_http_header(response.headers, "Retry-After");
   if (!header) {
     return std::nullopt;
@@ -73,14 +67,10 @@ inline std::optional<std::chrono::milliseconds> parse_retry_after(
   }
 
   long long seconds {};
-  const auto parsed = std::from_chars(
-    value.data(), value.data() + value.size(), seconds);
-  if (parsed.ec == std::errc {} && parsed.ptr == value.data() + value.size() &&
-      seconds >= 0) {
-    const auto maximum_seconds =
-      (std::numeric_limits<long long>::max)() / 1000;
-    return std::chrono::milliseconds(
-      (std::min)(seconds, maximum_seconds) * 1000);
+  const auto parsed = std::from_chars(value.data(), value.data() + value.size(), seconds);
+  if (parsed.ec == std::errc {} && parsed.ptr == value.data() + value.size() && seconds >= 0) {
+    const auto maximum_seconds = (std::numeric_limits<long long>::max)() / 1000;
+    return std::chrono::milliseconds((std::min)(seconds, maximum_seconds) * 1000);
   }
 
   std::tm parsed_time {};
@@ -106,11 +96,8 @@ inline std::optional<std::chrono::milliseconds> parse_retry_after(
 }
 
 inline std::chrono::milliseconds compute_retry_delay(
-  const llm_client_config& config,
-  int attempt,
-  const http_response& response) {
-  auto delay = std::chrono::milliseconds(compute_backoff_ms(
-    attempt,
+  const llm_client_config& config, int attempt, const http_response& response) {
+  auto delay = std::chrono::milliseconds(compute_backoff_ms(attempt,
     config.retry_backoff_ms <= 0 ? 500 : config.retry_backoff_ms,
     config.retry_max_backoff_ms <= 0 ? 30000 : config.retry_max_backoff_ms,
     config.retry_jitter_ratio));
@@ -119,17 +106,13 @@ inline std::chrono::milliseconds compute_retry_delay(
   }
   if (const auto server_delay = parse_retry_after(response)) {
     const auto cap = std::chrono::milliseconds(
-      config.retry_max_server_delay_ms <= 0
-        ? 60000
-        : config.retry_max_server_delay_ms);
+      config.retry_max_server_delay_ms <= 0 ? 60000 : config.retry_max_server_delay_ms);
     delay = (std::max)(delay, (std::min)(*server_delay, cap));
   }
   return delay;
 }
 
-inline void apply_retry_metadata(
-  llm_response& result,
-  const http_response& response) {
+inline void apply_retry_metadata(llm_response& result, const http_response& response) {
   if (const auto delay = parse_retry_after(response)) {
     result.metadata["retry_after_ms"] = std::to_string(delay->count());
   }

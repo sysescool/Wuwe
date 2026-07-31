@@ -7,8 +7,7 @@
 
 namespace wuwe::agent::execution {
 
-[[nodiscard]] nlohmann::json execution_result_to_json(
-  const execution_result& result);
+[[nodiscard]] nlohmann::json execution_result_to_json(const execution_result& result);
 
 } // namespace wuwe::agent::execution
 

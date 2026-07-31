@@ -66,8 +66,7 @@ struct http_response {
 };
 
 [[nodiscard]] inline bool http_header_name_equals(
-  std::string_view lhs,
-  std::string_view rhs) noexcept {
+  std::string_view lhs, std::string_view rhs) noexcept {
   return lhs.size() == rhs.size() &&
          std::equal(lhs.begin(), lhs.end(), rhs.begin(), [](char a, char b) {
            return std::tolower(static_cast<unsigned char>(a)) ==
@@ -76,8 +75,7 @@ struct http_response {
 }
 
 [[nodiscard]] inline std::optional<std::string_view> find_http_header(
-  const std::vector<http_header>& headers,
-  std::string_view name) noexcept {
+  const std::vector<http_header>& headers, std::string_view name) noexcept {
   for (const auto& header : headers) {
     if (http_header_name_equals(header.name, name)) {
       return std::string_view { header.value };
@@ -87,8 +85,7 @@ struct http_response {
 }
 
 [[nodiscard]] inline bool has_http_header(
-  const std::vector<http_header>& headers,
-  std::string_view name) noexcept {
+  const std::vector<http_header>& headers, std::string_view name) noexcept {
   return find_http_header(headers, name).has_value();
 }
 
@@ -99,17 +96,14 @@ public:
   virtual ~http_client() = default;
   virtual http_response send(const http_request& request) = 0;
 
-  virtual http_response send_stream(
-    const http_request& request,
-    const http_stream_chunk_callback& on_chunk,
-    std::stop_token stop_token = {}) {
+  virtual http_response send_stream(const http_request& request,
+    const http_stream_chunk_callback& on_chunk, std::stop_token stop_token = {}) {
     if (stop_token.stop_requested()) {
       return { .error_code = std::make_error_code(std::errc::operation_canceled) };
     }
 
     auto response = send(request);
-    if (!response.error_code && on_chunk && !response.body.empty() &&
-        !on_chunk(response.body)) {
+    if (!response.error_code && on_chunk && !response.body.empty() && !on_chunk(response.body)) {
       response.error_code = std::make_error_code(std::errc::operation_canceled);
     }
     return response;

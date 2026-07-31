@@ -10,9 +10,11 @@ struct constant_init {
     T obj;
   };
 
-  constexpr constant_init() noexcept : obj() {}
+  constexpr constant_init() noexcept : obj() {
+  }
 
-  ~constant_init() {}
+  ~constant_init() {
+  }
 };
 
 class llm_category_impl final : public std::error_category {

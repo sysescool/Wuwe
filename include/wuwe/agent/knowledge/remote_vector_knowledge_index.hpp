@@ -28,8 +28,7 @@ struct remote_vector_knowledge_index_config {
 
 class remote_vector_knowledge_index : public knowledge_index {
 public:
-  remote_vector_knowledge_index(
-    remote_vector_knowledge_index_config config,
+  remote_vector_knowledge_index(remote_vector_knowledge_index_config config,
     std::shared_ptr<::wuwe::http_client> http = std::make_shared<::wuwe::default_http_client>())
       : config_(std::move(config)), http_(std::move(http)) {
     if (!http_) {
@@ -47,8 +46,7 @@ public:
     upsert_batch({ chunk }, { embedding });
   }
 
-  void upsert_batch(
-    const std::vector<knowledge_chunk>& chunks,
+  void upsert_batch(const std::vector<knowledge_chunk>& chunks,
     const std::vector<std::vector<float>>& embeddings) override {
     if (chunks.size() != embeddings.size()) {
       throw std::invalid_argument("remote_vector_knowledge_index upsert_batch size mismatch");
@@ -60,24 +58,27 @@ public:
         { "embedding", embeddings[index] },
       });
     }
-    send_json("POST", "/vectors/upsert", {
-      { "provider", config_.provider },
-      { "namespace", config_.namespace_name },
-      { "records", std::move(records) },
-    });
+    send_json("POST",
+      "/vectors/upsert",
+      {
+        { "provider", config_.provider },
+        { "namespace", config_.namespace_name },
+        { "records", std::move(records) },
+      });
   }
 
   std::vector<knowledge_result> search(
-    const knowledge_query& query,
-    const std::vector<float>& embedding) const override {
-    const auto response = send_json("POST", "/vectors/search", {
-      { "provider", config_.provider },
-      { "namespace", config_.namespace_name },
-      { "query", query.text },
-      { "limit", query.limit == 0 ? 1 : query.limit },
-      { "embedding", embedding },
-      { "filters", query.filters },
-    });
+    const knowledge_query& query, const std::vector<float>& embedding) const override {
+    const auto response = send_json("POST",
+      "/vectors/search",
+      {
+        { "provider", config_.provider },
+        { "namespace", config_.namespace_name },
+        { "query", query.text },
+        { "limit", query.limit == 0 ? 1 : query.limit },
+        { "embedding", embedding },
+        { "filters", query.filters },
+      });
 
     const auto data = nlohmann::json::parse(response.body, nullptr, false);
     if (data.is_discarded()) {
@@ -101,8 +102,7 @@ public:
       }
       const auto vector_score = item.value("score", 0.0);
       const auto lexical_score = detail::lexical_knowledge_score(query.text, chunk);
-      const auto score =
-        query.vector_weight * vector_score + query.lexical_weight * lexical_score;
+      const auto score = query.vector_weight * vector_score + query.lexical_weight * lexical_score;
       if (score < query.minimum_score) {
         continue;
       }
@@ -114,13 +114,13 @@ public:
       });
     }
 
-    std::sort(results.begin(), results.end(), [](const knowledge_result& lhs,
-                                                  const knowledge_result& rhs) {
-      if (lhs.score != rhs.score) {
-        return lhs.score > rhs.score;
-      }
-      return lhs.chunk.id < rhs.chunk.id;
-    });
+    std::sort(
+      results.begin(), results.end(), [](const knowledge_result& lhs, const knowledge_result& rhs) {
+        if (lhs.score != rhs.score) {
+          return lhs.score > rhs.score;
+        }
+        return lhs.chunk.id < rhs.chunk.id;
+      });
     if (query.limit != 0 && results.size() > query.limit) {
       results.resize(query.limit);
     }
@@ -128,19 +128,23 @@ public:
   }
 
   bool erase_document(const std::string& document_id) override {
-    send_json("POST", "/vectors/delete", {
-      { "provider", config_.provider },
-      { "namespace", config_.namespace_name },
-      { "document_id", document_id },
-    });
+    send_json("POST",
+      "/vectors/delete",
+      {
+        { "provider", config_.provider },
+        { "namespace", config_.namespace_name },
+        { "document_id", document_id },
+      });
     return true;
   }
 
   void clear() override {
-    send_json("POST", "/vectors/clear", {
-      { "provider", config_.provider },
-      { "namespace", config_.namespace_name },
-    });
+    send_json("POST",
+      "/vectors/clear",
+      {
+        { "provider", config_.provider },
+        { "namespace", config_.namespace_name },
+      });
   }
 
 protected:
@@ -149,10 +153,7 @@ protected:
   }
 
 private:
-  ::wuwe::http_response send_json(
-    std::string method,
-    std::string path,
-    nlohmann::json body) const {
+  ::wuwe::http_response send_json(std::string method, std::string path, nlohmann::json body) const {
     ::wuwe::http_request request {
       .method = std::move(method),
       .url = config_.base_url + std::move(path),
@@ -177,16 +178,15 @@ private:
 
 class pgvector_knowledge_index final : public remote_vector_knowledge_index {
 public:
-  explicit pgvector_knowledge_index(
-    remote_vector_knowledge_index_config config,
+  explicit pgvector_knowledge_index(remote_vector_knowledge_index_config config,
     std::shared_ptr<::wuwe::http_client> http = std::make_shared<::wuwe::default_http_client>())
-      : remote_vector_knowledge_index(with_provider(std::move(config), "pgvector"), std::move(http)) {
+      : remote_vector_knowledge_index(
+          with_provider(std::move(config), "pgvector"), std::move(http)) {
   }
 
 private:
   static remote_vector_knowledge_index_config with_provider(
-    remote_vector_knowledge_index_config config,
-    std::string provider) {
+    remote_vector_knowledge_index_config config, std::string provider) {
     config.provider = std::move(provider);
     return config;
   }
@@ -194,16 +194,15 @@ private:
 
 class opensearch_knowledge_index final : public remote_vector_knowledge_index {
 public:
-  explicit opensearch_knowledge_index(
-    remote_vector_knowledge_index_config config,
+  explicit opensearch_knowledge_index(remote_vector_knowledge_index_config config,
     std::shared_ptr<::wuwe::http_client> http = std::make_shared<::wuwe::default_http_client>())
-      : remote_vector_knowledge_index(with_provider(std::move(config), "opensearch"), std::move(http)) {
+      : remote_vector_knowledge_index(
+          with_provider(std::move(config), "opensearch"), std::move(http)) {
   }
 
 private:
   static remote_vector_knowledge_index_config with_provider(
-    remote_vector_knowledge_index_config config,
-    std::string provider) {
+    remote_vector_knowledge_index_config config, std::string provider) {
     config.provider = std::move(provider);
     return config;
   }
@@ -211,16 +210,14 @@ private:
 
 class milvus_knowledge_index final : public remote_vector_knowledge_index {
 public:
-  explicit milvus_knowledge_index(
-    remote_vector_knowledge_index_config config,
+  explicit milvus_knowledge_index(remote_vector_knowledge_index_config config,
     std::shared_ptr<::wuwe::http_client> http = std::make_shared<::wuwe::default_http_client>())
       : remote_vector_knowledge_index(with_provider(std::move(config), "milvus"), std::move(http)) {
   }
 
 private:
   static remote_vector_knowledge_index_config with_provider(
-    remote_vector_knowledge_index_config config,
-    std::string provider) {
+    remote_vector_knowledge_index_config config, std::string provider) {
     config.provider = std::move(provider);
     return config;
   }

@@ -37,9 +37,7 @@ public:
     }
   }
 
-  knowledge_document load(
-    const std::string& url,
-    url_knowledge_loader_options options = {}) const {
+  knowledge_document load(const std::string& url, url_knowledge_loader_options options = {}) const {
     if (!is_supported_url(url)) {
       throw std::invalid_argument("knowledge URL must start with http:// or https://");
     }
@@ -64,9 +62,8 @@ public:
 
     knowledge_document document;
     document.id = options.id.empty() ? default_id(url) : std::move(options.id);
-    document.title = options.title.empty()
-                       ? (parsed_title.empty() ? url : parsed_title)
-                       : std::move(options.title);
+    document.title = options.title.empty() ? (parsed_title.empty() ? url : parsed_title)
+                                           : std::move(options.title);
     document.source_uri = url;
     document.content = options.extract_html_text
                          ? html_text_extractor::to_text(fetched, html_text_mode::structured)

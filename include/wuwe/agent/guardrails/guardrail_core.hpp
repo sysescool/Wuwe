@@ -40,33 +40,48 @@ enum class guardrail_severity {
 
 [[nodiscard]] inline std::string to_string(guardrail_stage stage) {
   switch (stage) {
-    case guardrail_stage::input: return "input";
-    case guardrail_stage::output: return "output";
-    case guardrail_stage::tool_input: return "tool_input";
-    case guardrail_stage::tool_output: return "tool_output";
-    case guardrail_stage::planning: return "planning";
-    case guardrail_stage::retrieval: return "retrieval";
-    case guardrail_stage::memory_write: return "memory_write";
+    case guardrail_stage::input:
+      return "input";
+    case guardrail_stage::output:
+      return "output";
+    case guardrail_stage::tool_input:
+      return "tool_input";
+    case guardrail_stage::tool_output:
+      return "tool_output";
+    case guardrail_stage::planning:
+      return "planning";
+    case guardrail_stage::retrieval:
+      return "retrieval";
+    case guardrail_stage::memory_write:
+      return "memory_write";
   }
   return "unknown";
 }
 
 [[nodiscard]] inline std::string to_string(guardrail_decision decision) {
   switch (decision) {
-    case guardrail_decision::allow: return "allow";
-    case guardrail_decision::modify: return "modify";
-    case guardrail_decision::deny: return "deny";
-    case guardrail_decision::require_approval: return "require_approval";
+    case guardrail_decision::allow:
+      return "allow";
+    case guardrail_decision::modify:
+      return "modify";
+    case guardrail_decision::deny:
+      return "deny";
+    case guardrail_decision::require_approval:
+      return "require_approval";
   }
   return "unknown";
 }
 
 [[nodiscard]] inline std::string to_string(guardrail_severity severity) {
   switch (severity) {
-    case guardrail_severity::info: return "info";
-    case guardrail_severity::warning: return "warning";
-    case guardrail_severity::error: return "error";
-    case guardrail_severity::critical: return "critical";
+    case guardrail_severity::info:
+      return "info";
+    case guardrail_severity::warning:
+      return "warning";
+    case guardrail_severity::error:
+      return "error";
+    case guardrail_severity::critical:
+      return "critical";
   }
   return "unknown";
 }
@@ -99,9 +114,7 @@ struct guardrail_result {
     return {};
   }
 
-  [[nodiscard]] static guardrail_result modify(
-    std::string content,
-    guardrail_issue issue = {}) {
+  [[nodiscard]] static guardrail_result modify(std::string content, guardrail_issue issue = {}) {
     guardrail_result result;
     result.decision = guardrail_decision::modify;
     result.replacement_content = std::move(content);
@@ -112,8 +125,7 @@ struct guardrail_result {
   }
 
   [[nodiscard]] static guardrail_result modify_data(
-    nlohmann::json data,
-    guardrail_issue issue = {}) {
+    nlohmann::json data, guardrail_issue issue = {}) {
     guardrail_result result;
     result.decision = guardrail_decision::modify;
     result.replacement_data = std::move(data);

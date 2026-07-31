@@ -21,14 +21,10 @@ namespace wuwe::agent::knowledge {
 
 inline std::string knowledge_query_cache_key(const knowledge_query& query) {
   std::ostringstream output;
-  output << query.text << "|limit=" << query.limit
-         << "|candidate_limit=" << query.candidate_limit
-         << "|min=" << query.minimum_score
-         << "|vw=" << query.vector_weight
-         << "|lw=" << query.lexical_weight
-         << "|tenant=" << query.access.tenant_id
-         << "|user=" << query.access.user_id
-         << "|bypass=" << query.access.bypass_acl;
+  output << query.text << "|limit=" << query.limit << "|candidate_limit=" << query.candidate_limit
+         << "|min=" << query.minimum_score << "|vw=" << query.vector_weight
+         << "|lw=" << query.lexical_weight << "|tenant=" << query.access.tenant_id
+         << "|user=" << query.access.user_id << "|bypass=" << query.access.bypass_acl;
   for (const auto& role : query.access.roles) {
     output << "|role=" << role;
   }
@@ -49,8 +45,7 @@ public:
 
 class in_memory_knowledge_retrieval_cache final : public knowledge_retrieval_cache {
 public:
-  explicit in_memory_knowledge_retrieval_cache(
-    std::size_t max_entries = 1024,
+  explicit in_memory_knowledge_retrieval_cache(std::size_t max_entries = 1024,
     std::chrono::milliseconds ttl = std::chrono::milliseconds::zero())
       : max_entries_(max_entries), ttl_(ttl) {
   }
@@ -113,8 +108,7 @@ private:
   };
 
   bool expired(const entry& value) const {
-    return ttl_ != std::chrono::milliseconds::zero() &&
-           clock::now() - value.created_at >= ttl_;
+    return ttl_ != std::chrono::milliseconds::zero() && clock::now() - value.created_at >= ttl_;
   }
 
   void prune_expired() const {
@@ -141,8 +135,7 @@ private:
 
 class cached_knowledge_reranker final : public knowledge_reranker {
 public:
-  cached_knowledge_reranker(
-    std::shared_ptr<knowledge_reranker> inner,
+  cached_knowledge_reranker(std::shared_ptr<knowledge_reranker> inner,
     std::size_t max_entries = 1024,
     std::chrono::milliseconds ttl = std::chrono::milliseconds::zero())
       : inner_(std::move(inner)), max_entries_(max_entries), ttl_(ttl) {
@@ -152,8 +145,7 @@ public:
   }
 
   std::vector<knowledge_result> rerank(
-    const knowledge_query& query,
-    std::vector<knowledge_result> candidates) const override {
+    const knowledge_query& query, std::vector<knowledge_result> candidates) const override {
     const auto key = rerank_key(query, candidates);
     {
       std::scoped_lock lock(mutex_);
@@ -206,8 +198,7 @@ private:
   };
 
   static std::string rerank_key(
-    const knowledge_query& query,
-    const std::vector<knowledge_result>& candidates) {
+    const knowledge_query& query, const std::vector<knowledge_result>& candidates) {
     std::ostringstream output;
     output << knowledge_query_cache_key(query);
     for (const auto& candidate : candidates) {
@@ -219,8 +210,7 @@ private:
   }
 
   bool expired(const entry& value) const {
-    return ttl_ != std::chrono::milliseconds::zero() &&
-           clock::now() - value.created_at >= ttl_;
+    return ttl_ != std::chrono::milliseconds::zero() && clock::now() - value.created_at >= ttl_;
   }
 
   void prune_expired() const {

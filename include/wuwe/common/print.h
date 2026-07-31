@@ -15,7 +15,8 @@
 
 WUWE_NAMESPACE_BEGIN
 
-template <typename... Args> inline void print(std::format_string<Args...> fmt, Args&&... args) {
+template<typename... Args>
+inline void print(std::format_string<Args...> fmt, Args&&... args) {
 #if GMP_CPP_NEWER_THAN(23)
   std::print(std::forward<std::format_string<Args...>>(fmt), std::forward<Args>(args)...);
 #else
@@ -24,7 +25,8 @@ template <typename... Args> inline void print(std::format_string<Args...> fmt, A
 #endif // C++23 or later
 }
 
-template <typename... Args> inline void println(std::format_string<Args...> fmt, Args&&... args) {
+template<typename... Args>
+inline void println(std::format_string<Args...> fmt, Args&&... args) {
 #if GMP_CPP_NEWER_THAN(23)
   std::println(std::forward<std::format_string<Args...>>(fmt), std::forward<Args>(args)...);
 #else

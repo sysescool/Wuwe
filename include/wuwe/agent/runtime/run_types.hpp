@@ -34,45 +34,58 @@ enum class approval_resolution {
 
 [[nodiscard]] inline std::string to_string(agent_run_status status) {
   switch (status) {
-    case agent_run_status::created: return "created";
-    case agent_run_status::running: return "running";
-    case agent_run_status::waiting_for_approval: return "waiting_for_approval";
-    case agent_run_status::completed: return "completed";
-    case agent_run_status::failed: return "failed";
-    case agent_run_status::cancelled: return "cancelled";
-    case agent_run_status::timed_out: return "timed_out";
+    case agent_run_status::created:
+      return "created";
+    case agent_run_status::running:
+      return "running";
+    case agent_run_status::waiting_for_approval:
+      return "waiting_for_approval";
+    case agent_run_status::completed:
+      return "completed";
+    case agent_run_status::failed:
+      return "failed";
+    case agent_run_status::cancelled:
+      return "cancelled";
+    case agent_run_status::timed_out:
+      return "timed_out";
   }
   return "failed";
 }
 
-[[nodiscard]] inline agent_run_status agent_run_status_from_string(
-  const std::string& value) {
-  if (value == "created") return agent_run_status::created;
-  if (value == "running") return agent_run_status::running;
+[[nodiscard]] inline agent_run_status agent_run_status_from_string(const std::string& value) {
+  if (value == "created")
+    return agent_run_status::created;
+  if (value == "running")
+    return agent_run_status::running;
   if (value == "waiting_for_approval") {
     return agent_run_status::waiting_for_approval;
   }
-  if (value == "completed") return agent_run_status::completed;
-  if (value == "cancelled") return agent_run_status::cancelled;
-  if (value == "timed_out") return agent_run_status::timed_out;
-  if (value == "failed") return agent_run_status::failed;
+  if (value == "completed")
+    return agent_run_status::completed;
+  if (value == "cancelled")
+    return agent_run_status::cancelled;
+  if (value == "timed_out")
+    return agent_run_status::timed_out;
+  if (value == "failed")
+    return agent_run_status::failed;
   throw std::invalid_argument("invalid agent run status: " + value);
 }
 
 [[nodiscard]] inline std::string to_string(approval_resolution resolution) {
   switch (resolution) {
-    case approval_resolution::pending: return "pending";
-    case approval_resolution::approved: return "approved";
-    case approval_resolution::denied: return "denied";
+    case approval_resolution::pending:
+      return "pending";
+    case approval_resolution::approved:
+      return "approved";
+    case approval_resolution::denied:
+      return "denied";
   }
   return "pending";
 }
 
 [[nodiscard]] inline bool terminal(agent_run_status status) noexcept {
-  return status == agent_run_status::completed ||
-         status == agent_run_status::failed ||
-         status == agent_run_status::cancelled ||
-         status == agent_run_status::timed_out;
+  return status == agent_run_status::completed || status == agent_run_status::failed ||
+         status == agent_run_status::cancelled || status == agent_run_status::timed_out;
 }
 
 struct agent_run_suspension {
@@ -83,9 +96,7 @@ struct agent_run_suspension {
   approval_resolution resolution { approval_resolution::pending };
   std::string reason;
   nlohmann::json continuation;
-  std::chrono::system_clock::time_point created_at {
-    std::chrono::system_clock::now()
-  };
+  std::chrono::system_clock::time_point created_at { std::chrono::system_clock::now() };
   std::optional<std::chrono::system_clock::time_point> resolved_at;
   std::map<std::string, std::string> metadata;
 };
@@ -95,9 +106,7 @@ struct admitted_tool_result {
   std::string idempotency_key;
   std::string tool_name;
   tools::tool_outcome outcome;
-  std::chrono::system_clock::time_point admitted_at {
-    std::chrono::system_clock::now()
-  };
+  std::chrono::system_clock::time_point admitted_at { std::chrono::system_clock::now() };
 };
 
 struct agent_run_record {
@@ -105,9 +114,7 @@ struct agent_run_record {
   std::uint64_t revision { 0 };
   agent_run_status status { agent_run_status::created };
   core::agent_execution_context context;
-  std::chrono::system_clock::time_point created_at {
-    std::chrono::system_clock::now()
-  };
+  std::chrono::system_clock::time_point created_at { std::chrono::system_clock::now() };
   std::chrono::system_clock::time_point updated_at { created_at };
   std::optional<std::chrono::system_clock::time_point> completed_at;
   std::optional<agent_run_suspension> suspension;
@@ -125,23 +132,18 @@ struct agent_run_event {
   agent_run_status status { agent_run_status::created };
   std::string step_id;
   std::string tool_call_id;
-  std::chrono::system_clock::time_point timestamp {
-    std::chrono::system_clock::now()
-  };
+  std::chrono::system_clock::time_point timestamp { std::chrono::system_clock::now() };
   nlohmann::json data;
   std::map<std::string, std::string> metadata;
 };
 
 namespace detail {
 
-inline std::int64_t to_unix_millis(
-  std::chrono::system_clock::time_point value) {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(
-    value.time_since_epoch()).count();
+inline std::int64_t to_unix_millis(std::chrono::system_clock::time_point value) {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(value.time_since_epoch()).count();
 }
 
-inline std::chrono::system_clock::time_point from_unix_millis(
-  std::int64_t value) {
+inline std::chrono::system_clock::time_point from_unix_millis(std::int64_t value) {
   return std::chrono::system_clock::time_point(std::chrono::milliseconds(value));
 }
 
@@ -149,27 +151,38 @@ inline agent_run_status run_status_from_string(const std::string& value) {
   return agent_run_status_from_string(value);
 }
 
-inline approval_resolution approval_resolution_from_string(
-  const std::string& value) {
-  if (value == "approved") return approval_resolution::approved;
-  if (value == "denied") return approval_resolution::denied;
-  if (value == "pending") return approval_resolution::pending;
+inline approval_resolution approval_resolution_from_string(const std::string& value) {
+  if (value == "approved")
+    return approval_resolution::approved;
+  if (value == "denied")
+    return approval_resolution::denied;
+  if (value == "pending")
+    return approval_resolution::pending;
   throw std::invalid_argument("invalid approval resolution: " + value);
 }
 
-inline tools::tool_error_category tool_error_category_from_string(
-  const std::string& value) {
+inline tools::tool_error_category tool_error_category_from_string(const std::string& value) {
   using enum tools::tool_error_category;
-  if (value == "none") return none;
-  if (value == "invalid_input") return invalid_input;
-  if (value == "not_found") return not_found;
-  if (value == "permission_denied") return permission_denied;
-  if (value == "conflict") return conflict;
-  if (value == "rate_limited") return rate_limited;
-  if (value == "timeout") return timeout;
-  if (value == "cancelled") return cancelled;
-  if (value == "unavailable") return unavailable;
-  if (value == "internal") return internal;
+  if (value == "none")
+    return none;
+  if (value == "invalid_input")
+    return invalid_input;
+  if (value == "not_found")
+    return not_found;
+  if (value == "permission_denied")
+    return permission_denied;
+  if (value == "conflict")
+    return conflict;
+  if (value == "rate_limited")
+    return rate_limited;
+  if (value == "timeout")
+    return timeout;
+  if (value == "cancelled")
+    return cancelled;
+  if (value == "unavailable")
+    return unavailable;
+  if (value == "internal")
+    return internal;
   throw std::invalid_argument("invalid tool error category: " + value);
 }
 
@@ -182,8 +195,8 @@ inline nlohmann::json tool_outcome_to_json(const tools::tool_outcome& value) {
     { "data", value.data },
     { "category", tools::to_string(value.error_category) },
     { "retryable", value.retryable },
-    { "resource_version", value.resource_version
-        ? nlohmann::json(*value.resource_version) : nlohmann::json(nullptr) },
+    { "resource_version",
+      value.resource_version ? nlohmann::json(*value.resource_version) : nlohmann::json(nullptr) },
     { "compensation_required", value.compensation_required },
     { "compensation_token", value.compensation_token },
     { "artifacts", value.artifacts },
@@ -195,8 +208,7 @@ inline tools::tool_outcome tool_outcome_from_json(const nlohmann::json& value) {
   tools::tool_outcome outcome;
   outcome.content = value.value("content", std::string {});
   const auto error_value = value.value("error_value", 0);
-  const auto error_category = value.value(
-    "error_category_name", std::string {});
+  const auto error_category = value.value("error_category_name", std::string {});
   if (error_value != 0) {
     if (error_category == std::generic_category().name()) {
       outcome.error_code = std::error_code(error_value, std::generic_category());
@@ -208,23 +220,20 @@ inline tools::tool_outcome tool_outcome_from_json(const nlohmann::json& value) {
       outcome.error_code = std::make_error_code(std::errc::io_error);
       outcome.metadata["persisted_error_value"] = std::to_string(error_value);
       outcome.metadata["persisted_error_category"] = error_category;
-      outcome.metadata["persisted_error_message"] =
-        value.value("error_message", std::string {});
+      outcome.metadata["persisted_error_message"] = value.value("error_message", std::string {});
     }
   }
   outcome.data = value.value("data", nlohmann::json {});
-  outcome.error_category = tool_error_category_from_string(
-    value.value("category", std::string("internal")));
+  outcome.error_category =
+    tool_error_category_from_string(value.value("category", std::string("internal")));
   outcome.retryable = value.value("retryable", false);
-  if (value.contains("resource_version") &&
-      !value.at("resource_version").is_null()) {
+  if (value.contains("resource_version") && !value.at("resource_version").is_null()) {
     outcome.resource_version = value.at("resource_version").get<std::string>();
   }
   outcome.compensation_required = value.value("compensation_required", false);
   outcome.compensation_token = value.value("compensation_token", std::string {});
   outcome.artifacts = value.value("artifacts", std::vector<std::string> {});
-  const auto metadata = value.value(
-    "metadata", std::map<std::string, std::string> {});
+  const auto metadata = value.value("metadata", std::map<std::string, std::string> {});
   outcome.metadata.insert(metadata.begin(), metadata.end());
   return outcome;
 }
@@ -244,46 +253,37 @@ inline nlohmann::json run_suspension_to_json(const agent_run_suspension& value) 
     { "metadata", value.metadata },
   };
   output["resolved_at_unix_ms"] = value.resolved_at
-    ? nlohmann::json(detail::to_unix_millis(*value.resolved_at))
-    : nlohmann::json(nullptr);
+                                    ? nlohmann::json(detail::to_unix_millis(*value.resolved_at))
+                                    : nlohmann::json(nullptr);
   return output;
 }
 
-inline agent_run_suspension run_suspension_from_json(
-  const nlohmann::json& value) {
+inline agent_run_suspension run_suspension_from_json(const nlohmann::json& value) {
   agent_run_suspension suspension;
   suspension.approval_id = value.value("approval_id", std::string {});
   suspension.continuation_token = value.value("continuation_token", std::string {});
   suspension.tool_call_id = value.value("tool_call_id", std::string {});
   suspension.tool_name = value.value("tool_name", std::string {});
-  suspension.resolution = detail::approval_resolution_from_string(
-    value.value("resolution", std::string("pending")));
+  suspension.resolution =
+    detail::approval_resolution_from_string(value.value("resolution", std::string("pending")));
   suspension.reason = value.value("reason", std::string {});
   suspension.continuation = value.value("continuation", nlohmann::json {});
-  suspension.created_at = detail::from_unix_millis(
-    value.value("created_at_unix_ms", std::int64_t {}));
-  if (value.contains("resolved_at_unix_ms") &&
-      !value.at("resolved_at_unix_ms").is_null()) {
-    suspension.resolved_at = detail::from_unix_millis(
-      value.at("resolved_at_unix_ms").get<std::int64_t>());
+  suspension.created_at =
+    detail::from_unix_millis(value.value("created_at_unix_ms", std::int64_t {}));
+  if (value.contains("resolved_at_unix_ms") && !value.at("resolved_at_unix_ms").is_null()) {
+    suspension.resolved_at =
+      detail::from_unix_millis(value.at("resolved_at_unix_ms").get<std::int64_t>());
   }
-  suspension.metadata = value.value(
-    "metadata", std::map<std::string, std::string> {});
-  if (suspension.approval_id.empty() ||
-      suspension.continuation_token.empty() ||
+  suspension.metadata = value.value("metadata", std::map<std::string, std::string> {});
+  if (suspension.approval_id.empty() || suspension.continuation_token.empty() ||
       suspension.tool_call_id.empty() || suspension.tool_name.empty()) {
-    throw std::invalid_argument(
-      "persisted agent run suspension has incomplete identity fields");
+    throw std::invalid_argument("persisted agent run suspension has incomplete identity fields");
   }
-  if (suspension.resolution == approval_resolution::pending &&
-      suspension.resolved_at) {
-    throw std::invalid_argument(
-      "pending agent run suspension cannot have a resolution timestamp");
+  if (suspension.resolution == approval_resolution::pending && suspension.resolved_at) {
+    throw std::invalid_argument("pending agent run suspension cannot have a resolution timestamp");
   }
-  if (suspension.resolution != approval_resolution::pending &&
-      !suspension.resolved_at) {
-    throw std::invalid_argument(
-      "resolved agent run suspension requires a resolution timestamp");
+  if (suspension.resolution != approval_resolution::pending && !suspension.resolved_at) {
+    throw std::invalid_argument("resolved agent run suspension requires a resolution timestamp");
   }
   return suspension;
 }
@@ -313,14 +313,13 @@ inline nlohmann::json agent_run_record_to_json(const agent_run_record& value) {
     { "metadata", value.metadata },
   };
   output["completed_at_unix_ms"] = value.completed_at
-    ? nlohmann::json(detail::to_unix_millis(*value.completed_at))
-    : nlohmann::json(nullptr);
-  output["suspension"] = value.suspension
-    ? run_suspension_to_json(*value.suspension)
-    : nlohmann::json(nullptr);
+                                     ? nlohmann::json(detail::to_unix_millis(*value.completed_at))
+                                     : nlohmann::json(nullptr);
+  output["suspension"] =
+    value.suspension ? run_suspension_to_json(*value.suspension) : nlohmann::json(nullptr);
   output["active_continuation"] = value.active_continuation
-    ? run_suspension_to_json(*value.active_continuation)
-    : nlohmann::json(nullptr);
+                                    ? run_suspension_to_json(*value.active_continuation)
+                                    : nlohmann::json(nullptr);
   return output;
 }
 
@@ -331,84 +330,67 @@ inline agent_run_record agent_run_record_from_json(const nlohmann::json& value) 
   agent_run_record record;
   record.id = value.at("id").get<std::string>();
   record.revision = value.value("revision", std::uint64_t {});
-  record.status = detail::run_status_from_string(
-    value.value("status", std::string("failed")));
-  record.context = core::execution_context_from_json(
-    value.value("context", nlohmann::json::object()));
+  record.status = detail::run_status_from_string(value.value("status", std::string("failed")));
+  record.context =
+    core::execution_context_from_json(value.value("context", nlohmann::json::object()));
   if (record.context.run_id.empty()) {
     record.context.run_id = record.id;
   }
   else if (record.context.run_id != record.id) {
-    throw std::invalid_argument(
-      "agent run context id does not match the persisted record id");
+    throw std::invalid_argument("agent run context id does not match the persisted record id");
   }
-  record.created_at = detail::from_unix_millis(
-    value.value("created_at_unix_ms", std::int64_t {}));
-  record.updated_at = detail::from_unix_millis(
-    value.value("updated_at_unix_ms", std::int64_t {}));
-  if (value.contains("completed_at_unix_ms") &&
-      !value.at("completed_at_unix_ms").is_null()) {
-    record.completed_at = detail::from_unix_millis(
-      value.at("completed_at_unix_ms").get<std::int64_t>());
+  record.created_at = detail::from_unix_millis(value.value("created_at_unix_ms", std::int64_t {}));
+  record.updated_at = detail::from_unix_millis(value.value("updated_at_unix_ms", std::int64_t {}));
+  if (value.contains("completed_at_unix_ms") && !value.at("completed_at_unix_ms").is_null()) {
+    record.completed_at =
+      detail::from_unix_millis(value.at("completed_at_unix_ms").get<std::int64_t>());
   }
   if (value.contains("suspension") && !value.at("suspension").is_null()) {
     record.suspension = run_suspension_from_json(value.at("suspension"));
   }
-  if (value.contains("active_continuation") &&
-      !value.at("active_continuation").is_null()) {
-    record.active_continuation = run_suspension_from_json(
-      value.at("active_continuation"));
+  if (value.contains("active_continuation") && !value.at("active_continuation").is_null()) {
+    record.active_continuation = run_suspension_from_json(value.at("active_continuation"));
   }
-  if (value.contains("admitted_tool_results") &&
-      value.at("admitted_tool_results").is_object()) {
-    for (const auto& [call_id, item] :
-         value.at("admitted_tool_results").items()) {
+  if (value.contains("admitted_tool_results") && value.at("admitted_tool_results").is_object()) {
+    for (const auto& [call_id, item] : value.at("admitted_tool_results").items()) {
       admitted_tool_result result;
       result.tool_call_id = item.value("tool_call_id", call_id);
       result.idempotency_key = item.value("idempotency_key", std::string {});
       result.tool_name = item.value("tool_name", std::string {});
-      result.outcome = detail::tool_outcome_from_json(
-        item.value("outcome", nlohmann::json::object()));
-      result.admitted_at = detail::from_unix_millis(
-        item.value("admitted_at_unix_ms", std::int64_t {}));
+      result.outcome =
+        detail::tool_outcome_from_json(item.value("outcome", nlohmann::json::object()));
+      result.admitted_at =
+        detail::from_unix_millis(item.value("admitted_at_unix_ms", std::int64_t {}));
       record.admitted_tool_results[call_id] = std::move(result);
     }
   }
   record.result = value.value("result", nlohmann::json {});
   record.error = value.value("error", std::string {});
-  record.metadata = value.value(
-    "metadata", std::map<std::string, std::string> {});
+  record.metadata = value.value("metadata", std::map<std::string, std::string> {});
   if (record.id.empty()) {
     throw std::invalid_argument("persisted agent run requires an id");
   }
-  if (record.status == agent_run_status::waiting_for_approval &&
-      !record.suspension) {
-    throw std::invalid_argument(
-      "waiting agent run requires a suspended approval");
+  if (record.status == agent_run_status::waiting_for_approval && !record.suspension) {
+    throw std::invalid_argument("waiting agent run requires a suspended approval");
   }
-  if (record.status != agent_run_status::waiting_for_approval &&
-      record.suspension) {
-    throw std::invalid_argument(
-      "only a waiting agent run may contain a suspended approval");
+  if (record.status != agent_run_status::waiting_for_approval && record.suspension) {
+    throw std::invalid_argument("only a waiting agent run may contain a suspended approval");
   }
   if (record.active_continuation &&
       (record.status != agent_run_status::running ||
-       record.active_continuation->resolution != approval_resolution::approved)) {
+        record.active_continuation->resolution != approval_resolution::approved)) {
     throw std::invalid_argument(
       "active continuation requires a running agent run and approved resolution");
   }
   if (terminal(record.status) && !record.completed_at) {
-    throw std::invalid_argument(
-      "terminal agent run requires a completion timestamp");
+    throw std::invalid_argument("terminal agent run requires a completion timestamp");
   }
   if (!terminal(record.status) && record.completed_at) {
-    throw std::invalid_argument(
-      "non-terminal agent run cannot contain a completion timestamp");
+    throw std::invalid_argument("non-terminal agent run cannot contain a completion timestamp");
   }
   for (const auto& [call_id, result] : record.admitted_tool_results) {
     if (call_id.empty() || result.tool_call_id != call_id) {
-      throw std::invalid_argument(
-        "persisted admitted tool result has an inconsistent call id");
+      throw std::invalid_argument("persisted admitted tool result has an inconsistent call id");
     }
   }
   return record;
@@ -437,18 +419,14 @@ inline agent_run_event agent_run_event_from_json(const nlohmann::json& value) {
   event.run_id = value.at("run_id").get<std::string>();
   event.sequence = value.value("sequence", std::uint64_t {});
   event.type = value.value("type", std::string {});
-  event.status = detail::run_status_from_string(
-    value.value("status", std::string("failed")));
+  event.status = detail::run_status_from_string(value.value("status", std::string("failed")));
   event.step_id = value.value("step_id", std::string {});
   event.tool_call_id = value.value("tool_call_id", std::string {});
-  event.timestamp = detail::from_unix_millis(
-    value.value("timestamp_unix_ms", std::int64_t {}));
+  event.timestamp = detail::from_unix_millis(value.value("timestamp_unix_ms", std::int64_t {}));
   event.data = value.value("data", nlohmann::json {});
-  event.metadata = value.value(
-    "metadata", std::map<std::string, std::string> {});
+  event.metadata = value.value("metadata", std::map<std::string, std::string> {});
   if (event.run_id.empty() || event.type.empty() || event.sequence == 0) {
-    throw std::invalid_argument(
-      "persisted agent run event has incomplete identity fields");
+    throw std::invalid_argument("persisted agent run event has incomplete identity fields");
   }
   return event;
 }

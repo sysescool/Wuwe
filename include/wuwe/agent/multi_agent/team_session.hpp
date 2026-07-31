@@ -30,9 +30,7 @@ struct team_session_snapshot {
 
 class team_session {
 public:
-  explicit team_session(
-    std::string id,
-    std::map<std::string, std::string> metadata = {})
+  explicit team_session(std::string id, std::map<std::string, std::string> metadata = {})
       : id_(std::move(id)), metadata_(std::move(metadata)) {
     if (id_.empty()) {
       throw std::invalid_argument("team session requires an id");
@@ -126,9 +124,8 @@ private:
   bool fail_task_if_active(const std::string& task_id) {
     std::scoped_lock lock(mutex_);
     const auto found = tasks_.find(task_id);
-    if (found == tasks_.end() ||
-        (found->second != agent_task_status::submitted &&
-         found->second != agent_task_status::working)) {
+    if (found == tasks_.end() || (found->second != agent_task_status::submitted &&
+                                   found->second != agent_task_status::working)) {
       return false;
     }
     found->second = agent_task_status::failed;

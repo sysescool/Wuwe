@@ -11,9 +11,7 @@
 namespace wuwe::agent::runtime {
 
 [[nodiscard]] inline observability::agent_event to_observability_event(
-  const agent_run_event& event,
-  std::string trace_id = {},
-  std::string request_id = {}) {
+  const agent_run_event& event, std::string trace_id = {}, std::string request_id = {}) {
   return {
     .module = "runtime",
     .name = event.type,
@@ -31,8 +29,7 @@ namespace wuwe::agent::runtime {
 }
 
 [[nodiscard]] inline observability::agent_event to_observability_event(
-  const agent_run_event& event,
-  const core::agent_execution_context& context) {
+  const agent_run_event& event, const core::agent_execution_context& context) {
   auto attributes = event.metadata;
   core::apply_execution_context_attributes(attributes, context);
   return {
@@ -51,12 +48,8 @@ namespace wuwe::agent::runtime {
   };
 }
 
-inline std::size_t replay_run_events(
-  const agent_run_store& store,
-  const std::string& run_id,
-  observability::event_sink& sink,
-  std::uint64_t after_sequence = 0,
-  std::string trace_id = {},
+inline std::size_t replay_run_events(const agent_run_store& store, const std::string& run_id,
+  observability::event_sink& sink, std::uint64_t after_sequence = 0, std::string trace_id = {},
   observability::telemetry_failure_mode failure_mode =
     observability::telemetry_failure_mode::propagate) {
   const auto record = store.load(run_id);

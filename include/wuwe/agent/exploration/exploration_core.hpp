@@ -53,45 +53,66 @@ enum class exploration_stop_reason {
 
 [[nodiscard]] inline std::string to_string(experiment_safety value) {
   switch (value) {
-    case experiment_safety::read_only: return "read_only";
-    case experiment_safety::effectful: return "effectful";
+    case experiment_safety::read_only:
+      return "read_only";
+    case experiment_safety::effectful:
+      return "effectful";
   }
   return "unknown";
 }
 
 [[nodiscard]] inline std::string to_string(experiment_status value) {
   switch (value) {
-    case experiment_status::proposed: return "proposed";
-    case experiment_status::blocked: return "blocked";
-    case experiment_status::approval_required: return "approval_required";
-    case experiment_status::approved: return "approved";
-    case experiment_status::completed: return "completed";
-    case experiment_status::failed: return "failed";
-    case experiment_status::timed_out: return "timed_out";
-    case experiment_status::cancelled: return "cancelled";
+    case experiment_status::proposed:
+      return "proposed";
+    case experiment_status::blocked:
+      return "blocked";
+    case experiment_status::approval_required:
+      return "approval_required";
+    case experiment_status::approved:
+      return "approved";
+    case experiment_status::completed:
+      return "completed";
+    case experiment_status::failed:
+      return "failed";
+    case experiment_status::timed_out:
+      return "timed_out";
+    case experiment_status::cancelled:
+      return "cancelled";
   }
   return "unknown";
 }
 
 [[nodiscard]] inline std::string to_string(hypothesis_verdict value) {
   switch (value) {
-    case hypothesis_verdict::supported: return "supported";
-    case hypothesis_verdict::refuted: return "refuted";
-    case hypothesis_verdict::inconclusive: return "inconclusive";
-    case hypothesis_verdict::blocked: return "blocked";
-    case hypothesis_verdict::failed: return "failed";
+    case hypothesis_verdict::supported:
+      return "supported";
+    case hypothesis_verdict::refuted:
+      return "refuted";
+    case hypothesis_verdict::inconclusive:
+      return "inconclusive";
+    case hypothesis_verdict::blocked:
+      return "blocked";
+    case hypothesis_verdict::failed:
+      return "failed";
   }
   return "unknown";
 }
 
 [[nodiscard]] inline std::string to_string(exploration_stop_reason value) {
   switch (value) {
-    case exploration_stop_reason::none: return "none";
-    case exploration_stop_reason::cancelled: return "cancelled";
-    case exploration_stop_reason::timed_out: return "timed_out";
-    case exploration_stop_reason::generation_failed: return "generation_failed";
-    case exploration_stop_reason::design_failed: return "design_failed";
-    case exploration_stop_reason::review_failed: return "review_failed";
+    case exploration_stop_reason::none:
+      return "none";
+    case exploration_stop_reason::cancelled:
+      return "cancelled";
+    case exploration_stop_reason::timed_out:
+      return "timed_out";
+    case exploration_stop_reason::generation_failed:
+      return "generation_failed";
+    case exploration_stop_reason::design_failed:
+      return "design_failed";
+    case exploration_stop_reason::review_failed:
+      return "review_failed";
   }
   return "unknown";
 }
@@ -109,9 +130,11 @@ struct exploration_context {
   }
 
   [[nodiscard]] std::chrono::milliseconds remaining_time() const noexcept {
-    if (!deadline) return std::chrono::milliseconds::max();
+    if (!deadline)
+      return std::chrono::milliseconds::max();
     const auto now = std::chrono::steady_clock::now();
-    if (now >= *deadline) return std::chrono::milliseconds { 0 };
+    if (now >= *deadline)
+      return std::chrono::milliseconds { 0 };
     return std::chrono::duration_cast<std::chrono::milliseconds>(*deadline - now);
   }
 };
@@ -184,12 +207,8 @@ struct exploration_record {
   std::vector<hypothesis_record> hypotheses;
   exploration_stop_reason stop_reason { exploration_stop_reason::none };
   std::string error;
-  std::chrono::system_clock::time_point created_at {
-    std::chrono::system_clock::now()
-  };
-  std::chrono::system_clock::time_point updated_at {
-    std::chrono::system_clock::now()
-  };
+  std::chrono::system_clock::time_point created_at { std::chrono::system_clock::now() };
+  std::chrono::system_clock::time_point updated_at { std::chrono::system_clock::now() };
   std::chrono::milliseconds elapsed { 0 };
   std::size_t detached_count { 0 };
 };
@@ -217,7 +236,8 @@ struct exploration_run_result {
 inline std::string make_exploration_id(const char* prefix) {
   static std::atomic<std::uint64_t> next { 1 };
   const auto now = std::chrono::duration_cast<std::chrono::microseconds>(
-    std::chrono::system_clock::now().time_since_epoch()).count();
+    std::chrono::system_clock::now().time_since_epoch())
+                     .count();
   return std::string(prefix) + "-" + std::to_string(now) + "-" +
          std::to_string(next.fetch_add(1, std::memory_order_relaxed));
 }
@@ -294,8 +314,7 @@ inline nlohmann::json exploration_record_to_json(const exploration_record& value
   };
 }
 
-inline nlohmann::json exploration_run_result_to_json(
-  const exploration_run_result& value) {
+inline nlohmann::json exploration_run_result_to_json(const exploration_run_result& value) {
   return {
     { "completed", value.completed },
     { "hypothesis_count", value.hypothesis_count },

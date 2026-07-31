@@ -15,8 +15,7 @@ public:
   [[nodiscard]] virtual sandbox::sandbox_backend_info info() const = 0;
 
   [[nodiscard]] virtual execution_result run(
-    const execution_request& request,
-    std::stop_token stop_token) = 0;
+    const execution_request& request, std::stop_token stop_token) = 0;
 };
 
 } // namespace wuwe::agent::execution

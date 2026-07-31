@@ -33,14 +33,11 @@ std::string comparable_path_string(const std::filesystem::path& path) {
 
 } // namespace
 
-std::filesystem::path normalize_existing_or_parent_path(
-  const std::filesystem::path& path) {
+std::filesystem::path normalize_existing_or_parent_path(const std::filesystem::path& path) {
   return weakly_canonical_noexcept(path);
 }
 
-bool path_is_within_root(
-  const std::filesystem::path& path,
-  const std::filesystem::path& root) {
+bool path_is_within_root(const std::filesystem::path& path, const std::filesystem::path& root) {
   const auto normalized_path = normalize_existing_or_parent_path(path);
   const auto normalized_root = normalize_existing_or_parent_path(root);
   auto path_text = comparable_path_string(normalized_path);
@@ -66,8 +63,7 @@ bool path_is_within_root(
 }
 
 path_boundary_result evaluate_path_boundary(
-  const std::filesystem::path& path,
-  const std::vector<std::filesystem::path>& allowed_roots) {
+  const std::filesystem::path& path, const std::vector<std::filesystem::path>& allowed_roots) {
   const auto normalized = normalize_existing_or_parent_path(path);
   for (const auto& root : allowed_roots) {
     if (path_is_within_root(normalized, root)) {

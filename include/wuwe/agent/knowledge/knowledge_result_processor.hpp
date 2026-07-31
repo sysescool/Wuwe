@@ -57,13 +57,13 @@ private:
     }
 
     std::vector<knowledge_result> ordered = results;
-    std::sort(ordered.begin(), ordered.end(), [](const knowledge_result& lhs,
-                                                  const knowledge_result& rhs) {
-      if (lhs.chunk.document_id != rhs.chunk.document_id) {
-        return lhs.chunk.document_id < rhs.chunk.document_id;
-      }
-      return lhs.chunk.start_offset < rhs.chunk.start_offset;
-    });
+    std::sort(
+      ordered.begin(), ordered.end(), [](const knowledge_result& lhs, const knowledge_result& rhs) {
+        if (lhs.chunk.document_id != rhs.chunk.document_id) {
+          return lhs.chunk.document_id < rhs.chunk.document_id;
+        }
+        return lhs.chunk.start_offset < rhs.chunk.start_offset;
+      });
 
     std::vector<knowledge_result> merged;
     for (auto& result : ordered) {
@@ -74,16 +74,16 @@ private:
       merge_into(merged.back(), result);
     }
 
-    std::sort(merged.begin(), merged.end(), [](const knowledge_result& lhs,
-                                                const knowledge_result& rhs) {
-      if (lhs.score != rhs.score) {
-        return lhs.score > rhs.score;
-      }
-      if (lhs.chunk.document_id != rhs.chunk.document_id) {
-        return lhs.chunk.document_id < rhs.chunk.document_id;
-      }
-      return lhs.chunk.start_offset < rhs.chunk.start_offset;
-    });
+    std::sort(
+      merged.begin(), merged.end(), [](const knowledge_result& lhs, const knowledge_result& rhs) {
+        if (lhs.score != rhs.score) {
+          return lhs.score > rhs.score;
+        }
+        if (lhs.chunk.document_id != rhs.chunk.document_id) {
+          return lhs.chunk.document_id < rhs.chunk.document_id;
+        }
+        return lhs.chunk.start_offset < rhs.chunk.start_offset;
+      });
     return merged;
   }
 

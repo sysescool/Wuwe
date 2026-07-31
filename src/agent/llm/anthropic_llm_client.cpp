@@ -23,8 +23,8 @@ json parse_json_object_or_default(const std::string& text) {
   return parsed.is_object() ? parsed : json::object();
 }
 
-std::error_code classify_anthropic_error(const std::error_code& transport_or_http_error,
-  const json& body) {
+std::error_code classify_anthropic_error(
+  const std::error_code& transport_or_http_error, const json& body) {
   if (transport_or_http_error == net_errc::unauthorized ||
       transport_or_http_error == net_errc::forbidden) {
     return agent::make_error_code(agent::llm_error_code::authentication_failed);
@@ -75,12 +75,12 @@ void emit_stream_event(const llm_stream_callbacks& callbacks, llm_stream_event e
   if (callbacks.on_event) {
     callbacks.on_event(event);
   }
-  if (event.type == llm_stream_event_type::reasoning_delta &&
-      callbacks.on_reasoning_delta && !event.reasoning_delta.empty()) {
+  if (event.type == llm_stream_event_type::reasoning_delta && callbacks.on_reasoning_delta &&
+      !event.reasoning_delta.empty()) {
     callbacks.on_reasoning_delta(event.reasoning_delta);
   }
-  if (event.type == llm_stream_event_type::reasoning_done &&
-      callbacks.on_reasoning_done && !event.reasoning_summary.empty()) {
+  if (event.type == llm_stream_event_type::reasoning_done && callbacks.on_reasoning_done &&
+      !event.reasoning_summary.empty()) {
     callbacks.on_reasoning_done(event.reasoning_summary);
   }
 }
@@ -88,14 +88,12 @@ void emit_stream_event(const llm_stream_callbacks& callbacks, llm_stream_event e
 } // namespace
 
 anthropic_llm_client::anthropic_llm_client(llm_client_config config)
-    : config_(normalize_config(std::move(config))),
-      http_(std::make_shared<default_http_client>()) {}
+    : config_(normalize_config(std::move(config))), http_(std::make_shared<default_http_client>()) {
+}
 
 anthropic_llm_client::anthropic_llm_client(
-  llm_client_config config,
-  std::shared_ptr<http_client> http)
-    : config_(normalize_config(std::move(config))),
-      http_(std::move(http)) {
+  llm_client_config config, std::shared_ptr<http_client> http)
+    : config_(normalize_config(std::move(config))), http_(std::move(http)) {
   if (!http_) {
     http_ = std::make_shared<default_http_client>();
   }
@@ -125,26 +123,20 @@ json anthropic_llm_client::build_payload(const llm_request& request, bool stream
     message["role"] = msg.role == "assistant" ? "assistant" : "user";
 
     if (msg.role == "tool") {
-      message["content"] = json::array({
-        {
-          {"type", "tool_result"},
-          {"tool_use_id", msg.tool_call_id.value_or("")},
-          {"content", msg.content}
-        }
-      });
+      message["content"] = json::array({ { { "type", "tool_result" },
+        { "tool_use_id", msg.tool_call_id.value_or("") },
+        { "content", msg.content } } });
     }
     else if (!msg.tool_calls.empty()) {
       auto content = json::array();
       if (!msg.content.empty()) {
-        content.push_back({{"type", "text"}, {"text", msg.content}});
+        content.push_back({ { "type", "text" }, { "text", msg.content } });
       }
       for (const auto& call : msg.tool_calls) {
-        content.push_back({
-          {"type", "tool_use"},
-          {"id", call.id},
-          {"name", call.name},
-          {"input", parse_json_object_or_default(call.arguments_json)}
-        });
+        content.push_back({ { "type", "tool_use" },
+          { "id", call.id },
+          { "name", call.name },
+          { "input", parse_json_object_or_default(call.arguments_json) } });
       }
       message["content"] = std::move(content);
     }
@@ -155,13 +147,13 @@ json anthropic_llm_client::build_payload(const llm_request& request, bool stream
   }
 
   json payload = {
-    {"model", request.model.empty() ? config_.model : request.model},
-    {"max_tokens", request.max_output_tokens && *request.max_output_tokens > 0
-                     ? *request.max_output_tokens
-                     : 4096},
-    {"messages", std::move(messages)},
-    {"temperature", request.temperature},
-    {"stream", stream},
+    { "model", request.model.empty() ? config_.model : request.model },
+    { "max_tokens",
+      request.max_output_tokens && *request.max_output_tokens > 0 ? *request.max_output_tokens
+                                                                  : 4096 },
+    { "messages", std::move(messages) },
+    { "temperature", request.temperature },
+    { "stream", stream },
   };
   if (!system.empty()) {
     payload["system"] = system;
@@ -173,11 +165,9 @@ json anthropic_llm_client::build_payload(const llm_request& request, bool stream
   if (!request.tools.empty()) {
     auto tools = json::array();
     for (const auto& tool : request.tools) {
-      tools.push_back({
-        {"name", tool.name},
-        {"description", tool.description},
-        {"input_schema", parse_json_object_or_default(tool.parameters_json_schema)}
-      });
+      tools.push_back({ { "name", tool.name },
+        { "description", tool.description },
+        { "input_schema", parse_json_object_or_default(tool.parameters_json_schema) } });
     }
     payload["tools"] = std::move(tools);
   }
@@ -185,16 +175,16 @@ json anthropic_llm_client::build_payload(const llm_request& request, bool stream
   if (request.tool_choice.has_value()) {
     switch (request.tool_choice->mode) {
       case llm_tool_choice_mode::none:
-        payload["tool_choice"] = {{"type", "none"}};
+        payload["tool_choice"] = { { "type", "none" } };
         break;
       case llm_tool_choice_mode::required:
-        payload["tool_choice"] = {{"type", "any"}};
+        payload["tool_choice"] = { { "type", "any" } };
         break;
       case llm_tool_choice_mode::named:
-        payload["tool_choice"] = {{"type", "tool"}, {"name", request.tool_choice->name}};
+        payload["tool_choice"] = { { "type", "tool" }, { "name", request.tool_choice->name } };
         break;
       default:
-        payload["tool_choice"] = {{"type", "auto"}};
+        payload["tool_choice"] = { { "type", "auto" } };
         break;
     }
   }
@@ -204,11 +194,11 @@ json anthropic_llm_client::build_payload(const llm_request& request, bool stream
 
 std::vector<std::pair<std::string, std::string>> anthropic_llm_client::build_headers() const {
   std::vector<std::pair<std::string, std::string>> headers {
-    {"Content-Type", "application/json"},
-    {"anthropic-version", "2023-06-01"},
+    { "Content-Type", "application/json" },
+    { "anthropic-version", "2023-06-01" },
   };
   if (!config_.api_key.empty()) {
-    headers.push_back({"x-api-key", config_.api_key});
+    headers.push_back({ "x-api-key", config_.api_key });
   }
   return headers;
 }
@@ -219,9 +209,8 @@ llm_response anthropic_llm_client::parse_response(const http_response& response)
 
   if (response.error_code) {
     result.content = response.body;
-    result.error_code = classify_anthropic_error(
-      response.error_code,
-      data.is_discarded() ? json::object() : data);
+    result.error_code =
+      classify_anthropic_error(response.error_code, data.is_discarded() ? json::object() : data);
     return result;
   }
   if (data.is_discarded() || !data.is_object()) {
@@ -240,12 +229,11 @@ llm_response anthropic_llm_client::parse_response(const http_response& response)
   if (data.contains("usage") && data["usage"].is_object()) {
     const auto cache_read = data["usage"].value("cache_read_input_tokens", 0);
     const auto cache_creation = data["usage"].value("cache_creation_input_tokens", 0);
-    result.usage.prompt_tokens = data["usage"].value("input_tokens", 0) +
-      cache_read + cache_creation;
+    result.usage.prompt_tokens =
+      data["usage"].value("input_tokens", 0) + cache_read + cache_creation;
     result.usage.completion_tokens = data["usage"].value("output_tokens", 0);
     result.usage.total_tokens = result.usage.prompt_tokens + result.usage.completion_tokens;
-    result.usage.cached_prompt_tokens =
-      cache_read;
+    result.usage.cached_prompt_tokens = cache_read;
   }
 
   if (!data.contains("content") || !data["content"].is_array()) {
@@ -285,7 +273,8 @@ llm_response anthropic_llm_client::complete(const llm_request& request) {
   return complete(request, {});
 }
 
-llm_response anthropic_llm_client::complete(const llm_request& request, std::stop_token stop_token) {
+llm_response anthropic_llm_client::complete(
+  const llm_request& request, std::stop_token stop_token) {
   if (auto rejected = agent::llm::llm_request_rejection(request, capabilities())) {
     return std::move(*rejected);
   }
@@ -302,9 +291,7 @@ llm_response anthropic_llm_client::complete(const llm_request& request, std::sto
     .headers = build_headers(),
     .body = build_payload(request, false).dump(),
     .timeout = config_.timeout,
-    .trace_id = request.execution_context
-      ? request.execution_context->trace_id
-      : std::string {},
+    .trace_id = request.execution_context ? request.execution_context->trace_id : std::string {},
   };
   const int max_retries = config_.max_retries < 0 ? 0 : config_.max_retries;
   for (int attempt = 0; attempt <= max_retries; ++attempt) {
@@ -314,12 +301,10 @@ llm_response anthropic_llm_client::complete(const llm_request& request, std::sto
     const auto response = http_->send(req);
     auto result = parse_response(response);
     agent::llm_detail::apply_retry_metadata(result, response);
-    apply_reasoning_language_metadata(
-      result,
+    apply_reasoning_language_metadata(result,
       request.language,
-      has_language_preferences(request.language)
-        ? llm_reasoning_language_control::prompt_contract
-        : llm_reasoning_language_control::unsupported);
+      has_language_preferences(request.language) ? llm_reasoning_language_control::prompt_contract
+                                                 : llm_reasoning_language_control::unsupported);
     if (stop_token.stop_requested() && !result.error_code) {
       result.error_code = agent::make_error_code(agent::llm_error_code::cancelled);
     }
@@ -328,8 +313,7 @@ llm_response anthropic_llm_client::complete(const llm_request& request, std::sto
       return result;
     }
     if (!agent::llm_detail::wait_for_retry(
-          stop_token,
-          agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
+          stop_token, agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
       return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
     }
   }
@@ -337,9 +321,7 @@ llm_response anthropic_llm_client::complete(const llm_request& request, std::sto
 }
 
 llm_response anthropic_llm_client::complete_stream(
-  const llm_request& request,
-  const llm_stream_callbacks& callbacks,
-    std::stop_token stop_token) {
+  const llm_request& request, const llm_stream_callbacks& callbacks, std::stop_token stop_token) {
   if (auto rejected = agent::llm::llm_request_rejection(request, capabilities())) {
     agent::llm::emit_llm_request_rejection(callbacks, *rejected);
     return std::move(*rejected);
@@ -348,16 +330,19 @@ llm_response anthropic_llm_client::complete_stream(
     return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
   }
   if (config_.require_api_key && config_.api_key.empty()) {
-    llm_response response { .error_code = agent::make_error_code(agent::llm_error_code::missing_api_key) };
-    emit_stream_event(callbacks, { .type = llm_stream_event_type::error, .response = response, .error_code = response.error_code });
+    llm_response response { .error_code =
+                              agent::make_error_code(agent::llm_error_code::missing_api_key) };
+    emit_stream_event(callbacks,
+      { .type = llm_stream_event_type::error,
+        .response = response,
+        .error_code = response.error_code });
     return response;
   }
 
   llm_response result;
-  const auto reasoning_language_control =
-    has_language_preferences(request.language)
-      ? llm_reasoning_language_control::prompt_contract
-      : llm_reasoning_language_control::unsupported;
+  const auto reasoning_language_control = has_language_preferences(request.language)
+                                            ? llm_reasoning_language_control::prompt_contract
+                                            : llm_reasoning_language_control::unsupported;
   sse_event_parser parser;
   std::map<int, llm_tool_call> tool_calls;
   bool emitted_output = false;
@@ -366,14 +351,13 @@ llm_response anthropic_llm_client::complete_stream(
   bool ignored_stream_transport_error = false;
   bool ignored_invalid_stream_event = false;
   agent::llm_detail::stream_timeout_guard timeout_guard(config_.stream_timeouts);
-  const auto fail_stream_timeout =
-    [&](const agent::llm_detail::stream_timeout& timeout) {
-      result.metadata["timeout_phase"] = timeout.phase;
-      result.metadata["timeout_ms"] = std::to_string(timeout.timeout_ms);
-      result.content = "Anthropic streaming " + timeout.phase + " timeout.";
-      result.error_code = agent::make_error_code(agent::llm_error_code::timeout);
-      return false;
-    };
+  const auto fail_stream_timeout = [&](const agent::llm_detail::stream_timeout& timeout) {
+    result.metadata["timeout_phase"] = timeout.phase;
+    result.metadata["timeout_ms"] = std::to_string(timeout.timeout_ms);
+    result.content = "Anthropic streaming " + timeout.phase + " timeout.";
+    result.error_code = agent::make_error_code(agent::llm_error_code::timeout);
+    return false;
+  };
 
   const auto process_event = [&](const sse_event& event) {
     if (event.data.empty()) {
@@ -405,12 +389,10 @@ llm_response anthropic_llm_client::complete_stream(
     if (type == "message_start" && data.contains("message") && data["message"].is_object()) {
       const auto& message = data["message"];
       if (message.contains("usage") && message["usage"].is_object()) {
-        const auto cache_read =
-          message["usage"].value("cache_read_input_tokens", 0);
-        const auto cache_creation =
-          message["usage"].value("cache_creation_input_tokens", 0);
-        result.usage.prompt_tokens = message["usage"].value("input_tokens", 0) +
-          cache_read + cache_creation;
+        const auto cache_read = message["usage"].value("cache_read_input_tokens", 0);
+        const auto cache_creation = message["usage"].value("cache_creation_input_tokens", 0);
+        result.usage.prompt_tokens =
+          message["usage"].value("input_tokens", 0) + cache_read + cache_creation;
         result.usage.cached_prompt_tokens = cache_read;
       }
     }
@@ -433,23 +415,22 @@ llm_response anthropic_llm_client::complete_stream(
         const auto text = delta.value("text", std::string {});
         result.content += text;
         emitted_output = true;
-        emit_stream_event(callbacks, { .type = llm_stream_event_type::content_delta, .content_delta = text });
+        emit_stream_event(
+          callbacks, { .type = llm_stream_event_type::content_delta, .content_delta = text });
       }
       else if (delta.value("type", std::string {}) == "thinking_delta") {
         const auto thinking = delta.value("thinking", std::string {});
         if (!thinking.empty()) {
           result.reasoning_summary += thinking;
           merge_reasoning_language_metadata(
-            result.reasoning_metadata,
-            request.language,
-            reasoning_language_control,
-            thinking);
+            result.reasoning_metadata, request.language, reasoning_language_control, thinking);
           emitted_output = true;
-          emit_stream_event(callbacks, {
-            .type = llm_stream_event_type::reasoning_delta,
-            .reasoning_delta = thinking,
-            .reasoning_metadata = result.reasoning_metadata,
-          });
+          emit_stream_event(callbacks,
+            {
+              .type = llm_stream_event_type::reasoning_delta,
+              .reasoning_delta = thinking,
+              .reasoning_metadata = result.reasoning_metadata,
+            });
         }
       }
       else if (delta.value("type", std::string {}) == "signature_delta") {
@@ -463,14 +444,16 @@ llm_response anthropic_llm_client::complete_stream(
         const auto partial = delta.value("partial_json", std::string {});
         call.arguments_json += partial;
         emitted_output = true;
-        emit_stream_event(callbacks, {
-          .type = llm_stream_event_type::tool_call_delta,
-          .tool_call_delta = llm_tool_call_delta {
-            .index = index,
-            .id = call.id,
-            .arguments_delta = partial,
-          },
-        });
+        emit_stream_event(callbacks,
+          {
+            .type = llm_stream_event_type::tool_call_delta,
+            .tool_call_delta =
+              llm_tool_call_delta {
+                .index = index,
+                .id = call.id,
+                .arguments_delta = partial,
+              },
+          });
       }
     }
     else if (type == "content_block_stop") {
@@ -479,10 +462,11 @@ llm_response anthropic_llm_client::complete_stream(
       if (it != tool_calls.end()) {
         result.tool_calls.push_back(it->second);
         emitted_output = true;
-        emit_stream_event(callbacks, {
-          .type = llm_stream_event_type::tool_call_done,
-          .tool_call = it->second,
-        });
+        emit_stream_event(callbacks,
+          {
+            .type = llm_stream_event_type::tool_call_done,
+            .tool_call = it->second,
+          });
       }
     }
     else if (type == "message_delta" && data.contains("delta") && data["delta"].is_object()) {
@@ -492,25 +476,24 @@ llm_response anthropic_llm_client::complete_stream(
         result.usage.total_tokens = result.usage.prompt_tokens + result.usage.completion_tokens;
         if (data["usage"].contains("cache_read_input_tokens")) {
           const auto prior_cached = result.usage.cached_prompt_tokens;
-          const auto updated_cached = data["usage"].value(
-            "cache_read_input_tokens", prior_cached);
+          const auto updated_cached = data["usage"].value("cache_read_input_tokens", prior_cached);
           result.usage.prompt_tokens += updated_cached - prior_cached;
           result.usage.cached_prompt_tokens = updated_cached;
         }
-        result.usage.total_tokens =
-          result.usage.prompt_tokens + result.usage.completion_tokens;
+        result.usage.total_tokens = result.usage.prompt_tokens + result.usage.completion_tokens;
       }
     }
     else if (type == "message_stop") {
       saw_done = true;
       if (!result.reasoning_summary.empty()) {
         apply_reasoning_language_metadata(result, request.language, reasoning_language_control);
-        emit_stream_event(callbacks, {
-          .type = llm_stream_event_type::reasoning_done,
-          .reasoning_summary = result.reasoning_summary,
-          .reasoning_metadata = result.reasoning_metadata,
-          .response = result,
-        });
+        emit_stream_event(callbacks,
+          {
+            .type = llm_stream_event_type::reasoning_done,
+            .reasoning_summary = result.reasoning_summary,
+            .reasoning_metadata = result.reasoning_metadata,
+            .response = result,
+          });
       }
       emit_stream_event(callbacks, { .type = llm_stream_event_type::done, .response = result });
     }
@@ -524,9 +507,7 @@ llm_response anthropic_llm_client::complete_stream(
     .body = build_payload(request, true).dump(),
     .timeout = config_.timeout,
     .timeouts = agent::llm_detail::make_stream_http_timeouts(config_),
-    .trace_id = request.execution_context
-      ? request.execution_context->trace_id
-      : std::string {},
+    .trace_id = request.execution_context ? request.execution_context->trace_id : std::string {},
   };
   const int max_retries = config_.max_retries < 0 ? 0 : config_.max_retries;
   http_response response;
@@ -542,15 +523,13 @@ llm_response anthropic_llm_client::complete_stream(
       break;
     }
     const auto body = json::parse(response.body, nullptr, false);
-    const auto error_code = classify_anthropic_error(
-      response.error_code,
-      body.is_discarded() ? json::object() : body);
+    const auto error_code =
+      classify_anthropic_error(response.error_code, body.is_discarded() ? json::object() : body);
     if (!agent::llm_detail::is_retryable_error(error_code)) {
       break;
     }
     if (!agent::llm_detail::wait_for_retry(
-          stop_token,
-          agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
+          stop_token, agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
       result.error_code = agent::make_error_code(agent::llm_error_code::cancelled);
       break;
     }
@@ -578,9 +557,8 @@ llm_response anthropic_llm_client::complete_stream(
       result.metadata["ignored_stream_transport_error"] = response.error_code.message();
     }
     else {
-      result.content = anthropic_error_message(
-        result.error_code,
-        body.is_discarded() ? json::object() : body);
+      result.content =
+        anthropic_error_message(result.error_code, body.is_discarded() ? json::object() : body);
     }
   }
   else if (!result.error_code &&
@@ -589,22 +567,24 @@ llm_response anthropic_llm_client::complete_stream(
     result.content = "Anthropic streaming response ended without a complete message.";
   }
   if (result.error_code) {
-    emit_stream_event(callbacks, {
-      .type = llm_stream_event_type::error,
-      .response = result,
-      .error_code = result.error_code,
-      .message = result.content,
-    });
+    emit_stream_event(callbacks,
+      {
+        .type = llm_stream_event_type::error,
+        .response = result,
+        .error_code = result.error_code,
+        .message = result.content,
+      });
   }
   else if ((ignored_stream_transport_error || ignored_invalid_stream_event) && !saw_done) {
     if (!result.reasoning_summary.empty()) {
       apply_reasoning_language_metadata(result, request.language, reasoning_language_control);
-      emit_stream_event(callbacks, {
-        .type = llm_stream_event_type::reasoning_done,
-        .reasoning_summary = result.reasoning_summary,
-        .reasoning_metadata = result.reasoning_metadata,
-        .response = result,
-      });
+      emit_stream_event(callbacks,
+        {
+          .type = llm_stream_event_type::reasoning_done,
+          .reasoning_summary = result.reasoning_summary,
+          .reasoning_metadata = result.reasoning_metadata,
+          .response = result,
+        });
     }
     emit_stream_event(callbacks, { .type = llm_stream_event_type::done, .response = result });
   }

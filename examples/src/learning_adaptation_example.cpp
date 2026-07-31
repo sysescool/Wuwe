@@ -37,8 +37,7 @@ int main() {
   });
 
   auto optimizer = std::make_shared<learning::function_offline_optimizer>(
-    [](const learning::optimization_request& request,
-       const learning::learning_context&) {
+    [](const learning::optimization_request& request, const learning::learning_context&) {
       return std::vector<learning::learning_candidate> {
         {
           .kind = learning::learning_change_kind::prompt,
@@ -54,18 +53,18 @@ int main() {
 
   approval::allow_all_approval_service approvals;
   learning::learning_runner learner({
-    .proposer = learning::make_offline_optimizer_proposer(
-      optimizer, experiences, &rewards, &registry),
-    .evaluator = [](const learning::learning_candidate&,
-                    const learning::learning_context&) {
-      return learning::learning_evaluation {
-        .passed = true,
-        .baseline_score = 0.78,
-        .candidate_score = 0.9,
-        .baseline_pass_rate = 0.9,
-        .candidate_pass_rate = 0.98,
-      };
-    },
+    .proposer =
+      learning::make_offline_optimizer_proposer(optimizer, experiences, &rewards, &registry),
+    .evaluator =
+      [](const learning::learning_candidate&, const learning::learning_context&) {
+        return learning::learning_evaluation {
+          .passed = true,
+          .baseline_score = 0.78,
+          .candidate_score = 0.9,
+          .baseline_pass_rate = 0.9,
+          .candidate_pass_rate = 0.98,
+        };
+      },
     .activator = learning::make_registry_only_activator(registry),
     .approvals = &approvals,
   });
@@ -84,6 +83,5 @@ int main() {
   const auto active = registry.active("answer.prompt");
   std::cout << "activated=" << result.activated_count
             << ", active_version=" << (active ? active->version : "none")
-            << ", rollback_target="
-            << result.records.front().activation->rollback_token << '\n';
+            << ", rollback_target=" << result.records.front().activation->rollback_token << '\n';
 }

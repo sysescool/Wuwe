@@ -13,22 +13,21 @@ namespace wuwe::agent::memory {
 class lexical_memory_ranker final : public memory_ranker {
 public:
   std::vector<memory_record> rank(
-    const memory_query& query,
-    std::vector<memory_record> candidates) const override {
+    const memory_query& query, std::vector<memory_record> candidates) const override {
     for (auto& candidate : candidates) {
       candidate.score = detail::lexical_score(query.text, candidate);
     }
 
-    std::sort(candidates.begin(), candidates.end(), [](const memory_record& lhs,
-                                                        const memory_record& rhs) {
-      if (lhs.score != rhs.score) {
-        return lhs.score > rhs.score;
-      }
-      if (lhs.priority != rhs.priority) {
-        return lhs.priority > rhs.priority;
-      }
-      return lhs.updated_at > rhs.updated_at;
-    });
+    std::sort(
+      candidates.begin(), candidates.end(), [](const memory_record& lhs, const memory_record& rhs) {
+        if (lhs.score != rhs.score) {
+          return lhs.score > rhs.score;
+        }
+        if (lhs.priority != rhs.priority) {
+          return lhs.priority > rhs.priority;
+        }
+        return lhs.updated_at > rhs.updated_at;
+      });
 
     if (candidates.size() > query.limit) {
       candidates.resize(query.limit);

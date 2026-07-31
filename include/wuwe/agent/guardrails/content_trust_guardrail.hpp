@@ -25,8 +25,7 @@ struct content_trust_guardrail_options {
 
 class content_trust_guardrail final : public guardrail {
 public:
-  explicit content_trust_guardrail(
-    content_trust_guardrail_options options = {})
+  explicit content_trust_guardrail(content_trust_guardrail_options options = {})
       : options_(std::move(options)) {
     if (options_.name.empty()) {
       throw std::invalid_argument("content_trust_guardrail requires a name");
@@ -64,9 +63,8 @@ public:
     }
     const auto trust = *parsed_trust;
     const auto role = request.metadata.find("message_role");
-    if (options_.deny_untrusted_system_messages &&
-        role != request.metadata.end() && role->second == "system" &&
-        !core::trusted_for_system_message(trust)) {
+    if (options_.deny_untrusted_system_messages && role != request.metadata.end() &&
+        role->second == "system" && !core::trusted_for_system_message(trust)) {
       return guardrail_result::deny({
         .severity = guardrail_severity::critical,
         .code = "untrusted_system_content",

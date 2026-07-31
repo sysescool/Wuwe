@@ -50,8 +50,7 @@ public:
   sqlite_knowledge_index(const sqlite_knowledge_index&) = delete;
   sqlite_knowledge_index& operator=(const sqlite_knowledge_index&) = delete;
 
-  [[nodiscard]] core::storage_capabilities capabilities()
-    const noexcept override {
+  [[nodiscard]] core::storage_capabilities capabilities() const noexcept override {
     return {
       .declared = true,
       .durable = true,
@@ -74,8 +73,7 @@ public:
     upsert_unlocked(chunk, embedding);
   }
 
-  void upsert_batch(
-    const std::vector<knowledge_chunk>& chunks,
+  void upsert_batch(const std::vector<knowledge_chunk>& chunks,
     const std::vector<std::vector<float>>& embeddings) override {
     if (chunks.size() != embeddings.size()) {
       throw std::invalid_argument("sqlite_knowledge_index upsert_batch size mismatch");
@@ -96,12 +94,10 @@ public:
   }
 
   std::vector<knowledge_result> search(
-    const knowledge_query& query,
-    const std::vector<float>& embedding) const override {
+    const knowledge_query& query, const std::vector<float>& embedding) const override {
     std::scoped_lock lock(mutex_);
 
-    statement select(db_,
-      "SELECT chunk_json, embedding_json FROM knowledge_index");
+    statement select(db_, "SELECT chunk_json, embedding_json FROM knowledge_index");
 
     std::vector<knowledge_result> result;
     while (true) {
@@ -113,20 +109,19 @@ public:
         throw_sqlite("search knowledge index", db_);
       }
 
-      auto chunk = detail::knowledge_chunk_from_json(
-        nlohmann::json::parse(column_text(select.get(), 0)));
+      auto chunk =
+        detail::knowledge_chunk_from_json(nlohmann::json::parse(column_text(select.get(), 0)));
       if (!metadata_matches(chunk.metadata, query.filters) ||
           !metadata_access_matches(chunk.metadata, query.access)) {
         continue;
       }
 
-      const auto stored_embedding = detail::knowledge_embedding_from_json(
-        nlohmann::json::parse(column_text(select.get(), 1)));
+      const auto stored_embedding =
+        detail::knowledge_embedding_from_json(nlohmann::json::parse(column_text(select.get(), 1)));
       const auto vector_score =
         ::wuwe::agent::memory::vector_detail::cosine_similarity(embedding, stored_embedding);
       const auto lexical_score = detail::lexical_knowledge_score(query.text, chunk);
-      const auto score =
-        query.vector_weight * vector_score + query.lexical_weight * lexical_score;
+      const auto score = query.vector_weight * vector_score + query.lexical_weight * lexical_score;
       if (score < query.minimum_score) {
         continue;
       }
@@ -139,16 +134,16 @@ public:
       });
     }
 
-    std::sort(result.begin(), result.end(), [](const knowledge_result& lhs,
-                                                const knowledge_result& rhs) {
-      if (lhs.score != rhs.score) {
-        return lhs.score > rhs.score;
-      }
-      if (lhs.chunk.document_id != rhs.chunk.document_id) {
-        return lhs.chunk.document_id < rhs.chunk.document_id;
-      }
-      return lhs.chunk.start_offset < rhs.chunk.start_offset;
-    });
+    std::sort(
+      result.begin(), result.end(), [](const knowledge_result& lhs, const knowledge_result& rhs) {
+        if (lhs.score != rhs.score) {
+          return lhs.score > rhs.score;
+        }
+        if (lhs.chunk.document_id != rhs.chunk.document_id) {
+          return lhs.chunk.document_id < rhs.chunk.document_id;
+        }
+        return lhs.chunk.start_offset < rhs.chunk.start_offset;
+      });
 
     if (query.limit != 0 && result.size() > query.limit) {
       result.resize(query.limit);
@@ -218,19 +213,20 @@ private:
   void initialize_schema() {
     exec("BEGIN IMMEDIATE");
     try {
-      exec(
-        "CREATE TABLE IF NOT EXISTS wuwe_storage_schema ("
-        "component TEXT PRIMARY KEY, version INTEGER NOT NULL)");
-      core::validate_sqlite_table(db_, "wuwe_storage_schema", {
-        { "component", "TEXT", false, 1 },
-        { "version", "INTEGER", true, 0 },
-      }, "sqlite knowledge index");
+      exec("CREATE TABLE IF NOT EXISTS wuwe_storage_schema ("
+           "component TEXT PRIMARY KEY, version INTEGER NOT NULL)");
+      core::validate_sqlite_table(db_,
+        "wuwe_storage_schema",
+        {
+          { "component", "TEXT", false, 1 },
+          { "version", "INTEGER", true, 0 },
+        },
+        "sqlite knowledge index");
       auto version = current_schema_version().value_or(0);
       if (version > latest_schema_version) {
-        throw std::runtime_error(
-          "sqlite knowledge index schema version " +
-          std::to_string(version) + " is newer than supported version " +
-          std::to_string(latest_schema_version));
+        throw std::runtime_error("sqlite knowledge index schema version " +
+                                 std::to_string(version) + " is newer than supported version " +
+                                 std::to_string(latest_schema_version));
       }
       while (version < latest_schema_version) {
         switch (version) {
@@ -240,8 +236,7 @@ private:
             break;
           default:
             throw std::runtime_error(
-              "no sqlite knowledge index migration from version " +
-              std::to_string(version));
+              "no sqlite knowledge index migration from version " + std::to_string(version));
         }
         set_schema_version(version);
       }
@@ -249,40 +244,47 @@ private:
       exec("COMMIT");
     }
     catch (...) {
-      try { exec("ROLLBACK"); }
-      catch (...) {}
+      try {
+        exec("ROLLBACK");
+      }
+      catch (...) {
+      }
       throw;
     }
   }
 
   void migrate_0_to_1() {
-    exec(
-      "CREATE TABLE IF NOT EXISTS knowledge_index ("
-      "chunk_id TEXT PRIMARY KEY,"
-      "document_id TEXT NOT NULL,"
-      "source_uri TEXT NOT NULL,"
-      "start_offset INTEGER NOT NULL,"
-      "chunk_json TEXT NOT NULL,"
-      "embedding_json TEXT NOT NULL"
-      ")");
-    exec(
-      "CREATE INDEX IF NOT EXISTS idx_knowledge_index_document "
-      "ON knowledge_index (document_id, start_offset)");
+    exec("CREATE TABLE IF NOT EXISTS knowledge_index ("
+         "chunk_id TEXT PRIMARY KEY,"
+         "document_id TEXT NOT NULL,"
+         "source_uri TEXT NOT NULL,"
+         "start_offset INTEGER NOT NULL,"
+         "chunk_json TEXT NOT NULL,"
+         "embedding_json TEXT NOT NULL"
+         ")");
+    exec("CREATE INDEX IF NOT EXISTS idx_knowledge_index_document "
+         "ON knowledge_index (document_id, start_offset)");
   }
 
   void validate_schema() const {
-    core::validate_sqlite_table(db_, "wuwe_storage_schema", {
-      { "component", "TEXT", false, 1 },
-      { "version", "INTEGER", true, 0 },
-    }, "sqlite knowledge index");
-    core::validate_sqlite_table(db_, "knowledge_index", {
-      { "chunk_id", "TEXT", false, 1 },
-      { "document_id", "TEXT", true, 0 },
-      { "source_uri", "TEXT", true, 0 },
-      { "start_offset", "INTEGER", true, 0 },
-      { "chunk_json", "TEXT", true, 0 },
-      { "embedding_json", "TEXT", true, 0 },
-    }, "sqlite knowledge index");
+    core::validate_sqlite_table(db_,
+      "wuwe_storage_schema",
+      {
+        { "component", "TEXT", false, 1 },
+        { "version", "INTEGER", true, 0 },
+      },
+      "sqlite knowledge index");
+    core::validate_sqlite_table(db_,
+      "knowledge_index",
+      {
+        { "chunk_id", "TEXT", false, 1 },
+        { "document_id", "TEXT", true, 0 },
+        { "source_uri", "TEXT", true, 0 },
+        { "start_offset", "INTEGER", true, 0 },
+        { "chunk_json", "TEXT", true, 0 },
+        { "embedding_json", "TEXT", true, 0 },
+      },
+      "sqlite knowledge index");
   }
 
   [[nodiscard]] std::optional<int> current_schema_version() const {
@@ -290,7 +292,8 @@ private:
       "SELECT version FROM wuwe_storage_schema "
       "WHERE component = 'knowledge_index'");
     const auto rc = sqlite3_step(select.get());
-    if (rc == SQLITE_DONE) return std::nullopt;
+    if (rc == SQLITE_DONE)
+      return std::nullopt;
     if (rc != SQLITE_ROW) {
       throw_sqlite("read knowledge index schema version", db_);
     }
@@ -368,8 +371,7 @@ public:
   }
 
   std::vector<knowledge_result> search(
-    const knowledge_query&,
-    const std::vector<float>&) const override {
+    const knowledge_query&, const std::vector<float>&) const override {
     throw_unavailable();
   }
 

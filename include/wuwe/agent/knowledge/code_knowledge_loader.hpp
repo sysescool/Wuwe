@@ -14,14 +14,34 @@
 namespace wuwe::agent::knowledge {
 
 struct code_knowledge_loader_options {
-  std::set<std::string> extensions {
-    ".c", ".cc", ".cpp", ".cxx", ".cs", ".go", ".h", ".hh", ".hpp", ".hxx",
-    ".java", ".js", ".jsx", ".py", ".rs", ".ts", ".tsx"
-  };
-  std::set<std::string> excluded_directories {
-    ".git", ".hg", ".svn", "build", "build-vcpkg", "cmake-build-debug",
-    "dist", "node_modules", "out", "target", "vendor"
-  };
+  std::set<std::string> extensions { ".c",
+    ".cc",
+    ".cpp",
+    ".cxx",
+    ".cs",
+    ".go",
+    ".h",
+    ".hh",
+    ".hpp",
+    ".hxx",
+    ".java",
+    ".js",
+    ".jsx",
+    ".py",
+    ".rs",
+    ".ts",
+    ".tsx" };
+  std::set<std::string> excluded_directories { ".git",
+    ".hg",
+    ".svn",
+    "build",
+    "build-vcpkg",
+    "cmake-build-debug",
+    "dist",
+    "node_modules",
+    "out",
+    "target",
+    "vendor" };
   std::map<std::string, std::string> metadata;
 };
 
@@ -32,8 +52,7 @@ public:
   }
 
   std::vector<knowledge_document> load_repository(
-    const std::filesystem::path& root,
-    code_knowledge_loader_options options = {}) const {
+    const std::filesystem::path& root, code_knowledge_loader_options options = {}) const {
     if (!std::filesystem::exists(root)) {
       throw std::runtime_error("code repository does not exist: " + root.string());
     }
@@ -72,19 +91,18 @@ public:
         }
       }
 
-      documents.push_back(file_loader_.load(path, {
-        .id = std::move(id),
-        .metadata = std::move(metadata),
-      }));
+      documents.push_back(file_loader_.load(path,
+        {
+          .id = std::move(id),
+          .metadata = std::move(metadata),
+        }));
     }
     return documents;
   }
 
 private:
-  static void append_candidate(
-    const std::filesystem::directory_entry& entry,
-    const code_knowledge_loader_options& options,
-    std::vector<std::filesystem::path>& paths) {
+  static void append_candidate(const std::filesystem::directory_entry& entry,
+    const code_knowledge_loader_options& options, std::vector<std::filesystem::path>& paths) {
     if (!entry.is_regular_file()) {
       return;
     }
@@ -107,8 +125,8 @@ private:
     if (extension == ".c" || extension == ".h") {
       return "c";
     }
-    if (extension == ".cc" || extension == ".cpp" || extension == ".cxx" ||
-        extension == ".hh" || extension == ".hpp" || extension == ".hxx") {
+    if (extension == ".cc" || extension == ".cpp" || extension == ".cxx" || extension == ".hh" ||
+        extension == ".hpp" || extension == ".hxx") {
       return "cpp";
     }
     if (extension == ".cs") {

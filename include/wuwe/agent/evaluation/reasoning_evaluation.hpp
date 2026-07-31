@@ -12,11 +12,8 @@
 
 namespace wuwe::agent::evaluation {
 
-inline evaluation_case evaluation_case_from_reasoning(
-  std::string id,
-  std::string input,
-  const reasoning::reasoning_result& result,
-  std::string expected_output = {},
+inline evaluation_case evaluation_case_from_reasoning(std::string id, std::string input,
+  const reasoning::reasoning_result& result, std::string expected_output = {},
   std::map<std::string, std::string> metadata = {}) {
   return {
     .id = std::move(id),
@@ -30,11 +27,8 @@ inline evaluation_case evaluation_case_from_reasoning(
   };
 }
 
-inline evaluation_case evaluation_case_from_best_of_n(
-  std::string id,
-  std::string input,
-  const reasoning::best_of_n_result& result,
-  std::string expected_output = {},
+inline evaluation_case evaluation_case_from_best_of_n(std::string id, std::string input,
+  const reasoning::best_of_n_result& result, std::string expected_output = {},
   std::map<std::string, std::string> metadata = {}) {
   const auto* selected = result.selected_candidate();
   return {
@@ -43,33 +37,30 @@ inline evaluation_case evaluation_case_from_best_of_n(
     .output = selected ? selected->result.content : std::string {},
     .expected_output = std::move(expected_output),
     .actual = reasoning::best_of_n_result_to_json(result),
-    .trajectory = [&result] {
-      auto trace = nlohmann::json::array();
-      for (const auto& event : result.trace) {
-        trace.push_back(reasoning::best_of_n_event_to_json(event));
-      }
-      return trace;
-    }(),
+    .trajectory =
+      [&result] {
+        auto trace = nlohmann::json::array();
+        for (const auto& event : result.trace) {
+          trace.push_back(reasoning::best_of_n_event_to_json(event));
+        }
+        return trace;
+      }(),
     .elapsed = result.elapsed,
     .metadata = std::move(metadata),
   };
 }
 
 inline reasoning::best_of_n_candidate_scorer make_candidate_evaluator_scorer(
-  std::shared_ptr<const evaluator> value,
-  std::string expected_output = {},
+  std::shared_ptr<const evaluator> value, std::string expected_output = {},
   bool require_pass = true) {
   if (!value) {
     throw std::invalid_argument("candidate evaluator scorer requires an evaluator");
   }
-  return [value = std::move(value),
-          expected_output = std::move(expected_output),
-          require_pass](
+  return [value = std::move(value), expected_output = std::move(expected_output), require_pass](
            const reasoning::reasoning_request& request,
            const reasoning::reasoning_result& result,
            const reasoning::best_of_n_context& context) {
-    auto evaluation = evaluation_case_from_reasoning(
-      "candidate-" + std::to_string(context.index),
+    auto evaluation = evaluation_case_from_reasoning("candidate-" + std::to_string(context.index),
       request.input,
       result,
       expected_output,

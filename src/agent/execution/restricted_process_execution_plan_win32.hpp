@@ -36,23 +36,18 @@ struct restricted_execution_plan {
 };
 
 struct restricted_execution_plan_result {
-  restricted_execution_plan_status status {
-    restricted_execution_plan_status::ok
-  };
+  restricted_execution_plan_status status { restricted_execution_plan_status::ok };
   std::optional<restricted_execution_plan> plan;
   std::string detail;
 };
 
-[[nodiscard]] const char* to_string(
-  restricted_execution_plan_status status) noexcept;
+[[nodiscard]] const char* to_string(restricted_execution_plan_status status) noexcept;
 
 [[nodiscard]] restricted_execution_plan_result prepare_restricted_execution_plan(
-  const restricted_process_backend_config& config,
-  const execution_request& request);
+  const restricted_process_backend_config& config, const execution_request& request);
 
 [[nodiscard]] execution_result run_restricted_execution_plan(
-  const restricted_process_backend_config& config,
-  const execution_request& request,
+  const restricted_process_backend_config& config, const execution_request& request,
   std::stop_token stop_token = {});
 
 } // namespace wuwe::agent::execution::detail

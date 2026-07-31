@@ -34,12 +34,10 @@ public:
   ~restricted_request_workspace();
 
   restricted_request_workspace(const restricted_request_workspace&) = delete;
-  restricted_request_workspace& operator=(const restricted_request_workspace&) =
-    delete;
+  restricted_request_workspace& operator=(const restricted_request_workspace&) = delete;
 
   restricted_request_workspace(restricted_request_workspace&& other) noexcept;
-  restricted_request_workspace& operator=(
-    restricted_request_workspace&& other) noexcept;
+  restricted_request_workspace& operator=(restricted_request_workspace&& other) noexcept;
 
   [[nodiscard]] const std::filesystem::path& root() const noexcept {
     return root_;
@@ -70,19 +68,15 @@ private:
 };
 
 struct restricted_request_workspace_result {
-  restricted_request_workspace_status status {
-    restricted_request_workspace_status::ok
-  };
+  restricted_request_workspace_status status { restricted_request_workspace_status::ok };
   std::optional<restricted_request_workspace> workspace;
   std::error_code system_error;
   std::string detail;
 };
 
-[[nodiscard]] const char* to_string(
-  restricted_request_workspace_status status) noexcept;
+[[nodiscard]] const char* to_string(restricted_request_workspace_status status) noexcept;
 
-[[nodiscard]] restricted_request_workspace_result
-create_restricted_request_workspace(
+[[nodiscard]] restricted_request_workspace_result create_restricted_request_workspace(
   const restricted_request_workspace_request& request);
 
 } // namespace wuwe::agent::execution::detail

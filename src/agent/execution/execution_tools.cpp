@@ -14,8 +14,7 @@ namespace wuwe::agent::execution {
 namespace {
 
 std::optional<int> max_timeout_from_policy(
-  const execution_policy& policy,
-  const execution_tool_options& options) {
+  const execution_policy& policy, const execution_tool_options& options) {
   if (options.max_timeout_ms.has_value()) {
     return options.max_timeout_ms;
   }
@@ -26,8 +25,7 @@ std::optional<int> max_timeout_from_policy(
 }
 
 std::optional<int> default_timeout_from_policy(
-  const execution_policy& policy,
-  const execution_tool_options& options) {
+  const execution_policy& policy, const execution_tool_options& options) {
   if (options.default_timeout_ms.has_value()) {
     return options.default_timeout_ms;
   }
@@ -38,8 +36,7 @@ std::optional<int> default_timeout_from_policy(
 }
 
 nlohmann::json build_execution_tool_schema(
-  const execution_policy& policy,
-  const execution_tool_options& options) {
+  const execution_policy& policy, const execution_tool_options& options) {
   nlohmann::json code_schema {
     { "type", "string" },
     { "description", "Short Python code snippet to execute." },
@@ -86,11 +83,8 @@ nlohmann::json build_execution_tool_schema(
   };
 }
 
-llm_tool_result rejected_tool_result(
-  execution_runtime& runtime,
-  const execution_tool_options& options,
-  std::string event_name,
-  std::string message,
+llm_tool_result rejected_tool_result(execution_runtime& runtime,
+  const execution_tool_options& options, std::string event_name, std::string message,
   std::map<std::string, std::string> metadata) {
   runtime.audit_tool_rejection(event_name, options.tool_name, message, metadata);
 
@@ -106,8 +100,7 @@ llm_tool_result rejected_tool_result(
   };
 }
 
-std::map<std::string, std::string> base_argument_metadata(
-  const std::string& arguments_json) {
+std::map<std::string, std::string> base_argument_metadata(const std::string& arguments_json) {
   return {
     { "arguments_bytes", std::to_string(arguments_json.size()) },
   };
@@ -116,8 +109,7 @@ std::map<std::string, std::string> base_argument_metadata(
 } // namespace
 
 execution_tool_provider::execution_tool_provider(
-  execution_runtime& runtime,
-  execution_tool_options options)
+  execution_runtime& runtime, execution_tool_options options)
     : runtime_(runtime), options_(std::move(options)) {
 }
 
@@ -125,22 +117,18 @@ std::vector<llm_tool> execution_tool_provider::tools() const {
   llm_tool tool {
     .name = options_.tool_name,
     .description = options_.description,
-    .parameters_json_schema =
-      build_execution_tool_schema(runtime_.policy(), options_).dump(),
+    .parameters_json_schema = build_execution_tool_schema(runtime_.policy(), options_).dump(),
   };
   return { std::move(tool) };
 }
 
 llm_tool_result execution_tool_provider::invoke(
-  const std::string& name,
-  const std::string& arguments_json) const {
+  const std::string& name, const std::string& arguments_json) const {
   return invoke(name, arguments_json, {});
 }
 
 llm_tool_result execution_tool_provider::invoke(
-  const std::string& name,
-  const std::string& arguments_json,
-  std::stop_token stop_token) const {
+  const std::string& name, const std::string& arguments_json, std::stop_token stop_token) const {
   if (name != options_.tool_name) {
     return {
       .content = "tool not found: " + name,
@@ -148,32 +136,25 @@ llm_tool_result execution_tool_provider::invoke(
     };
   }
 
-  if (options_.max_arguments_bytes > 0 &&
-      arguments_json.size() > options_.max_arguments_bytes) {
+  if (options_.max_arguments_bytes > 0 && arguments_json.size() > options_.max_arguments_bytes) {
     auto metadata = base_argument_metadata(arguments_json);
-    metadata["max_arguments_bytes"] =
-      std::to_string(options_.max_arguments_bytes);
-    return rejected_tool_result(
-      runtime_,
+    metadata["max_arguments_bytes"] = std::to_string(options_.max_arguments_bytes);
+    return rejected_tool_result(runtime_,
       options_,
       "arguments_limit",
       "Execution denied: tool arguments are too large. arguments_bytes=" +
         std::to_string(arguments_json.size()) +
-        " max_arguments_bytes=" +
-        std::to_string(options_.max_arguments_bytes) + ".",
+        " max_arguments_bytes=" + std::to_string(options_.max_arguments_bytes) + ".",
       std::move(metadata));
   }
 
   try {
-    auto args = parse_tool_arguments<run_python_snippet>(
-      std::string_view(arguments_json));
+    auto args = parse_tool_arguments<run_python_snippet>(std::string_view(arguments_json));
 
-    if (!options_.allow_empty_stdin && args.stdin_text.has_value() &&
-        args.stdin_text->empty()) {
+    if (!options_.allow_empty_stdin && args.stdin_text.has_value() && args.stdin_text->empty()) {
       auto metadata = base_argument_metadata(arguments_json);
       metadata["field"] = "stdin_text";
-      return rejected_tool_result(
-        runtime_,
+      return rejected_tool_result(runtime_,
         options_,
         "schema_invalid",
         "Execution denied: stdin_text must not be empty.",
@@ -181,13 +162,11 @@ llm_tool_result execution_tool_provider::invoke(
     }
 
     if (args.timeout_ms.has_value()) {
-      if (options_.min_timeout_ms.has_value() &&
-          *args.timeout_ms < *options_.min_timeout_ms) {
+      if (options_.min_timeout_ms.has_value() && *args.timeout_ms < *options_.min_timeout_ms) {
         auto metadata = base_argument_metadata(arguments_json);
         metadata["timeout_ms"] = std::to_string(*args.timeout_ms);
         metadata["min_timeout_ms"] = std::to_string(*options_.min_timeout_ms);
-        return rejected_tool_result(
-          runtime_,
+        return rejected_tool_result(runtime_,
           options_,
           "timeout_limit",
           "Execution denied: timeout_ms is below the minimum.",
@@ -200,8 +179,7 @@ llm_tool_result execution_tool_provider::invoke(
         auto metadata = base_argument_metadata(arguments_json);
         metadata["timeout_ms"] = std::to_string(*args.timeout_ms);
         metadata["max_timeout_ms"] = std::to_string(*max_timeout);
-        return rejected_tool_result(
-          runtime_,
+        return rejected_tool_result(runtime_,
           options_,
           "timeout_limit",
           "Execution denied: timeout_ms exceeds the maximum.",
@@ -223,17 +201,15 @@ llm_tool_result execution_tool_provider::invoke(
     const auto result = runtime_.run(std::move(request), stop_token);
     return {
       .content = execution_result_to_json(result).dump(),
-      .error_code =
-        result.termination_reason == execution_termination_reason::exited
-          ? std::error_code {}
-          : std::make_error_code(std::errc::operation_not_permitted),
+      .error_code = result.termination_reason == execution_termination_reason::exited
+                      ? std::error_code {}
+                      : std::make_error_code(std::errc::operation_not_permitted),
     };
   }
   catch (const std::exception& ex) {
     auto metadata = base_argument_metadata(arguments_json);
     metadata["parse_error"] = ex.what();
-    return rejected_tool_result(
-      runtime_,
+    return rejected_tool_result(runtime_,
       options_,
       "schema_invalid",
       "invalid arguments for tool '" + options_.tool_name + "': " + ex.what(),

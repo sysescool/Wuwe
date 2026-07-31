@@ -10,11 +10,8 @@
 
 namespace wuwe::agent::audit {
 
-[[nodiscard]] inline audit_event make_audit_event(
-  const core::agent_execution_context& context,
-  std::string module,
-  std::string name,
-  std::string id,
+[[nodiscard]] inline audit_event make_audit_event(const core::agent_execution_context& context,
+  std::string module, std::string name, std::string id,
   audit_event_outcome outcome = audit_event_outcome::attempted,
   std::map<std::string, std::string> attributes = {}) {
   core::apply_execution_context_attributes(attributes, context);

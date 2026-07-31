@@ -59,49 +59,74 @@ enum class learning_stop_reason {
 
 [[nodiscard]] inline std::string to_string(learning_change_kind value) {
   switch (value) {
-    case learning_change_kind::prompt: return "prompt";
-    case learning_change_kind::reasoning_policy: return "reasoning_policy";
-    case learning_change_kind::model_routing: return "model_routing";
-    case learning_change_kind::tool_configuration: return "tool_configuration";
-    case learning_change_kind::workflow: return "workflow";
-    case learning_change_kind::custom: return "custom";
+    case learning_change_kind::prompt:
+      return "prompt";
+    case learning_change_kind::reasoning_policy:
+      return "reasoning_policy";
+    case learning_change_kind::model_routing:
+      return "model_routing";
+    case learning_change_kind::tool_configuration:
+      return "tool_configuration";
+    case learning_change_kind::workflow:
+      return "workflow";
+    case learning_change_kind::custom:
+      return "custom";
   }
   return "unknown";
 }
 
 [[nodiscard]] inline std::string to_string(learning_candidate_status value) {
   switch (value) {
-    case learning_candidate_status::proposed: return "proposed";
-    case learning_candidate_status::evaluation_failed: return "evaluation_failed";
-    case learning_candidate_status::rejected: return "rejected";
-    case learning_candidate_status::accepted: return "accepted";
-    case learning_candidate_status::not_selected: return "not_selected";
-    case learning_candidate_status::approval_required: return "approval_required";
-    case learning_candidate_status::approval_denied: return "approval_denied";
-    case learning_candidate_status::activation_failed: return "activation_failed";
-    case learning_candidate_status::activated: return "activated";
-    case learning_candidate_status::timed_out: return "timed_out";
-    case learning_candidate_status::cancelled: return "cancelled";
+    case learning_candidate_status::proposed:
+      return "proposed";
+    case learning_candidate_status::evaluation_failed:
+      return "evaluation_failed";
+    case learning_candidate_status::rejected:
+      return "rejected";
+    case learning_candidate_status::accepted:
+      return "accepted";
+    case learning_candidate_status::not_selected:
+      return "not_selected";
+    case learning_candidate_status::approval_required:
+      return "approval_required";
+    case learning_candidate_status::approval_denied:
+      return "approval_denied";
+    case learning_candidate_status::activation_failed:
+      return "activation_failed";
+    case learning_candidate_status::activated:
+      return "activated";
+    case learning_candidate_status::timed_out:
+      return "timed_out";
+    case learning_candidate_status::cancelled:
+      return "cancelled";
   }
   return "unknown";
 }
 
 [[nodiscard]] inline std::string to_string(learning_activation_mode value) {
   switch (value) {
-    case learning_activation_mode::stage_only: return "stage_only";
-    case learning_activation_mode::require_approval: return "require_approval";
-    case learning_activation_mode::trusted_automatic: return "trusted_automatic";
+    case learning_activation_mode::stage_only:
+      return "stage_only";
+    case learning_activation_mode::require_approval:
+      return "require_approval";
+    case learning_activation_mode::trusted_automatic:
+      return "trusted_automatic";
   }
   return "unknown";
 }
 
 [[nodiscard]] inline std::string to_string(learning_stop_reason value) {
   switch (value) {
-    case learning_stop_reason::none: return "none";
-    case learning_stop_reason::cancelled: return "cancelled";
-    case learning_stop_reason::timed_out: return "timed_out";
-    case learning_stop_reason::proposal_failed: return "proposal_failed";
-    case learning_stop_reason::invalid_configuration: return "invalid_configuration";
+    case learning_stop_reason::none:
+      return "none";
+    case learning_stop_reason::cancelled:
+      return "cancelled";
+    case learning_stop_reason::timed_out:
+      return "timed_out";
+    case learning_stop_reason::proposal_failed:
+      return "proposal_failed";
+    case learning_stop_reason::invalid_configuration:
+      return "invalid_configuration";
   }
   return "unknown";
 }
@@ -119,9 +144,11 @@ struct learning_context {
   }
 
   [[nodiscard]] std::chrono::milliseconds remaining_time() const noexcept {
-    if (!deadline) return std::chrono::milliseconds::max();
+    if (!deadline)
+      return std::chrono::milliseconds::max();
     const auto now = std::chrono::steady_clock::now();
-    if (now >= *deadline) return std::chrono::milliseconds { 0 };
+    if (now >= *deadline)
+      return std::chrono::milliseconds { 0 };
     return std::chrono::duration_cast<std::chrono::milliseconds>(*deadline - now);
   }
 };
@@ -186,12 +213,8 @@ struct learning_record {
   std::optional<learning_activation_result> activation;
   std::string error;
   bool detached { false };
-  std::chrono::system_clock::time_point created_at {
-    std::chrono::system_clock::now()
-  };
-  std::chrono::system_clock::time_point updated_at {
-    std::chrono::system_clock::now()
-  };
+  std::chrono::system_clock::time_point created_at { std::chrono::system_clock::now() };
+  std::chrono::system_clock::time_point updated_at { std::chrono::system_clock::now() };
   std::map<std::string, std::string> metadata;
 };
 
@@ -222,7 +245,8 @@ struct learning_run_result {
 inline std::string make_learning_id(const char* prefix) {
   static std::atomic<std::uint64_t> next { 1 };
   const auto now = std::chrono::duration_cast<std::chrono::microseconds>(
-    std::chrono::system_clock::now().time_since_epoch()).count();
+    std::chrono::system_clock::now().time_since_epoch())
+                     .count();
   return std::string(prefix) + "-" + std::to_string(now) + "-" +
          std::to_string(next.fetch_add(1, std::memory_order_relaxed));
 }
@@ -239,7 +263,8 @@ inline learning_evaluation compare_evaluation_suites(
     .candidate_report = evaluation::evaluation_suite_result_to_json(candidate),
   };
   std::map<std::string, bool> baseline_cases;
-  for (const auto& item : baseline.cases) baseline_cases[item.id] = item.passed;
+  for (const auto& item : baseline.cases)
+    baseline_cases[item.id] = item.passed;
   for (const auto& item : candidate.cases) {
     const auto found = baseline_cases.find(item.id);
     if (found != baseline_cases.end() && found->second && !item.passed) {
@@ -312,7 +337,8 @@ inline nlohmann::json learning_record_to_json(const learning_record& value) {
 
 inline nlohmann::json learning_run_result_to_json(const learning_run_result& value) {
   auto records = nlohmann::json::array();
-  for (const auto& record : value.records) records.push_back(learning_record_to_json(record));
+  for (const auto& record : value.records)
+    records.push_back(learning_record_to_json(record));
   return {
     { "completed", value.completed },
     { "run_id", value.run_id },

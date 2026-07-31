@@ -22,9 +22,9 @@ inline std::string next_team_id(std::string_view prefix) {
 }
 
 struct team_runtime_state {
-  explicit team_runtime_state(team_runtime_options value)
-      : options(std::move(value)) {
-    if (!options.registry) options.registry = std::make_shared<agent_registry>();
+  explicit team_runtime_state(team_runtime_options value) : options(std::move(value)) {
+    if (!options.registry)
+      options.registry = std::make_shared<agent_registry>();
     if (options.max_parallel_tasks == 0) {
       throw std::invalid_argument("team max_parallel_tasks must be greater than zero");
     }
@@ -32,8 +32,7 @@ struct team_runtime_state {
       throw std::invalid_argument("team default task timeout must not be negative");
     }
     if (options.cancellation_poll_interval.count() <= 0) {
-      throw std::invalid_argument(
-        "team cancellation poll interval must be greater than zero");
+      throw std::invalid_argument("team cancellation poll interval must be greater than zero");
     }
   }
 
@@ -48,13 +47,11 @@ struct team_runtime_state {
 class team_runtime_slot {
 public:
   team_runtime_slot() = default;
-  explicit team_runtime_slot(std::shared_ptr<team_runtime_state> state)
-      : state_(std::move(state)) {
+  explicit team_runtime_slot(std::shared_ptr<team_runtime_state> state) : state_(std::move(state)) {
   }
   team_runtime_slot(const team_runtime_slot&) = delete;
   team_runtime_slot& operator=(const team_runtime_slot&) = delete;
-  team_runtime_slot(team_runtime_slot&& other) noexcept
-      : state_(std::move(other.state_)) {
+  team_runtime_slot(team_runtime_slot&& other) noexcept : state_(std::move(other.state_)) {
   }
   team_runtime_slot& operator=(team_runtime_slot&& other) noexcept {
     if (this != &other) {
@@ -63,14 +60,18 @@ public:
     }
     return *this;
   }
-  ~team_runtime_slot() { release(); }
+  ~team_runtime_slot() {
+    release();
+  }
 
 private:
   void release() noexcept {
-    if (!state_) return;
+    if (!state_)
+      return;
     {
       std::scoped_lock lock(state_->concurrency_mutex);
-      if (state_->active_runtime_tasks != 0) --state_->active_runtime_tasks;
+      if (state_->active_runtime_tasks != 0)
+        --state_->active_runtime_tasks;
     }
     state_->concurrency_condition.notify_one();
     state_.reset();
@@ -81,9 +82,7 @@ private:
 
 class active_team_task_guard {
 public:
-  active_team_task_guard(
-    std::shared_ptr<team_session> session,
-    std::string task_id)
+  active_team_task_guard(std::shared_ptr<team_session> session, std::string task_id)
       : session_(std::move(session)), task_id_(std::move(task_id)) {
   }
 
@@ -92,7 +91,8 @@ public:
 
   ~active_team_task_guard() {
     try {
-      if (session_) (void)session_->fail_task_if_active(task_id_);
+      if (session_)
+        (void)session_->fail_task_if_active(task_id_);
     }
     catch (...) {
     }

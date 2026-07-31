@@ -43,12 +43,10 @@ std::optional<llm_client_config> make_default_llm_config(std::string_view provid
 llm_client_config make_default_llm_config(const llm_provider_info& provider);
 
 std::optional<llm_client_config> normalize_llm_client_config(
-  std::string_view provider_id,
-  llm_client_config config);
+  std::string_view provider_id, llm_client_config config);
 
 llm_client_config normalize_llm_client_config(
-  const llm_provider_info& provider,
-  llm_client_config config);
+  const llm_provider_info& provider, llm_client_config config);
 
 WUWE_NAMESPACE_END
 

@@ -47,9 +47,7 @@ public:
     return complete(request, {});
   }
 
-  llm_response complete(
-    const llm_request& request,
-    std::stop_token stop_token) override {
+  llm_response complete(const llm_request& request, std::stop_token stop_token) override {
     if (stop_token.stop_requested()) {
       return cancelled();
     }
@@ -61,8 +59,7 @@ public:
     return true;
   }
 
-  [[nodiscard]] llm_provider_capabilities capabilities()
-    const noexcept override {
+  [[nodiscard]] llm_provider_capabilities capabilities() const noexcept override {
     return {
       .streaming = true,
       .tools = true,
@@ -75,9 +72,7 @@ public:
     };
   }
 
-  llm_response complete_stream(
-    const llm_request& request,
-    const llm_stream_callbacks& callbacks,
+  llm_response complete_stream(const llm_request& request, const llm_stream_callbacks& callbacks,
     std::stop_token stop_token = {}) override {
     if (stop_token.stop_requested()) {
       return cancelled();
@@ -104,9 +99,7 @@ private:
       candidate = steps_.front();
     }
     if (candidate.matches && !candidate.matches(request)) {
-      const auto suffix = candidate.label.empty()
-        ? std::string {}
-        : " '" + candidate.label + "'";
+      const auto suffix = candidate.label.empty() ? std::string {} : " '" + candidate.label + "'";
       throw std::logic_error("scripted LLM request did not match step" + suffix);
     }
     {
@@ -118,16 +111,15 @@ private:
     }
   }
 
-  static void emit(
-    const llm_stream_callbacks& callbacks,
-    const llm_stream_event& event) {
-    if (callbacks.on_event) callbacks.on_event(event);
-    if (event.type == llm_stream_event_type::reasoning_delta &&
-        callbacks.on_reasoning_delta && !event.reasoning_delta.empty()) {
+  static void emit(const llm_stream_callbacks& callbacks, const llm_stream_event& event) {
+    if (callbacks.on_event)
+      callbacks.on_event(event);
+    if (event.type == llm_stream_event_type::reasoning_delta && callbacks.on_reasoning_delta &&
+        !event.reasoning_delta.empty()) {
       callbacks.on_reasoning_delta(event.reasoning_delta);
     }
-    if (event.type == llm_stream_event_type::reasoning_done &&
-        callbacks.on_reasoning_done && !event.reasoning_summary.empty()) {
+    if (event.type == llm_stream_event_type::reasoning_done && callbacks.on_reasoning_done &&
+        !event.reasoning_summary.empty()) {
       callbacks.on_reasoning_done(event.reasoning_summary);
     }
   }

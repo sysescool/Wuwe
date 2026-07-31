@@ -45,27 +45,21 @@ enum class restricted_process_backend_registration {
   registered_factory,
 };
 
-[[nodiscard]] sandbox::sandbox_enforcement_contract
-restricted_process_backend_planned_contract();
+[[nodiscard]] sandbox::sandbox_enforcement_contract restricted_process_backend_planned_contract();
 
-[[nodiscard]] sandbox::sandbox_enforcement_contract
-restricted_process_backend_configured_contract(
+[[nodiscard]] sandbox::sandbox_enforcement_contract restricted_process_backend_configured_contract(
   const restricted_process_backend_config& config);
 
 [[nodiscard]] restricted_process_backend_availability
-evaluate_restricted_process_backend_availability(
-  const restricted_process_backend_config& config);
+evaluate_restricted_process_backend_availability(const restricted_process_backend_config& config);
 
 [[nodiscard]] restricted_process_backend_availability
-evaluate_restricted_process_backend_availability(
-  const restricted_process_backend_config& config,
+evaluate_restricted_process_backend_availability(const restricted_process_backend_config& config,
   restricted_process_backend_registration registration);
 
-[[nodiscard]] const char* to_string(
-  restricted_process_runtime_staging staging) noexcept;
+[[nodiscard]] const char* to_string(restricted_process_runtime_staging staging) noexcept;
 
-[[nodiscard]] sandbox::sandbox_backend_info
-restricted_process_backend_descriptor();
+[[nodiscard]] sandbox::sandbox_backend_info restricted_process_backend_descriptor();
 
 [[nodiscard]] std::unique_ptr<execution_backend> make_restricted_process_backend(
   restricted_process_backend_config config = {});

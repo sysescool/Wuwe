@@ -21,17 +21,13 @@ struct filesystem_tool_options {
 class filesystem_tool_provider {
 public:
   explicit filesystem_tool_provider(
-    filesystem_runtime& runtime,
-    filesystem_tool_options options = {});
+    filesystem_runtime& runtime, filesystem_tool_options options = {});
 
   [[nodiscard]] std::vector<llm_tool> tools() const;
   [[nodiscard]] llm_tool_result invoke(
-    const std::string& name,
-    const std::string& arguments_json) const;
+    const std::string& name, const std::string& arguments_json) const;
   [[nodiscard]] llm_tool_result invoke(
-    const std::string& name,
-    const std::string& arguments_json,
-    std::stop_token stop_token) const;
+    const std::string& name, const std::string& arguments_json, std::stop_token stop_token) const;
 
 private:
   [[nodiscard]] std::string tool_name(std::string_view base) const;

@@ -36,18 +36,16 @@ std::uint64_t fnv1a64(std::string_view text, std::uint64_t seed) {
 
 std::string qdrant_point_id(const memory_record& record) {
   const std::string key = record.scope.tenant_id + '\n' + record.scope.user_id + '\n' +
-                          record.scope.application_id + '\n' + record.scope.conversation_id +
-                          '\n' + record.scope.agent_id + '\n' + record.id;
+                          record.scope.application_id + '\n' + record.scope.conversation_id + '\n' +
+                          record.scope.agent_id + '\n' + record.id;
   const auto high = fnv1a64(key, 14695981039346656037ull);
   const auto low = fnv1a64(key, 1099511628211ull);
 
   std::ostringstream output;
-  output << std::hex << std::setfill('0')
-         << std::setw(8) << static_cast<std::uint32_t>(high >> 32) << '-'
-         << std::setw(4) << static_cast<std::uint16_t>(high >> 16) << '-'
-         << std::setw(4) << static_cast<std::uint16_t>((high & 0x0fffull) | 0x5000ull) << '-'
-         << std::setw(4) << static_cast<std::uint16_t>(((low >> 48) & 0x3fffull) | 0x8000ull)
-         << '-'
+  output << std::hex << std::setfill('0') << std::setw(8) << static_cast<std::uint32_t>(high >> 32)
+         << '-' << std::setw(4) << static_cast<std::uint16_t>(high >> 16) << '-' << std::setw(4)
+         << static_cast<std::uint16_t>((high & 0x0fffull) | 0x5000ull) << '-' << std::setw(4)
+         << static_cast<std::uint16_t>(((low >> 48) & 0x3fffull) | 0x8000ull) << '-'
          << std::setw(12) << (low & 0xffffffffffffull);
   return output.str();
 }
@@ -70,9 +68,7 @@ json scope_payload(const memory_scope& scope) {
   };
 }
 
-json record_payload(
-  const memory_record& record,
-  const qdrant_memory_index_config& config,
+json record_payload(const memory_record& record, const qdrant_memory_index_config& config,
   std::size_t embedding_dimension) {
   json payload = scope_payload(record.scope);
   payload["memory_id"] = record.id;
@@ -143,9 +139,8 @@ json query_filter(const vector_memory_query& query) {
 
 void throw_http_error(const char* action, const ::wuwe::http_response& response) {
   if (response.error_code) {
-    throw std::runtime_error(
-      std::string("qdrant memory index failed to ") + action + ": " +
-      response.error_code.message());
+    throw std::runtime_error(std::string("qdrant memory index failed to ") + action + ": " +
+                             response.error_code.message());
   }
 }
 
@@ -163,8 +158,7 @@ qdrant_memory_index::qdrant_memory_index(qdrant_memory_index_config config)
 }
 
 qdrant_memory_index::qdrant_memory_index(
-  qdrant_memory_index_config config,
-  std::shared_ptr<::wuwe::http_client> http)
+  qdrant_memory_index_config config, std::shared_ptr<::wuwe::http_client> http)
     : config_(std::move(config)), http_(std::move(http)) {
   if (!http_) {
     throw std::invalid_argument("qdrant_memory_index requires an http_client");
@@ -175,15 +169,12 @@ qdrant_memory_index::qdrant_memory_index(
   }
 }
 
-void qdrant_memory_index::upsert(
-  const memory_record& record,
-  const std::vector<float>& embedding) {
+void qdrant_memory_index::upsert(const memory_record& record, const std::vector<float>& embedding) {
   upsert_batch({ record }, { embedding });
 }
 
 void qdrant_memory_index::upsert_batch(
-  const std::vector<memory_record>& records,
-  const std::vector<std::vector<float>>& embeddings) {
+  const std::vector<memory_record>& records, const std::vector<std::vector<float>>& embeddings) {
   if (records.size() != embeddings.size()) {
     throw std::invalid_argument("qdrant_memory_index upsert_batch size mismatch");
   }

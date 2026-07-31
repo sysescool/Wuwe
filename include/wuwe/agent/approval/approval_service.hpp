@@ -9,14 +9,12 @@ class approval_service {
 public:
   virtual ~approval_service() = default;
 
-  [[nodiscard]] virtual approval_decision decide(
-    const approval_request& request) = 0;
+  [[nodiscard]] virtual approval_decision decide(const approval_request& request) = 0;
 };
 
 class deny_all_approval_service final : public approval_service {
 public:
-  [[nodiscard]] approval_decision decide(
-    const approval_request& request) override {
+  [[nodiscard]] approval_decision decide(const approval_request& request) override {
     return {
       .kind = approval_decision_kind::denied,
       .scope = approval_scope::once,
@@ -27,8 +25,7 @@ public:
 
 class allow_all_approval_service final : public approval_service {
 public:
-  [[nodiscard]] approval_decision decide(
-    const approval_request&) override {
+  [[nodiscard]] approval_decision decide(const approval_request&) override {
     return {
       .kind = approval_decision_kind::approved,
       .scope = approval_scope::once,

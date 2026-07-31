@@ -137,8 +137,7 @@ public:
     load();
   }
 
-  [[nodiscard]] core::storage_capabilities capabilities()
-    const noexcept override {
+  [[nodiscard]] core::storage_capabilities capabilities() const noexcept override {
     return {
       .declared = true,
       .durable = true,
@@ -167,9 +166,10 @@ public:
     const std::string& id, const memory_scope& scope) const override {
     std::scoped_lock lock(mutex_);
 
-    const auto it = std::find_if(records_.begin(), records_.end(), [&](const memory_record& record) {
-      return record.id == id && scope_matches(record.scope, scope);
-    });
+    const auto it =
+      std::find_if(records_.begin(), records_.end(), [&](const memory_record& record) {
+        return record.id == id && scope_matches(record.scope, scope);
+      });
 
     if (it == records_.end()) {
       return std::nullopt;
@@ -221,9 +221,10 @@ public:
   bool update(memory_record record) override {
     std::scoped_lock lock(mutex_);
 
-    const auto it = std::find_if(records_.begin(), records_.end(), [&](const memory_record& current) {
-      return current.id == record.id && scope_matches(current.scope, record.scope);
-    });
+    const auto it =
+      std::find_if(records_.begin(), records_.end(), [&](const memory_record& current) {
+        return current.id == record.id && scope_matches(current.scope, record.scope);
+      });
 
     if (it == records_.end()) {
       return false;
@@ -256,9 +257,8 @@ public:
     std::scoped_lock lock(mutex_);
 
     const auto old_size = records_.size();
-    std::erase_if(records_, [&](const memory_record& record) {
-      return scope_matches(record.scope, scope);
-    });
+    std::erase_if(
+      records_, [&](const memory_record& record) { return scope_matches(record.scope, scope); });
 
     const std::size_t erased = old_size - records_.size();
     if (erased != 0) {

@@ -48,8 +48,7 @@ public:
     load();
   }
 
-  [[nodiscard]] core::storage_capabilities capabilities()
-    const noexcept override {
+  [[nodiscard]] core::storage_capabilities capabilities() const noexcept override {
     return {
       .declared = true,
       .durable = true,
@@ -66,8 +65,7 @@ public:
     rewrite();
   }
 
-  void upsert_batch(
-    const std::vector<knowledge_chunk>& chunks,
+  void upsert_batch(const std::vector<knowledge_chunk>& chunks,
     const std::vector<std::vector<float>>& embeddings) override {
     if (chunks.size() != embeddings.size()) {
       throw std::invalid_argument("file_knowledge_index upsert_batch size mismatch");
@@ -84,8 +82,7 @@ public:
   }
 
   std::vector<knowledge_result> search(
-    const knowledge_query& query,
-    const std::vector<float>& embedding) const override {
+    const knowledge_query& query, const std::vector<float>& embedding) const override {
     std::scoped_lock lock(mutex_);
 
     std::vector<knowledge_result> result;
@@ -98,8 +95,7 @@ public:
       const auto vector_score =
         ::wuwe::agent::memory::vector_detail::cosine_similarity(embedding, item.embedding);
       const auto lexical_score = detail::lexical_knowledge_score(query.text, item.chunk);
-      const auto score =
-        query.vector_weight * vector_score + query.lexical_weight * lexical_score;
+      const auto score = query.vector_weight * vector_score + query.lexical_weight * lexical_score;
       if (score < query.minimum_score) {
         continue;
       }
@@ -112,16 +108,16 @@ public:
       });
     }
 
-    std::sort(result.begin(), result.end(), [](const knowledge_result& lhs,
-                                                const knowledge_result& rhs) {
-      if (lhs.score != rhs.score) {
-        return lhs.score > rhs.score;
-      }
-      if (lhs.chunk.document_id != rhs.chunk.document_id) {
-        return lhs.chunk.document_id < rhs.chunk.document_id;
-      }
-      return lhs.chunk.start_offset < rhs.chunk.start_offset;
-    });
+    std::sort(
+      result.begin(), result.end(), [](const knowledge_result& lhs, const knowledge_result& rhs) {
+        if (lhs.score != rhs.score) {
+          return lhs.score > rhs.score;
+        }
+        if (lhs.chunk.document_id != rhs.chunk.document_id) {
+          return lhs.chunk.document_id < rhs.chunk.document_id;
+        }
+        return lhs.chunk.start_offset < rhs.chunk.start_offset;
+      });
 
     if (query.limit != 0 && result.size() > query.limit) {
       result.resize(query.limit);

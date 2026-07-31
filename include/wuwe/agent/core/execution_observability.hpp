@@ -10,11 +10,8 @@
 
 namespace wuwe::agent::observability {
 
-[[nodiscard]] inline agent_event make_agent_event(
-  const core::agent_execution_context& context,
-  std::string module,
-  std::string name,
-  std::map<std::string, std::string> attributes = {},
+[[nodiscard]] inline agent_event make_agent_event(const core::agent_execution_context& context,
+  std::string module, std::string name, std::map<std::string, std::string> attributes = {},
   nlohmann::json data = {}) {
   core::apply_execution_context_attributes(attributes, context);
   return {

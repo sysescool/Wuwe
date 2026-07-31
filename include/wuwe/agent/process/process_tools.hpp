@@ -21,18 +21,13 @@ struct process_tool_options {
 
 class process_tool_provider {
 public:
-  explicit process_tool_provider(
-    process_runtime& runtime,
-    process_tool_options options = {});
+  explicit process_tool_provider(process_runtime& runtime, process_tool_options options = {});
 
   [[nodiscard]] std::vector<llm_tool> tools() const;
   [[nodiscard]] llm_tool_result invoke(
-    const std::string& name,
-    const std::string& arguments_json) const;
+    const std::string& name, const std::string& arguments_json) const;
   [[nodiscard]] llm_tool_result invoke(
-    const std::string& name,
-    const std::string& arguments_json,
-    std::stop_token stop_token) const;
+    const std::string& name, const std::string& arguments_json, std::stop_token stop_token) const;
 
 private:
   process_runtime& runtime_;

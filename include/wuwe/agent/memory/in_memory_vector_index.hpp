@@ -34,8 +34,7 @@ public:
     *it = std::move(updated);
   }
 
-  void upsert_batch(
-    const std::vector<memory_record>& records,
+  void upsert_batch(const std::vector<memory_record>& records,
     const std::vector<std::vector<float>>& embeddings) override {
     if (records.size() != embeddings.size()) {
       throw std::invalid_argument("in_memory_vector_index upsert_batch size mismatch");
@@ -94,9 +93,8 @@ public:
     std::scoped_lock lock(mutex_);
 
     const auto old_size = points_.size();
-    std::erase_if(points_, [&](const point& item) {
-      return scope_matches(item.record.scope, scope);
-    });
+    std::erase_if(
+      points_, [&](const point& item) { return scope_matches(item.record.scope, scope); });
     return old_size - points_.size();
   }
 

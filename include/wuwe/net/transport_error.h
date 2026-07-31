@@ -75,31 +75,26 @@ enum class transport_error : uint16_t {
   unknown_error = 1000
 };
 
-inline constexpr uint16_t to_underlying(transport_error code) noexcept
-{
+inline constexpr uint16_t to_underlying(transport_error code) noexcept {
   return static_cast<uint16_t>(code);
 }
 
-inline constexpr bool is_timeout(transport_error code) noexcept
-{
+inline constexpr bool is_timeout(transport_error code) noexcept {
   return code == transport_error::operation_timedout;
 }
 
-inline constexpr bool is_name_resolution_error(transport_error code) noexcept
-{
+inline constexpr bool is_name_resolution_error(transport_error code) noexcept {
   return code == transport_error::couldnt_resolve_proxy ||
          code == transport_error::couldnt_resolve_host;
 }
 
-inline constexpr bool is_connection_error(transport_error code) noexcept
-{
+inline constexpr bool is_connection_error(transport_error code) noexcept {
   return code == transport_error::couldnt_connect || code == transport_error::send_error ||
          code == transport_error::recv_error || code == transport_error::got_nothing ||
          code == transport_error::no_connection_available;
 }
 
-inline constexpr bool is_tls_error(transport_error code) noexcept
-{
+inline constexpr bool is_tls_error(transport_error code) noexcept {
   return code == transport_error::ssl_connect_error || code == transport_error::ssl_certproblem ||
          code == transport_error::ssl_cipher || code == transport_error::peer_failed_verification ||
          code == transport_error::use_ssl_failed || code == transport_error::ssl_cacert_badfile ||
@@ -109,15 +104,15 @@ inline constexpr bool is_tls_error(transport_error code) noexcept
          code == transport_error::ssl_invalidcertstatus || code == transport_error::ssl_clientcert;
 }
 
-[[nodiscard]] const ::std::error_category &transport_error_category() noexcept;
+[[nodiscard]] const ::std::error_category& transport_error_category() noexcept;
 
-[[nodiscard]] inline std::error_code make_error_code(transport_error code) noexcept
-{
-  return {static_cast<int>(to_underlying(code)), transport_error_category()};
+[[nodiscard]] inline std::error_code make_error_code(transport_error code) noexcept {
+  return { static_cast<int>(to_underlying(code)), transport_error_category() };
 }
 
 WUWE_NAMESPACE_END
 
-template <> struct std::is_error_code_enum<wuwe::transport_error> : std::true_type {};
+template<>
+struct std::is_error_code_enum<wuwe::transport_error> : std::true_type {};
 
 #endif // WUWE_NET_TRANSPORT_ERROR_H

@@ -14,37 +14,26 @@ namespace wuwe::agent::process {
 
 class process_runtime {
 public:
-  process_runtime(
-    std::unique_ptr<process_backend> backend,
-    process_policy policy,
-    audit::audit_sink* audit = nullptr,
-    approval::approval_service* approvals = nullptr);
+  process_runtime(std::unique_ptr<process_backend> backend, process_policy policy,
+    audit::audit_sink* audit = nullptr, approval::approval_service* approvals = nullptr);
 
   process_runtime(const process_runtime&) = delete;
   process_runtime& operator=(const process_runtime&) = delete;
   process_runtime(process_runtime&&) = delete;
   process_runtime& operator=(process_runtime&&) = delete;
 
-  [[nodiscard]] process_result run(
-    process_request request,
-    std::stop_token stop_token = {});
-  [[nodiscard]] process_result run_shell(
-    shell_request request,
-    std::stop_token stop_token = {});
+  [[nodiscard]] process_result run(process_request request, std::stop_token stop_token = {});
+  [[nodiscard]] process_result run_shell(shell_request request, std::stop_token stop_token = {});
 
   [[nodiscard]] const process_policy& policy() const noexcept;
   [[nodiscard]] const process_backend* backend() const noexcept;
 
-  void audit_tool_rejection(
-    const std::string& tool_name,
-    const std::string& reason,
+  void audit_tool_rejection(const std::string& tool_name, const std::string& reason,
     const std::map<std::string, std::string>& attributes = {});
 
 private:
   [[nodiscard]] process_result run_impl(
-    process_request request,
-    bool shell,
-    std::stop_token stop_token);
+    process_request request, bool shell, std::stop_token stop_token);
 
   std::unique_ptr<process_backend> backend_;
   process_policy policy_;

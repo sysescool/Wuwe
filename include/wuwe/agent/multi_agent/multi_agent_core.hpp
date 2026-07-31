@@ -27,9 +27,12 @@ enum class agent_availability {
 
 inline std::string to_string(agent_availability value) {
   switch (value) {
-    case agent_availability::available: return "available";
-    case agent_availability::draining: return "draining";
-    case agent_availability::offline: return "offline";
+    case agent_availability::available:
+      return "available";
+    case agent_availability::draining:
+      return "draining";
+    case agent_availability::offline:
+      return "offline";
   }
   return "unknown";
 }
@@ -63,9 +66,12 @@ enum class agent_message_role {
 
 inline std::string to_string(agent_message_role value) {
   switch (value) {
-    case agent_message_role::system: return "system";
-    case agent_message_role::user: return "user";
-    case agent_message_role::agent: return "agent";
+    case agent_message_role::system:
+      return "system";
+    case agent_message_role::user:
+      return "user";
+    case agent_message_role::agent:
+      return "agent";
   }
   return "unknown";
 }
@@ -101,14 +107,22 @@ enum class agent_task_status {
 
 inline std::string to_string(agent_task_status value) {
   switch (value) {
-    case agent_task_status::submitted: return "submitted";
-    case agent_task_status::working: return "working";
-    case agent_task_status::input_required: return "input_required";
-    case agent_task_status::completed: return "completed";
-    case agent_task_status::failed: return "failed";
-    case agent_task_status::blocked: return "blocked";
-    case agent_task_status::cancelled: return "cancelled";
-    case agent_task_status::timed_out: return "timed_out";
+    case agent_task_status::submitted:
+      return "submitted";
+    case agent_task_status::working:
+      return "working";
+    case agent_task_status::input_required:
+      return "input_required";
+    case agent_task_status::completed:
+      return "completed";
+    case agent_task_status::failed:
+      return "failed";
+    case agent_task_status::blocked:
+      return "blocked";
+    case agent_task_status::cancelled:
+      return "cancelled";
+    case agent_task_status::timed_out:
+      return "timed_out";
   }
   return "unknown";
 }
@@ -128,16 +142,26 @@ enum class agent_task_error_code {
 
 inline std::string to_string(agent_task_error_code value) {
   switch (value) {
-    case agent_task_error_code::none: return "none";
-    case agent_task_error_code::invalid_request: return "invalid_request";
-    case agent_task_error_code::agent_not_found: return "agent_not_found";
-    case agent_task_error_code::agent_unavailable: return "agent_unavailable";
-    case agent_task_error_code::capability_not_found: return "capability_not_found";
-    case agent_task_error_code::capacity_exhausted: return "capacity_exhausted";
-    case agent_task_error_code::execution_failed: return "execution_failed";
-    case agent_task_error_code::cancelled: return "cancelled";
-    case agent_task_error_code::timed_out: return "timed_out";
-    case agent_task_error_code::consensus_not_reached: return "consensus_not_reached";
+    case agent_task_error_code::none:
+      return "none";
+    case agent_task_error_code::invalid_request:
+      return "invalid_request";
+    case agent_task_error_code::agent_not_found:
+      return "agent_not_found";
+    case agent_task_error_code::agent_unavailable:
+      return "agent_unavailable";
+    case agent_task_error_code::capability_not_found:
+      return "capability_not_found";
+    case agent_task_error_code::capacity_exhausted:
+      return "capacity_exhausted";
+    case agent_task_error_code::execution_failed:
+      return "execution_failed";
+    case agent_task_error_code::cancelled:
+      return "cancelled";
+    case agent_task_error_code::timed_out:
+      return "timed_out";
+    case agent_task_error_code::consensus_not_reached:
+      return "consensus_not_reached";
   }
   return "unknown";
 }
@@ -168,8 +192,7 @@ struct agent_task_result {
   bool detached { false };
 
   [[nodiscard]] explicit operator bool() const noexcept {
-    return status == agent_task_status::completed &&
-           error_code == agent_task_error_code::none;
+    return status == agent_task_status::completed && error_code == agent_task_error_code::none;
   }
 };
 
@@ -187,9 +210,11 @@ struct agent_execution_context {
   }
 
   [[nodiscard]] std::chrono::milliseconds remaining_time() const noexcept {
-    if (!deadline) return std::chrono::milliseconds::max();
+    if (!deadline)
+      return std::chrono::milliseconds::max();
     const auto now = std::chrono::steady_clock::now();
-    if (now >= *deadline) return std::chrono::milliseconds { 0 };
+    if (now >= *deadline)
+      return std::chrono::milliseconds { 0 };
     return std::chrono::duration_cast<std::chrono::milliseconds>(*deadline - now);
   }
 };
@@ -204,8 +229,7 @@ public:
   virtual ~agent_executor() = default;
 
   virtual agent_task_result execute(
-    const agent_task_request& request,
-    const agent_execution_context& context) = 0;
+    const agent_task_request& request, const agent_execution_context& context) = 0;
 
   [[nodiscard]] virtual agent_executor_capabilities capabilities() const noexcept {
     return {};
@@ -217,9 +241,7 @@ public:
   using callback =
     std::function<agent_task_result(const agent_task_request&, const agent_execution_context&)>;
 
-  explicit function_agent_executor(
-    callback execute,
-    agent_executor_capabilities capabilities = {})
+  explicit function_agent_executor(callback execute, agent_executor_capabilities capabilities = {})
       : execute_(std::move(execute)), capabilities_(capabilities) {
     if (!execute_) {
       throw std::invalid_argument("function_agent_executor requires a callback");
@@ -227,8 +249,7 @@ public:
   }
 
   agent_task_result execute(
-    const agent_task_request& request,
-    const agent_execution_context& context) override {
+    const agent_task_request& request, const agent_execution_context& context) override {
     return execute_(request, context);
   }
 
@@ -258,18 +279,30 @@ enum class team_event_type {
 
 inline std::string to_string(team_event_type value) {
   switch (value) {
-    case team_event_type::task_submitted: return "task_submitted";
-    case team_event_type::agent_selected: return "agent_selected";
-    case team_event_type::task_started: return "task_started";
-    case team_event_type::task_completed: return "task_completed";
-    case team_event_type::task_failed: return "task_failed";
-    case team_event_type::task_blocked: return "task_blocked";
-    case team_event_type::task_cancelled: return "task_cancelled";
-    case team_event_type::task_timed_out: return "task_timed_out";
-    case team_event_type::consensus_started: return "consensus_started";
-    case team_event_type::consensus_completed: return "consensus_completed";
-    case team_event_type::consensus_cancelled: return "consensus_cancelled";
-    case team_event_type::consensus_failed: return "consensus_failed";
+    case team_event_type::task_submitted:
+      return "task_submitted";
+    case team_event_type::agent_selected:
+      return "agent_selected";
+    case team_event_type::task_started:
+      return "task_started";
+    case team_event_type::task_completed:
+      return "task_completed";
+    case team_event_type::task_failed:
+      return "task_failed";
+    case team_event_type::task_blocked:
+      return "task_blocked";
+    case team_event_type::task_cancelled:
+      return "task_cancelled";
+    case team_event_type::task_timed_out:
+      return "task_timed_out";
+    case team_event_type::consensus_started:
+      return "consensus_started";
+    case team_event_type::consensus_completed:
+      return "consensus_completed";
+    case team_event_type::consensus_cancelled:
+      return "consensus_cancelled";
+    case team_event_type::consensus_failed:
+      return "consensus_failed";
   }
   return "unknown";
 }

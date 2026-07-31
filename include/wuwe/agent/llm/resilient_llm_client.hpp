@@ -79,11 +79,8 @@ struct resilient_llm_client_options {
 class resilient_llm_client final : public ::wuwe::llm_client {
 public:
   resilient_llm_client(
-    std::vector<llm_resilient_backend> backends,
-    resilient_llm_client_options options = {})
-      : backends_(std::move(backends)),
-        options_(std::move(options)),
-        states_(backends_.size()) {
+    std::vector<llm_resilient_backend> backends, resilient_llm_client_options options = {})
+      : backends_(std::move(backends)), options_(std::move(options)), states_(backends_.size()) {
     if (backends_.empty()) {
       throw std::invalid_argument("resilient_llm_client requires at least one backend");
     }
@@ -102,9 +99,7 @@ public:
     return complete(request, {});
   }
 
-  llm_response complete(
-    const llm_request& request,
-    std::stop_token stop_token) override {
+  llm_response complete(const llm_request& request, std::stop_token stop_token) override {
     return execute(request, stop_token, nullptr);
   }
 
@@ -114,8 +109,7 @@ public:
     });
   }
 
-  [[nodiscard]] llm_provider_capabilities capabilities()
-    const noexcept override {
+  [[nodiscard]] llm_provider_capabilities capabilities() const noexcept override {
     auto result = backends_.front().client->capabilities();
     for (std::size_t index = 1; index < backends_.size(); ++index) {
       const auto current = backends_[index].client->capabilities();
@@ -123,35 +117,25 @@ public:
       result.streaming = result.streaming && current.streaming;
       result.tools = result.tools && current.tools;
       result.tool_choice = result.tool_choice && current.tool_choice;
-      result.json_response_format =
-        result.json_response_format && current.json_response_format;
-      result.reasoning_summary =
-        result.reasoning_summary && current.reasoning_summary;
+      result.json_response_format = result.json_response_format && current.json_response_format;
+      result.reasoning_summary = result.reasoning_summary && current.reasoning_summary;
       result.streaming_reasoning_summary =
-        result.streaming_reasoning_summary &&
-        current.streaming_reasoning_summary;
-      if (result.reasoning_language_control !=
-          current.reasoning_language_control) {
-        result.reasoning_language_control =
-          llm_reasoning_language_control::unsupported;
+        result.streaming_reasoning_summary && current.streaming_reasoning_summary;
+      if (result.reasoning_language_control != current.reasoning_language_control) {
+        result.reasoning_language_control = llm_reasoning_language_control::unsupported;
       }
-      result.multimodal_input =
-        result.multimodal_input && current.multimodal_input;
+      result.multimodal_input = result.multimodal_input && current.multimodal_input;
       result.local_runtime = result.local_runtime && current.local_runtime;
       result.stop_sequences = result.stop_sequences && current.stop_sequences;
-      result.deterministic_seed =
-        result.deterministic_seed && current.deterministic_seed;
-      result.json_schema_output =
-        result.json_schema_output && current.json_schema_output;
+      result.deterministic_seed = result.deterministic_seed && current.deterministic_seed;
+      result.json_schema_output = result.json_schema_output && current.json_schema_output;
       result.explicit_cache_control =
         result.explicit_cache_control && current.explicit_cache_control;
     }
     return result;
   }
 
-  llm_response complete_stream(
-    const llm_request& request,
-    const llm_stream_callbacks& callbacks,
+  llm_response complete_stream(const llm_request& request, const llm_stream_callbacks& callbacks,
     std::stop_token stop_token = {}) override {
     return execute(request, stop_token, &callbacks);
   }
@@ -177,28 +161,22 @@ private:
 
   static bool retryable(const std::error_code& error) noexcept {
     using agent::llm_error_code;
-    return error == llm_error_code::rate_limited ||
-           error == llm_error_code::timeout ||
-           error == llm_error_code::transport_error ||
-           error == llm_error_code::http_error ||
-           error == llm_error_code::api_error ||
-           error == llm_error_code::model_unavailable ||
+    return error == llm_error_code::rate_limited || error == llm_error_code::timeout ||
+           error == llm_error_code::transport_error || error == llm_error_code::http_error ||
+           error == llm_error_code::api_error || error == llm_error_code::model_unavailable ||
            error == llm_error_code::circuit_open ||
            error == llm_error_code::rate_limit_wait_exceeded;
   }
 
   void validate_options() const {
-    if (options_.retry.initial_backoff.count() < 0 ||
-        options_.retry.max_backoff.count() < 0 ||
+    if (options_.retry.initial_backoff.count() < 0 || options_.retry.max_backoff.count() < 0 ||
         options_.retry.initial_backoff > options_.retry.max_backoff ||
         options_.retry.max_server_delay.count() < 0 ||
-        !std::isfinite(options_.retry.jitter_ratio) ||
-        options_.retry.jitter_ratio < 0.0 ||
+        !std::isfinite(options_.retry.jitter_ratio) || options_.retry.jitter_ratio < 0.0 ||
         options_.retry.jitter_ratio > 1.0) {
       throw std::invalid_argument("invalid LLM retry policy");
     }
-    if (options_.rate_limit.window.count() <= 0 ||
-        options_.rate_limit.max_wait.count() < 0) {
+    if (options_.rate_limit.window.count() <= 0 || options_.rate_limit.max_wait.count() < 0) {
       throw std::invalid_argument("invalid LLM rate-limit policy");
     }
     if (options_.circuit_breaker.open_duration.count() < 0) {
@@ -206,12 +184,9 @@ private:
     }
   }
 
-  llm_response execute(
-    const llm_request& original_request,
-    std::stop_token stop_token,
+  llm_response execute(const llm_request& original_request, std::stop_token stop_token,
     const llm_stream_callbacks* stream_callbacks) {
-    if (auto rejected = llm_request_rejection(
-          original_request, capabilities())) {
+    if (auto rejected = llm_request_rejection(original_request, capabilities())) {
       if (stream_callbacks) {
         emit_llm_request_rejection(*stream_callbacks, *rejected);
       }
@@ -225,9 +200,7 @@ private:
       return response;
     };
     bool attempted = false;
-    for (std::size_t backend_index = 0;
-         backend_index < backends_.size();
-         ++backend_index) {
+    for (std::size_t backend_index = 0; backend_index < backends_.size(); ++backend_index) {
       if (backend_index != 0 && !options_.allow_fallback) {
         break;
       }
@@ -242,17 +215,14 @@ private:
         });
       }
 
-      for (std::size_t attempt = 0;
-           attempt <= options_.retry.max_retries;
-           ++attempt) {
+      for (std::size_t attempt = 0; attempt <= options_.retry.max_retries; ++attempt) {
         const auto permission = acquire_circuit_permission(backend_index);
         if (permission != circuit_permission::permitted) {
           last_response = {
             .content = permission == circuit_permission::open
-              ? "LLM provider circuit is open."
-              : "LLM provider circuit probe is already running.",
-            .error_code = agent::make_error_code(
-              agent::llm_error_code::circuit_open),
+                         ? "LLM provider circuit is open."
+                         : "LLM provider circuit probe is already running.",
+            .error_code = agent::make_error_code(agent::llm_error_code::circuit_open),
           };
           last_response.metadata["backend_id"] = backends_[backend_index].id;
           publish({
@@ -272,8 +242,7 @@ private:
           }
           last_response = {
             .content = "LLM provider rate-limit wait exceeded.",
-            .error_code = agent::make_error_code(
-              agent::llm_error_code::rate_limit_wait_exceeded),
+            .error_code = agent::make_error_code(agent::llm_error_code::rate_limit_wait_exceeded),
           };
           last_response.metadata["backend_id"] = backends_[backend_index].id;
           publish({
@@ -301,17 +270,15 @@ private:
         std::exception_ptr callback_failure;
         try {
           if (stream_callbacks) {
-            auto proxy = make_stream_proxy(
-              *stream_callbacks, emitted_output, callback_failure);
-            last_response = backends_[backend_index].client->complete_stream(
-              request, proxy, stop_token);
+            auto proxy = make_stream_proxy(*stream_callbacks, emitted_output, callback_failure);
+            last_response =
+              backends_[backend_index].client->complete_stream(request, proxy, stop_token);
             if (callback_failure) {
               std::rethrow_exception(callback_failure);
             }
           }
           else {
-            last_response = backends_[backend_index].client->complete(
-              request, stop_token);
+            last_response = backends_[backend_index].client->complete(request, stop_token);
           }
         }
         catch (const std::exception& error) {
@@ -321,8 +288,7 @@ private:
           }
           last_response = {
             .content = error.what(),
-            .error_code = agent::make_error_code(
-              agent::llm_error_code::transport_error),
+            .error_code = agent::make_error_code(agent::llm_error_code::transport_error),
           };
           last_response.metadata["backend_exception"] = "true";
         }
@@ -333,8 +299,7 @@ private:
           }
           last_response = {
             .content = "LLM backend threw a non-standard exception.",
-            .error_code = agent::make_error_code(
-              agent::llm_error_code::transport_error),
+            .error_code = agent::make_error_code(agent::llm_error_code::transport_error),
           };
           last_response.metadata["backend_exception"] = "true";
         }
@@ -395,10 +360,8 @@ private:
     return last_response;
   }
 
-  llm_stream_callbacks make_stream_proxy(
-    const llm_stream_callbacks& destination,
-    bool& emitted_output,
-    std::exception_ptr& callback_failure) const {
+  llm_stream_callbacks make_stream_proxy(const llm_stream_callbacks& destination,
+    bool& emitted_output, std::exception_ptr& callback_failure) const {
     llm_stream_callbacks proxy;
     proxy.on_event = [&](const llm_stream_event& event) {
       if (event.type == llm_stream_event_type::error) {
@@ -421,7 +384,8 @@ private:
       }
     };
     proxy.on_reasoning_delta = [&](std::string_view delta) {
-      if (!destination.on_reasoning_delta || callback_failure) return;
+      if (!destination.on_reasoning_delta || callback_failure)
+        return;
       try {
         destination.on_reasoning_delta(delta);
       }
@@ -430,7 +394,8 @@ private:
       }
     };
     proxy.on_reasoning_done = [&](std::string_view summary) {
-      if (!destination.on_reasoning_done || callback_failure) return;
+      if (!destination.on_reasoning_done || callback_failure)
+        return;
       try {
         destination.on_reasoning_done(summary);
       }
@@ -442,9 +407,7 @@ private:
   }
 
   static void forward_final_stream_error(
-    const llm_stream_callbacks* callbacks,
-    const llm_response& response,
-    bool) {
+    const llm_stream_callbacks* callbacks, const llm_response& response, bool) {
     if (!callbacks || !response.error_code || !callbacks->on_event) {
       return;
     }
@@ -500,10 +463,9 @@ private:
       std::scoped_lock lock(state.mutex);
       state.half_open_probe_in_progress = false;
       ++state.consecutive_failures;
-      if (state.consecutive_failures >=
-          options_.circuit_breaker.failure_threshold) {
-        state.open_until = std::chrono::steady_clock::now() +
-          options_.circuit_breaker.open_duration;
+      if (state.consecutive_failures >= options_.circuit_breaker.failure_threshold) {
+        state.open_until =
+          std::chrono::steady_clock::now() + options_.circuit_breaker.open_duration;
         opened = true;
       }
     }
@@ -550,38 +512,32 @@ private:
     }
   }
 
-  std::chrono::milliseconds retry_delay(
-    std::size_t attempt,
-    const llm_response& response) const {
+  std::chrono::milliseconds retry_delay(std::size_t attempt, const llm_response& response) const {
     const auto exponent = (std::min<std::size_t>)(attempt, 20);
-    const auto base_count = (std::max<std::int64_t>)(
-      0, options_.retry.initial_backoff.count());
-    const auto maximum = (std::max)(
-      options_.retry.initial_backoff, options_.retry.max_backoff);
+    const auto base_count = (std::max<std::int64_t>)(0, options_.retry.initial_backoff.count());
+    const auto maximum = (std::max)(options_.retry.initial_backoff, options_.retry.max_backoff);
     const auto multiplier = std::int64_t { 1 } << exponent;
     const auto maximum_count = (std::max<std::int64_t>)(0, maximum.count());
     const auto scaled = base_count > maximum_count / multiplier
-      ? maximum_count
-      : (std::min)(base_count * multiplier, maximum_count);
+                          ? maximum_count
+                          : (std::min)(base_count * multiplier, maximum_count);
     double delay = static_cast<double>(scaled);
     if (options_.retry.jitter_ratio > 0.0) {
       const auto unit = random_unit();
-      delay *= 1.0 + ((std::clamp)(unit, 0.0, 1.0) * 2.0 - 1.0) *
-        options_.retry.jitter_ratio;
+      delay *= 1.0 + ((std::clamp)(unit, 0.0, 1.0) * 2.0 - 1.0) * options_.retry.jitter_ratio;
     }
     delay = (std::max)(0.0, delay);
-    const auto result_before_server = delay >= static_cast<double>(maximum_count)
-      ? std::chrono::milliseconds(maximum_count)
-      : std::chrono::milliseconds(static_cast<std::int64_t>(delay));
+    const auto result_before_server =
+      delay >= static_cast<double>(maximum_count)
+        ? std::chrono::milliseconds(maximum_count)
+        : std::chrono::milliseconds(static_cast<std::int64_t>(delay));
     auto result = result_before_server;
     if (options_.retry.respect_retry_after) {
       const auto found = response.metadata.find("retry_after_ms");
       if (found != response.metadata.end()) {
         try {
-          const auto server_delay = std::chrono::milliseconds(
-            std::stoll(found->second));
-          result = (std::max)(result, (std::min)(
-            server_delay, options_.retry.max_server_delay));
+          const auto server_delay = std::chrono::milliseconds(std::stoll(found->second));
+          result = (std::max)(result, (std::min)(server_delay, options_.retry.max_server_delay));
         }
         catch (...) {
         }
@@ -611,9 +567,7 @@ private:
     }
   }
 
-  static bool interruptible_wait(
-    std::stop_token stop_token,
-    std::chrono::milliseconds duration) {
+  static bool interruptible_wait(std::stop_token stop_token, std::chrono::milliseconds duration) {
     constexpr auto quantum = std::chrono::milliseconds(25);
     while (duration > std::chrono::milliseconds::zero()) {
       if (stop_token.stop_requested()) {

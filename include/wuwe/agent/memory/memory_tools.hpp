@@ -210,8 +210,8 @@ public:
     }
 
     return {
-      .content = "tool not found: " + name + ". Available tools: " +
-                 save_memory_name + ", " + search_memory_name,
+      .content = "tool not found: " + name + ". Available tools: " + save_memory_name + ", " +
+                 search_memory_name,
       .error_code = std::make_error_code(std::errc::function_not_supported),
     };
   }

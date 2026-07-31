@@ -57,12 +57,10 @@ inline constexpr bool is_retry_if_step_v<retry_if_step<Pred>> = true;
 template<typename Func, typename T>
 decltype(auto) invoke_flow_step(Func&& func, const flow_context& context, T&& value) {
   if constexpr (std::is_invocable_v<Func, T, const flow_context&>) {
-    return std::invoke(
-      std::forward<Func>(func), std::forward<T>(value), context);
+    return std::invoke(std::forward<Func>(func), std::forward<T>(value), context);
   }
   else if constexpr (std::is_invocable_v<Func, T, std::stop_token>) {
-    return std::invoke(
-      std::forward<Func>(func), std::forward<T>(value), context.stop_token);
+    return std::invoke(std::forward<Func>(func), std::forward<T>(value), context.stop_token);
   }
   else {
     return std::invoke(std::forward<Func>(func), std::forward<T>(value));
@@ -71,9 +69,7 @@ decltype(auto) invoke_flow_step(Func&& func, const flow_context& context, T&& va
 
 template<typename T>
 auto continue_flow(
-  const std::shared_ptr<llm_client>& client,
-  const flow_context& context,
-  T&& value) {
+  const std::shared_ptr<llm_client>& client, const flow_context& context, T&& value) {
   if constexpr (is_prompt_text_v<T>) {
     llm_request request;
     request.messages.push_back({
@@ -101,20 +97,17 @@ public:
 
   template<typename U>
   decltype(auto) invoke(U&& input) const {
-    return std::invoke(
-      callable_, client_, flow_context {}, std::forward<U>(input));
+    return std::invoke(callable_, client_, flow_context {}, std::forward<U>(input));
   }
 
   template<typename U>
   decltype(auto) invoke(U&& input, flow_context context) const {
-    return std::invoke(
-      callable_, client_, context, std::forward<U>(input));
+    return std::invoke(callable_, client_, context, std::forward<U>(input));
   }
 
   template<typename U>
   decltype(auto) invoke(U&& input, std::stop_token stop_token) const {
-    return invoke(
-      std::forward<U>(input), flow_context { .stop_token = stop_token });
+    return invoke(std::forward<U>(input), flow_context { .stop_token = stop_token });
   }
 
   template<typename G>
@@ -139,13 +132,10 @@ private:
                         auto&& x) -> decltype(auto) {
         try {
           return detail::continue_flow(
-            client,
-            context,
-            std::invoke(prev, client, context, std::forward<decltype(x)>(x)));
+            client, context, std::invoke(prev, client, context, std::forward<decltype(x)>(x)));
         }
         catch (...) {
-          return detail::continue_flow(
-            client, context, g.recover_current_exception());
+          return detail::continue_flow(client, context, g.recover_current_exception());
         }
       };
 
@@ -180,13 +170,10 @@ private:
                         const std::shared_ptr<llm_client>& client,
                         const flow_context& context,
                         auto&& x) -> decltype(auto) {
-        return detail::continue_flow(
-          client,
+        return detail::continue_flow(client,
           context,
           detail::invoke_flow_step(
-            g,
-            context,
-            std::invoke(prev, client, context, std::forward<decltype(x)>(x))));
+            g, context, std::invoke(prev, client, context, std::forward<decltype(x)>(x))));
       };
 
       return flow<std::decay_t<decltype(composed)>>(client_, std::move(composed));
@@ -210,15 +197,12 @@ auto operator|(flow<F>&& f, G&& g) {
 
 template<typename F>
 auto operator|(std::shared_ptr<llm_client> client, F&& f) {
-  auto first = [func = std::forward<F>(f)](
-                 const std::shared_ptr<llm_client>& client,
+  auto first = [func = std::forward<F>(f)](const std::shared_ptr<llm_client>& client,
                  const flow_context& context,
                  auto&& input) -> decltype(auto) {
-    return detail::continue_flow(
-      client,
+    return detail::continue_flow(client,
       context,
-      detail::invoke_flow_step(
-        func, context, std::forward<decltype(input)>(input)));
+      detail::invoke_flow_step(func, context, std::forward<decltype(input)>(input)));
   };
 
   return flow<std::decay_t<decltype(first)>>(std::move(client), std::move(first));

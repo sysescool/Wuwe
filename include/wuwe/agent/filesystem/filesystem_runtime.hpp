@@ -14,11 +14,8 @@ namespace wuwe::agent::filesystem {
 
 class filesystem_runtime {
 public:
-  filesystem_runtime(
-    std::unique_ptr<filesystem_backend> backend,
-    filesystem_policy policy,
-    audit::audit_sink* audit = nullptr,
-    approval::approval_service* approvals = nullptr);
+  filesystem_runtime(std::unique_ptr<filesystem_backend> backend, filesystem_policy policy,
+    audit::audit_sink* audit = nullptr, approval::approval_service* approvals = nullptr);
 
   filesystem_runtime(const filesystem_runtime&) = delete;
   filesystem_runtime& operator=(const filesystem_runtime&) = delete;
@@ -26,65 +23,44 @@ public:
   filesystem_runtime& operator=(filesystem_runtime&&) = delete;
 
   [[nodiscard]] filesystem_result read_text(
-    read_text_request request,
-    std::stop_token stop_token = {});
+    read_text_request request, std::stop_token stop_token = {});
   [[nodiscard]] filesystem_result file_info(
-    file_info_request request,
-    std::stop_token stop_token = {});
+    file_info_request request, std::stop_token stop_token = {});
   [[nodiscard]] filesystem_result write_text(
-    write_text_request request,
-    std::stop_token stop_token = {});
+    write_text_request request, std::stop_token stop_token = {});
   [[nodiscard]] filesystem_result replace_text(
-    replace_text_request request,
-    std::stop_token stop_token = {});
+    replace_text_request request, std::stop_token stop_token = {});
   [[nodiscard]] filesystem_result list_directory(
-    list_directory_request request,
-    std::stop_token stop_token = {});
-  [[nodiscard]] filesystem_result glob(
-    glob_request request,
-    std::stop_token stop_token = {});
+    list_directory_request request, std::stop_token stop_token = {});
+  [[nodiscard]] filesystem_result glob(glob_request request, std::stop_token stop_token = {});
   [[nodiscard]] filesystem_result search_text(
-    search_text_request request,
-    std::stop_token stop_token = {});
+    search_text_request request, std::stop_token stop_token = {});
   [[nodiscard]] filesystem_result create_directory(
-    create_directory_request request,
-    std::stop_token stop_token = {});
+    create_directory_request request, std::stop_token stop_token = {});
   [[nodiscard]] filesystem_result copy_path(
-    transfer_path_request request,
-    std::stop_token stop_token = {});
+    transfer_path_request request, std::stop_token stop_token = {});
   [[nodiscard]] filesystem_result move_path(
-    transfer_path_request request,
-    std::stop_token stop_token = {});
+    transfer_path_request request, std::stop_token stop_token = {});
   [[nodiscard]] filesystem_result remove_path(
-    remove_path_request request,
-    std::stop_token stop_token = {});
+    remove_path_request request, std::stop_token stop_token = {});
 
   [[nodiscard]] const filesystem_policy& policy() const noexcept;
   [[nodiscard]] const filesystem_backend* backend() const noexcept;
 
-  void audit_tool_rejection(
-    const std::string& tool_name,
-    const std::string& reason,
+  void audit_tool_rejection(const std::string& tool_name, const std::string& reason,
     const std::map<std::string, std::string>& attributes = {});
 
 private:
   struct operation_context;
 
-  [[nodiscard]] std::unique_ptr<operation_context> begin_operation(
-    std::string operation,
-    std::vector<std::filesystem::path> resources,
-    bool write,
-    bool approval_required,
+  [[nodiscard]] std::unique_ptr<operation_context> begin_operation(std::string operation,
+    std::vector<std::filesystem::path> resources, bool write, bool approval_required,
     std::map<std::string, std::string> metadata);
   [[nodiscard]] std::optional<std::filesystem::path> resolve_path(
-    const std::filesystem::path& path,
-    operation_context& context) const;
-  [[nodiscard]] bool authorize(
-    operation_context& context,
-    std::stop_token stop_token);
+    const std::filesystem::path& path, operation_context& context) const;
+  [[nodiscard]] bool authorize(operation_context& context, std::stop_token stop_token);
   [[nodiscard]] filesystem_result finish(
-    operation_context& context,
-    filesystem_result result) const;
+    operation_context& context, filesystem_result result) const;
 
   std::unique_ptr<filesystem_backend> backend_;
   filesystem_policy policy_;

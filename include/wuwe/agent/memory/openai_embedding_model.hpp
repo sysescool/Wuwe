@@ -22,17 +22,14 @@ class openai_embedding_model final : public embedding_model {
 public:
   explicit openai_embedding_model(openai_embedding_model_config config);
   openai_embedding_model(
-    openai_embedding_model_config config,
-    std::shared_ptr<::wuwe::http_client> http);
+    openai_embedding_model_config config, std::shared_ptr<::wuwe::http_client> http);
 
   std::vector<float> embed(std::string_view text) const override;
-  std::vector<std::vector<float>> embed_batch(
-    const std::vector<std::string>& texts) const override;
+  std::vector<std::vector<float>> embed_batch(const std::vector<std::string>& texts) const override;
 
 private:
   std::vector<std::vector<float>> parse_embedding_response(
-    const ::wuwe::http_response& response,
-    std::size_t expected_count) const;
+    const ::wuwe::http_response& response, std::size_t expected_count) const;
   std::string endpoint() const;
 
 private:

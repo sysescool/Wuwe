@@ -66,11 +66,12 @@ void run_offline_plan_reasoning() {
   reasoning::reasoning_runner runner({
     .planner = planner,
     .executor = executor,
-    .observer = [](const reasoning::reasoning_event& event) {
-      if (event.type == reasoning::reasoning_event_type::plan_step_started) {
-        wuwe::println("[plan step] {}", event.step_id);
-      }
-    },
+    .observer =
+      [](const reasoning::reasoning_event& event) {
+        if (event.type == reasoning::reasoning_event_type::plan_step_started) {
+          wuwe::println("[plan step] {}", event.step_id);
+        }
+      },
   });
 
   const auto result = runner.run({
@@ -105,17 +106,20 @@ void run_live_react_reasoning() {
   auto client = factory.create_shared("OpenRouter", config);
   auto provider = std::make_shared<wuwe::tool_provider<get_weather>>();
 
-  auto runner = reasoning::reasoning_runner::with_tools(*client, provider, {
-    .observer = [](const reasoning::reasoning_event& event) {
-      if (event.type == reasoning::reasoning_event_type::content_delta) {
-        wuwe::print("{}", event.delta);
-        std::cout << std::flush;
-      }
-      else if (event.type == reasoning::reasoning_event_type::tool_started) {
-        wuwe::println("\n[tool] {}", event.message);
-      }
-    },
-  });
+  auto runner = reasoning::reasoning_runner::with_tools(*client,
+    provider,
+    {
+      .observer =
+        [](const reasoning::reasoning_event& event) {
+          if (event.type == reasoning::reasoning_event_type::content_delta) {
+            wuwe::print("{}", event.delta);
+            std::cout << std::flush;
+          }
+          else if (event.type == reasoning::reasoning_event_type::tool_started) {
+            wuwe::println("\n[tool] {}", event.message);
+          }
+        },
+    });
 
   wuwe::print("live react result: ");
   const auto result = runner.run({

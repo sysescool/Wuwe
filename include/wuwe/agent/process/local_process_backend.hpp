@@ -19,8 +19,7 @@ public:
 
   [[nodiscard]] sandbox::sandbox_backend_info info() const override;
   [[nodiscard]] process_result run(
-    const process_request& request,
-    std::stop_token stop_token) override;
+    const process_request& request, std::stop_token stop_token) override;
 
 private:
   local_process_backend_config config_;

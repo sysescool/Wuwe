@@ -30,8 +30,7 @@ class offline_optimizer {
 public:
   virtual ~offline_optimizer() = default;
   [[nodiscard]] virtual std::vector<learning_candidate> optimize(
-    const optimization_request& request,
-    const learning_context& context) const = 0;
+    const optimization_request& request, const learning_context& context) const = 0;
 };
 
 class function_offline_optimizer final : public offline_optimizer {
@@ -39,16 +38,14 @@ public:
   using callback = std::function<std::vector<learning_candidate>(
     const optimization_request&, const learning_context&)>;
 
-  explicit function_offline_optimizer(callback value)
-      : callback_(std::move(value)) {
+  explicit function_offline_optimizer(callback value) : callback_(std::move(value)) {
     if (!callback_) {
       throw std::invalid_argument("function_offline_optimizer requires a callback");
     }
   }
 
   [[nodiscard]] std::vector<learning_candidate> optimize(
-    const optimization_request& request,
-    const learning_context& context) const override {
+    const optimization_request& request, const learning_context& context) const override {
     return callback_(request, context);
   }
 
@@ -65,17 +62,11 @@ struct optimizer_proposer_options {
 
 class offline_optimizer_proposer {
 public:
-  offline_optimizer_proposer(
-    std::shared_ptr<const offline_optimizer> optimizer,
-    experience_store* experiences,
-    reward_store* rewards = nullptr,
-    artifact_registry* registry = nullptr,
-    optimizer_proposer_options options = {})
-      : optimizer_(std::move(optimizer)),
-        experiences_(experiences),
-        rewards_(rewards),
-        registry_(registry),
-        options_(std::move(options)) {
+  offline_optimizer_proposer(std::shared_ptr<const offline_optimizer> optimizer,
+    experience_store* experiences, reward_store* rewards = nullptr,
+    artifact_registry* registry = nullptr, optimizer_proposer_options options = {})
+      : optimizer_(std::move(optimizer)), experiences_(experiences), rewards_(rewards),
+        registry_(registry), options_(std::move(options)) {
     if (!optimizer_) {
       throw std::invalid_argument("offline optimizer proposer requires an optimizer");
     }
@@ -84,19 +75,17 @@ public:
     }
     if (options_.max_experiences == 0 || options_.max_rewards == 0 ||
         options_.max_candidates == 0) {
-      throw std::invalid_argument(
-        "offline optimizer limits must be greater than zero");
+      throw std::invalid_argument("offline optimizer limits must be greater than zero");
     }
   }
 
   [[nodiscard]] std::vector<learning_candidate> operator()(
-    const learning_request& request,
-    const learning_context& context) const {
+    const learning_request& request, const learning_context& context) const {
     if (request.target.empty()) {
-      throw std::invalid_argument(
-        "offline optimizer request target must not be empty");
+      throw std::invalid_argument("offline optimizer request target must not be empty");
     }
-    if (context.cancellation_requested() || context.deadline_reached()) return {};
+    if (context.cancellation_requested() || context.deadline_reached())
+      return {};
     auto adapted_request = request;
     auto baseline = registry_ ? registry_->active(request.target) : std::nullopt;
     if (adapted_request.baseline_version.empty() && baseline) {
@@ -110,9 +99,10 @@ public:
         .limit = options_.max_experiences,
       }),
       .rewards = rewards_ ? rewards_->query({
-        .target = request.target,
-        .limit = options_.max_rewards,
-      }) : std::vector<reward_record> {},
+                              .target = request.target,
+                              .limit = options_.max_rewards,
+                            })
+                          : std::vector<reward_record> {},
       .max_candidates = options_.max_candidates,
       .metadata = options_.metadata,
     };
@@ -121,7 +111,8 @@ public:
       candidates.resize(options_.max_candidates);
     }
     for (auto& candidate : candidates) {
-      if (candidate.target.empty()) candidate.target = request.target;
+      if (candidate.target.empty())
+        candidate.target = request.target;
       if (candidate.parent_version.empty()) {
         candidate.parent_version = adapted_request.baseline_version;
       }
@@ -138,25 +129,18 @@ private:
 };
 
 inline learning_proposer make_offline_optimizer_proposer(
-  std::shared_ptr<const offline_optimizer> optimizer,
-  experience_store& experiences,
-  reward_store* rewards = nullptr,
-  artifact_registry* registry = nullptr,
+  std::shared_ptr<const offline_optimizer> optimizer, experience_store& experiences,
+  reward_store* rewards = nullptr, artifact_registry* registry = nullptr,
   optimizer_proposer_options options = {}) {
   auto proposer = std::make_shared<offline_optimizer_proposer>(
     std::move(optimizer), &experiences, rewards, registry, std::move(options));
-  return [proposer](
-           const learning_request& request,
-           const learning_context& context) {
+  return [proposer](const learning_request& request, const learning_context& context) {
     return (*proposer)(request, context);
   };
 }
 
-inline learning_activator make_registry_only_activator(
-  artifact_registry& registry) {
-  return [&registry](
-           const learning_candidate& candidate,
-           const learning_context& context) {
+inline learning_activator make_registry_only_activator(artifact_registry& registry) {
+  return [&registry](const learning_candidate& candidate, const learning_context& context) {
     if (context.cancellation_requested() || context.deadline_reached()) {
       return learning_activation_result {
         .error = "registry activation cancelled or timed out",
@@ -164,17 +148,12 @@ inline learning_activator make_registry_only_activator(
     }
     try {
       registry.stage(artifact_version_from_candidate(candidate));
-      auto activation = registry.activate(
-        candidate.target, candidate.proposed_version);
+      auto activation = registry.activate(candidate.target, candidate.proposed_version);
       return learning_activation_result {
         .activated = true,
         .active_version = activation.active.version,
-        .previous_version = activation.previous
-                              ? activation.previous->version
-                              : std::string {},
-        .rollback_token = activation.previous
-                            ? activation.previous->version
-                            : std::string {},
+        .previous_version = activation.previous ? activation.previous->version : std::string {},
+        .rollback_token = activation.previous ? activation.previous->version : std::string {},
       };
     }
     catch (const std::exception& ex) {

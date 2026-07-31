@@ -33,20 +33,20 @@ public:
     std::ostringstream output;
     output << "# TYPE wuwe_knowledge_events_total counter\n";
     for (const auto& [name, count] : event_counts_) {
-      output << "wuwe_knowledge_events_total{event=\"" << escape_label(name)
-             << "\"} " << count << '\n';
+      output << "wuwe_knowledge_events_total{event=\"" << escape_label(name) << "\"} " << count
+             << '\n';
     }
 
     output << "# TYPE wuwe_knowledge_event_latency_ms_sum counter\n";
     for (const auto& [name, sum] : latency_sums_) {
-      output << "wuwe_knowledge_event_latency_ms_sum{event=\"" << escape_label(name)
-             << "\"} " << sum << '\n';
+      output << "wuwe_knowledge_event_latency_ms_sum{event=\"" << escape_label(name) << "\"} "
+             << sum << '\n';
     }
 
     output << "# TYPE wuwe_knowledge_retrieval_results_sum counter\n";
     for (const auto& [name, sum] : result_count_sums_) {
-      output << "wuwe_knowledge_retrieval_results_sum{event=\"" << escape_label(name)
-             << "\"} " << sum << '\n';
+      output << "wuwe_knowledge_retrieval_results_sum{event=\"" << escape_label(name) << "\"} "
+             << sum << '\n';
     }
     return output.str();
   }

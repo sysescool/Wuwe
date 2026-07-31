@@ -22,9 +22,7 @@ public:
   virtual ~transport() = default;
 
   virtual rpc_result invoke(
-    std::string method,
-    nlohmann::json params,
-    std::stop_token stop_token = {}) = 0;
+    std::string method, nlohmann::json params, std::stop_token stop_token = {}) = 0;
 
   virtual result<agent_card> discover(std::stop_token stop_token = {}) = 0;
 

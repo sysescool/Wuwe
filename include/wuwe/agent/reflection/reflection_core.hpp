@@ -27,18 +27,18 @@ enum class reflection_action {
 
 inline std::string to_string(reflection_action action) {
   switch (action) {
-  case reflection_action::pass:
-    return "pass";
-  case reflection_action::revise:
-    return "revise";
-  case reflection_action::retry:
-    return "retry";
-  case reflection_action::replan:
-    return "replan";
-  case reflection_action::block:
-    return "block";
-  case reflection_action::escalate:
-    return "escalate";
+    case reflection_action::pass:
+      return "pass";
+    case reflection_action::revise:
+      return "revise";
+    case reflection_action::retry:
+      return "retry";
+    case reflection_action::replan:
+      return "replan";
+    case reflection_action::block:
+      return "block";
+    case reflection_action::escalate:
+      return "escalate";
   }
   return "unknown";
 }
@@ -74,14 +74,14 @@ enum class reflection_severity {
 
 inline std::string to_string(reflection_severity severity) {
   switch (severity) {
-  case reflection_severity::info:
-    return "info";
-  case reflection_severity::warning:
-    return "warning";
-  case reflection_severity::error:
-    return "error";
-  case reflection_severity::critical:
-    return "critical";
+    case reflection_severity::info:
+      return "info";
+    case reflection_severity::warning:
+      return "warning";
+    case reflection_severity::error:
+      return "error";
+    case reflection_severity::critical:
+      return "critical";
   }
   return "unknown";
 }
@@ -105,32 +105,32 @@ inline std::optional<reflection_severity> reflection_severity_from_string(
 
 inline int severity_rank(reflection_severity severity) {
   switch (severity) {
-  case reflection_severity::info:
-    return 0;
-  case reflection_severity::warning:
-    return 1;
-  case reflection_severity::error:
-    return 2;
-  case reflection_severity::critical:
-    return 3;
+    case reflection_severity::info:
+      return 0;
+    case reflection_severity::warning:
+      return 1;
+    case reflection_severity::error:
+      return 2;
+    case reflection_severity::critical:
+      return 3;
   }
   return 0;
 }
 
 inline int action_rank(reflection_action action) {
   switch (action) {
-  case reflection_action::pass:
-    return 0;
-  case reflection_action::revise:
-    return 1;
-  case reflection_action::retry:
-    return 2;
-  case reflection_action::replan:
-    return 3;
-  case reflection_action::block:
-    return 4;
-  case reflection_action::escalate:
-    return 5;
+    case reflection_action::pass:
+      return 0;
+    case reflection_action::revise:
+      return 1;
+    case reflection_action::retry:
+      return 2;
+    case reflection_action::replan:
+      return 3;
+    case reflection_action::block:
+      return 4;
+    case reflection_action::escalate:
+      return 5;
   }
   return 0;
 }
@@ -187,9 +187,7 @@ struct reflection_result {
   }
 
   static reflection_result fail(
-    reflection_action action,
-    reflection_issue issue,
-    double score = 0.0) {
+    reflection_action action, reflection_issue issue, double score = 0.0) {
     return {
       .passed = false,
       .score = score,
@@ -258,7 +256,8 @@ private:
   reflection_policy policy_;
 };
 
-inline reflection_action action_for(const reflection_policy& policy, const reflection_result& result) {
+inline reflection_action action_for(
+  const reflection_policy& policy, const reflection_result& result) {
   return reflection_policy_engine(policy).action_for(result);
 }
 
@@ -268,7 +267,8 @@ inline reflection_action reflection_policy::action_for(const reflection_result& 
 
 class reflection_result_normalizer {
 public:
-  explicit reflection_result_normalizer(reflection_rubric rubric = {}) : rubric_(std::move(rubric)) {
+  explicit reflection_result_normalizer(reflection_rubric rubric = {})
+      : rubric_(std::move(rubric)) {
   }
 
   reflection_result normalize(reflection_result result) const {
@@ -445,8 +445,9 @@ public:
   }
 
   static nlohmann::json record_to_json(const reflection_record& record) {
-    const auto created_at_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-      record.created_at.time_since_epoch()).count();
+    const auto created_at_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(record.created_at.time_since_epoch())
+        .count();
     return {
       { "id", record.id },
       { "created_at_unix_millis", created_at_ms },

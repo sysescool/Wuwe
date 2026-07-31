@@ -22,17 +22,13 @@ public:
   llm_client* create(std::string_view provider_id, const llm_config& config) const;
 
   std::shared_ptr<llm_client> create_shared(
-    std::string_view provider_id,
-    const llm_config& config) const;
+    std::string_view provider_id, const llm_config& config) const;
 
   std::unique_ptr<llm_client> create_unique(
-    std::string_view provider_id,
-    const llm_config& config) const;
+    std::string_view provider_id, const llm_config& config) const;
 };
 
-std::shared_ptr<llm_client> make_llm_client(
-  std::string_view provider_id,
-  llm_client_config config);
+std::shared_ptr<llm_client> make_llm_client(std::string_view provider_id, llm_client_config config);
 
 WUWE_NAMESPACE_END
 

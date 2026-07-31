@@ -25,10 +25,14 @@ enum class artifact_version_status {
 
 [[nodiscard]] inline std::string to_string(artifact_version_status value) {
   switch (value) {
-    case artifact_version_status::staged: return "staged";
-    case artifact_version_status::active: return "active";
-    case artifact_version_status::retired: return "retired";
-    case artifact_version_status::rolled_back: return "rolled_back";
+    case artifact_version_status::staged:
+      return "staged";
+    case artifact_version_status::active:
+      return "active";
+    case artifact_version_status::retired:
+      return "retired";
+    case artifact_version_status::rolled_back:
+      return "rolled_back";
   }
   return "unknown";
 }
@@ -41,9 +45,7 @@ struct artifact_version {
   nlohmann::json artifact = nlohmann::json::object();
   std::string rationale;
   artifact_version_status status { artifact_version_status::staged };
-  std::chrono::system_clock::time_point created_at {
-    std::chrono::system_clock::now()
-  };
+  std::chrono::system_clock::time_point created_at { std::chrono::system_clock::now() };
   std::optional<std::chrono::system_clock::time_point> activated_at;
   std::map<std::string, std::string> metadata;
 };
@@ -58,22 +60,14 @@ public:
   virtual ~artifact_registry() = default;
   virtual artifact_version stage(artifact_version value) = 0;
   [[nodiscard]] virtual std::optional<artifact_version> get(
-    const std::string& target,
-    const std::string& version) const = 0;
-  [[nodiscard]] virtual std::optional<artifact_version> active(
-    const std::string& target) const = 0;
-  [[nodiscard]] virtual std::vector<artifact_version> list(
-    const std::string& target) const = 0;
-  virtual artifact_activation activate(
-    const std::string& target,
-    const std::string& version) = 0;
-  virtual artifact_activation rollback(
-    const std::string& target,
-    const std::string& version) = 0;
+    const std::string& target, const std::string& version) const = 0;
+  [[nodiscard]] virtual std::optional<artifact_version> active(const std::string& target) const = 0;
+  [[nodiscard]] virtual std::vector<artifact_version> list(const std::string& target) const = 0;
+  virtual artifact_activation activate(const std::string& target, const std::string& version) = 0;
+  virtual artifact_activation rollback(const std::string& target, const std::string& version) = 0;
 };
 
-inline artifact_version artifact_version_from_candidate(
-  const learning_candidate& candidate) {
+inline artifact_version artifact_version_from_candidate(const learning_candidate& candidate) {
   return {
     .target = candidate.target,
     .version = candidate.proposed_version,
@@ -107,46 +101,42 @@ public:
   }
 
   [[nodiscard]] std::optional<artifact_version> get(
-    const std::string& target,
-    const std::string& version) const override {
+    const std::string& target, const std::string& version) const override {
     std::scoped_lock lock(mutex_);
     const auto target_found = versions_.find(target);
-    if (target_found == versions_.end()) return std::nullopt;
+    if (target_found == versions_.end())
+      return std::nullopt;
     const auto version_found = target_found->second.find(version);
-    return version_found == target_found->second.end()
-             ? std::nullopt
-             : std::optional(version_found->second);
+    return version_found == target_found->second.end() ? std::nullopt
+                                                       : std::optional(version_found->second);
   }
 
-  [[nodiscard]] std::optional<artifact_version> active(
-    const std::string& target) const override {
+  [[nodiscard]] std::optional<artifact_version> active(const std::string& target) const override {
     std::scoped_lock lock(mutex_);
     const auto active_found = active_versions_.find(target);
-    if (active_found == active_versions_.end()) return std::nullopt;
+    if (active_found == active_versions_.end())
+      return std::nullopt;
     return versions_.at(target).at(active_found->second);
   }
 
-  [[nodiscard]] std::vector<artifact_version> list(
-    const std::string& target) const override {
+  [[nodiscard]] std::vector<artifact_version> list(const std::string& target) const override {
     std::scoped_lock lock(mutex_);
     std::vector<artifact_version> output;
     const auto found = versions_.find(target);
-    if (found == versions_.end()) return output;
+    if (found == versions_.end())
+      return output;
     output.reserve(found->second.size());
-    for (const auto& [_, value] : found->second) output.push_back(value);
+    for (const auto& [_, value] : found->second)
+      output.push_back(value);
     return output;
   }
 
-  artifact_activation activate(
-    const std::string& target,
-    const std::string& version) override {
+  artifact_activation activate(const std::string& target, const std::string& version) override {
     std::scoped_lock lock(mutex_);
     return activate_locked(target, version, false);
   }
 
-  artifact_activation rollback(
-    const std::string& target,
-    const std::string& version) override {
+  artifact_activation rollback(const std::string& target, const std::string& version) override {
     std::scoped_lock lock(mutex_);
     return activate_locked(target, version, true);
   }
@@ -165,12 +155,9 @@ private:
   }
 
   artifact_activation activate_locked(
-    const std::string& target,
-    const std::string& version,
-    bool rollback) {
+    const std::string& target, const std::string& version, bool rollback) {
     auto target_found = versions_.find(target);
-    if (target_found == versions_.end() ||
-        !target_found->second.contains(version)) {
+    if (target_found == versions_.end() || !target_found->second.contains(version)) {
       throw std::out_of_range("artifact version not found: " + target + "/" + version);
     }
     std::optional<artifact_version> previous;
@@ -181,8 +168,8 @@ private:
         return { .active = current };
       }
       previous = current;
-      current.status = rollback ? artifact_version_status::rolled_back
-                                : artifact_version_status::retired;
+      current.status =
+        rollback ? artifact_version_status::rolled_back : artifact_version_status::retired;
     }
     auto& selected = target_found->second.at(version);
     selected.status = artifact_version_status::active;

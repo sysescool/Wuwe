@@ -9,22 +9,25 @@ WUWE_NAMESPACE_BEGIN
 
 namespace {
 
-template <typename T> struct constant_init {
+template<typename T>
+struct constant_init {
   union {
     T obj;
   };
-  constexpr constant_init() noexcept : obj() {}
+  constexpr constant_init() noexcept : obj() {
+  }
 
-  ~constant_init() { /* do nothing, union object is not destroyed */ }
+  ~constant_init() { /* do nothing, union object is not destroyed */
+  }
 };
 
 struct net_category_impl final : public std::error_category {
 public:
-  const char *name() const noexcept final {
+  const char* name() const noexcept final {
     return "net";
   }
 
-  bool equivalent(const std::error_code &ec, int condition) const noexcept final {
+  bool equivalent(const std::error_code& ec, int condition) const noexcept final {
     using wuwe::http_status_code;
     using wuwe::net_errc;
     using wuwe::transport_error;
@@ -116,7 +119,7 @@ public:
 
 } // namespace
 
-const std::error_category &net_category() noexcept {
+const std::error_category& net_category() noexcept {
   static constant_init<net_category_impl> net_category_instance;
   return net_category_instance.obj;
 }

@@ -24,11 +24,16 @@ enum class feedback_kind {
 
 [[nodiscard]] inline std::string to_string(feedback_kind value) {
   switch (value) {
-    case feedback_kind::positive: return "positive";
-    case feedback_kind::negative: return "negative";
-    case feedback_kind::correction: return "correction";
-    case feedback_kind::preference: return "preference";
-    case feedback_kind::outcome: return "outcome";
+    case feedback_kind::positive:
+      return "positive";
+    case feedback_kind::negative:
+      return "negative";
+    case feedback_kind::correction:
+      return "correction";
+    case feedback_kind::preference:
+      return "preference";
+    case feedback_kind::outcome:
+      return "outcome";
   }
   return "unknown";
 }
@@ -44,9 +49,7 @@ struct experience_record {
   feedback_kind feedback_type { feedback_kind::outcome };
   nlohmann::json feedback = nlohmann::json::object();
   nlohmann::json trajectory;
-  std::chrono::system_clock::time_point created_at {
-    std::chrono::system_clock::now()
-  };
+  std::chrono::system_clock::time_point created_at { std::chrono::system_clock::now() };
   std::map<std::string, std::string> metadata;
 };
 
@@ -67,9 +70,7 @@ struct reward_record {
   double weight { 1.0 };
   std::map<std::string, double> components;
   std::string source;
-  std::chrono::system_clock::time_point created_at {
-    std::chrono::system_clock::now()
-  };
+  std::chrono::system_clock::time_point created_at { std::chrono::system_clock::now() };
   std::map<std::string, std::string> metadata;
 };
 
@@ -85,7 +86,8 @@ struct reward_query {
 inline std::string make_adaptation_id(const char* prefix) {
   static std::atomic<std::uint64_t> next { 1 };
   const auto now = std::chrono::duration_cast<std::chrono::microseconds>(
-    std::chrono::system_clock::now().time_since_epoch()).count();
+    std::chrono::system_clock::now().time_since_epoch())
+                     .count();
   return std::string(prefix) + "-" + std::to_string(now) + "-" +
          std::to_string(next.fetch_add(1, std::memory_order_relaxed));
 }

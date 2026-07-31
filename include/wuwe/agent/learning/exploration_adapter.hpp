@@ -22,10 +22,8 @@ struct exploration_experience_options {
 };
 
 using exploration_reward_mapper = std::function<std::optional<reward_record>(
-  const exploration::exploration_record&,
-  const exploration::hypothesis_record&,
-  const exploration::experiment_record&,
-  const experience_record&)>;
+  const exploration::exploration_record&, const exploration::hypothesis_record&,
+  const exploration::experiment_record&, const experience_record&)>;
 
 struct exploration_import_result {
   std::vector<experience_record> experiences;
@@ -35,11 +33,10 @@ struct exploration_import_result {
 namespace detail {
 
 inline std::optional<experience_record> experience_from_experiment(
-  const exploration::exploration_record& record,
-  const exploration::hypothesis_record& hypothesis,
-  const exploration::experiment_record& experiment,
-  const exploration_experience_options& options) {
-  if (!experiment.evidence) return std::nullopt;
+  const exploration::exploration_record& record, const exploration::hypothesis_record& hypothesis,
+  const exploration::experiment_record& experiment, const exploration_experience_options& options) {
+  if (!experiment.evidence)
+    return std::nullopt;
   if (!options.include_failed && !experiment.evidence->succeeded) {
     return std::nullopt;
   }
@@ -75,8 +72,7 @@ inline std::optional<experience_record> experience_from_experiment(
     .target = options.target,
     .source = "exploration",
     .source_run_id = record.id,
-    .input = record.request.objective + "\nHypothesis: " +
-             hypothesis.value.statement,
+    .input = record.request.objective + "\nHypothesis: " + hypothesis.value.statement,
     .output = std::move(summary),
     .feedback_type = feedback_kind::outcome,
     .feedback = std::move(feedback),
@@ -89,69 +85,63 @@ inline std::optional<experience_record> experience_from_experiment(
 } // namespace detail
 
 inline std::vector<experience_record> experiences_from_exploration(
-  const exploration::exploration_record& record,
-  exploration_experience_options options) {
+  const exploration::exploration_record& record, exploration_experience_options options) {
   if (options.target.empty()) {
-    throw std::invalid_argument(
-      "exploration experience target must not be empty");
+    throw std::invalid_argument("exploration experience target must not be empty");
   }
 
   std::vector<experience_record> output;
   for (const auto& hypothesis : record.hypotheses) {
     for (const auto& experiment : hypothesis.experiments) {
-      auto converted = detail::experience_from_experiment(
-        record, hypothesis, experiment, options);
-      if (converted) output.push_back(std::move(*converted));
+      auto converted = detail::experience_from_experiment(record, hypothesis, experiment, options);
+      if (converted)
+        output.push_back(std::move(*converted));
     }
   }
   return output;
 }
 
 inline exploration_import_result persist_exploration_experiences(
-  const exploration::exploration_record& record,
-  exploration_experience_options options,
-  experience_store& experiences,
-  reward_store* rewards = nullptr,
+  const exploration::exploration_record& record, exploration_experience_options options,
+  experience_store& experiences, reward_store* rewards = nullptr,
   exploration_reward_mapper reward_mapper = {}) {
   if (reward_mapper && !rewards) {
-    throw std::invalid_argument(
-      "exploration reward mapper requires a reward store");
+    throw std::invalid_argument("exploration reward mapper requires a reward store");
   }
   if (options.target.empty()) {
-    throw std::invalid_argument(
-      "exploration experience target must not be empty");
+    throw std::invalid_argument("exploration experience target must not be empty");
   }
 
   exploration_import_result output;
   for (const auto& hypothesis : record.hypotheses) {
     for (const auto& experiment : hypothesis.experiments) {
-      auto converted = detail::experience_from_experiment(
-        record, hypothesis, experiment, options);
-      if (!converted) continue;
-      auto mapped_reward = reward_mapper
-        ? reward_mapper(record, hypothesis, experiment, *converted)
-        : std::optional<reward_record> {};
+      auto converted = detail::experience_from_experiment(record, hypothesis, experiment, options);
+      if (!converted)
+        continue;
+      auto mapped_reward = reward_mapper ? reward_mapper(record, hypothesis, experiment, *converted)
+                                         : std::optional<reward_record> {};
       if (mapped_reward && !mapped_reward->experience_id.empty() &&
           mapped_reward->experience_id != converted->id) {
-        throw std::invalid_argument(
-          "exploration reward mapper returned a different experience id");
+        throw std::invalid_argument("exploration reward mapper returned a different experience id");
       }
       if (mapped_reward && !mapped_reward->target.empty() &&
           mapped_reward->target != converted->target) {
-        throw std::invalid_argument(
-          "exploration reward mapper returned a different target");
+        throw std::invalid_argument("exploration reward mapper returned a different target");
       }
       auto persisted = experiences.add(std::move(*converted));
       output.experiences.push_back(persisted);
-      if (!mapped_reward) continue;
+      if (!mapped_reward)
+        continue;
       if (mapped_reward->id.empty()) {
         mapped_reward->id = make_adaptation_id("reward");
       }
       if (mapped_reward->experience_id.empty()) {
         mapped_reward->experience_id = persisted.id;
       }
-      if (mapped_reward->target.empty()) mapped_reward->target = persisted.target;
-      if (mapped_reward->source.empty()) mapped_reward->source = "exploration";
+      if (mapped_reward->target.empty())
+        mapped_reward->target = persisted.target;
+      if (mapped_reward->source.empty())
+        mapped_reward->source = "exploration";
       output.rewards.push_back(rewards->add(std::move(*mapped_reward)));
     }
   }

@@ -14,8 +14,7 @@ public:
 
   [[nodiscard]] virtual sandbox::sandbox_backend_info info() const = 0;
   [[nodiscard]] virtual process_result run(
-    const process_request& request,
-    std::stop_token stop_token) = 0;
+    const process_request& request, std::stop_token stop_token) = 0;
 };
 
 } // namespace wuwe::agent::process

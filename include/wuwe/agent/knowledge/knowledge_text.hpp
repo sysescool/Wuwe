@@ -11,8 +11,7 @@ inline std::string lowercase_ascii(std::string_view text) {
   std::string result;
   result.reserve(text.size());
   for (const auto ch : text) {
-    result.push_back(static_cast<char>(
-      std::tolower(static_cast<unsigned char>(ch))));
+    result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
   }
   return result;
 }
@@ -28,9 +27,7 @@ inline std::string trim_copy(std::string_view value) {
 }
 
 inline std::size_t find_case_insensitive(
-  const std::string& text,
-  std::string_view needle,
-  std::size_t start = 0) {
+  const std::string& text, std::string_view needle, std::size_t start = 0) {
   if (needle.empty() || needle.size() > text.size()) {
     return std::string::npos;
   }

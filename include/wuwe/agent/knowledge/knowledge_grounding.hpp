@@ -25,13 +25,11 @@ struct knowledge_grounding_report {
 
 class knowledge_grounding_checker {
 public:
-  explicit knowledge_grounding_checker(knowledge_grounding_policy policy = {})
-      : policy_(policy) {
+  explicit knowledge_grounding_checker(knowledge_grounding_policy policy = {}) : policy_(policy) {
   }
 
   knowledge_grounding_report check(
-    std::string_view answer,
-    const std::vector<knowledge_result>& cited_results) const {
+    std::string_view answer, const std::vector<knowledge_result>& cited_results) const {
     knowledge_grounding_report report;
     report.citation_numbers = extract_citations(answer);
 

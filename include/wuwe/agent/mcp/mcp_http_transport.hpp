@@ -34,8 +34,7 @@ struct mcp_http_response {
 };
 
 inline std::string mcp_sse_event(std::string data, std::string event = "message") {
-  return "event: " + std::move(event) + "\n" +
-         "data: " + std::move(data) + "\n\n";
+  return "event: " + std::move(event) + "\n" + "data: " + std::move(data) + "\n\n";
 }
 
 class mcp_http_transport {
@@ -56,7 +55,8 @@ public:
     }
 
     auto exchange = server.handle_message_exchange(request.body);
-    auto response = json_response(exchange.response ? 200 : 202, exchange.response.value_or(std::string {}));
+    auto response =
+      json_response(exchange.response ? 200 : 202, exchange.response.value_or(std::string {}));
     response.status_code = exchange.response ? 200 : 202;
     response.client_requests = std::move(exchange.requests);
     response.sse_events.reserve(exchange.notifications.size());

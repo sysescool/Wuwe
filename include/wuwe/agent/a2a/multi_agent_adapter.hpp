@@ -22,8 +22,7 @@
 namespace wuwe::agent::a2a {
 
 inline multi_agent::agent_descriptor agent_descriptor_from_card(
-  const agent_card& card,
-  std::string id = {}) {
+  const agent_card& card, std::string id = {}) {
   multi_agent::agent_descriptor descriptor {
     .id = id.empty() ? card.name : std::move(id),
     .name = card.name,
@@ -53,15 +52,13 @@ inline multi_agent::agent_descriptor agent_descriptor_from_card(
 
 class remote_agent_executor final : public multi_agent::agent_executor {
 public:
-  explicit remote_agent_executor(std::shared_ptr<client> client)
-      : client_(std::move(client)) {
+  explicit remote_agent_executor(std::shared_ptr<client> client) : client_(std::move(client)) {
     if (!client_) {
       throw std::invalid_argument("remote A2A agent executor requires a client");
     }
   }
 
-  multi_agent::agent_task_result execute(
-    const multi_agent::agent_task_request& request,
+  multi_agent::agent_task_result execute(const multi_agent::agent_task_request& request,
     const multi_agent::agent_execution_context& context) override {
     message outbound {
       .message_id = request.id + ":message",
@@ -76,16 +73,17 @@ public:
         outbound.parts.push_back(part::text_part(source.content));
       }
     }
-    const auto remote = client_->send({
-      .value = std::move(outbound),
-      .configuration = { .blocking = true },
-      .metadata = request.metadata,
-    }, context.stop_token);
+    const auto remote = client_->send(
+      {
+        .value = std::move(outbound),
+        .configuration = { .blocking = true },
+        .metadata = request.metadata,
+      },
+      context.stop_token);
     if (!remote) {
       return {
-        .status = context.stop_token.stop_requested()
-                    ? multi_agent::agent_task_status::cancelled
-                    : multi_agent::agent_task_status::failed,
+        .status = context.stop_token.stop_requested() ? multi_agent::agent_task_status::cancelled
+                                                      : multi_agent::agent_task_status::failed,
         .error_code = context.stop_token.stop_requested()
                         ? multi_agent::agent_task_error_code::cancelled
                         : multi_agent::agent_task_error_code::execution_failed,
@@ -105,12 +103,18 @@ public:
 private:
   static multi_agent::agent_task_status map_status(task_state state) {
     switch (state) {
-      case task_state::submitted: return multi_agent::agent_task_status::submitted;
-      case task_state::working: return multi_agent::agent_task_status::working;
-      case task_state::input_required: return multi_agent::agent_task_status::input_required;
-      case task_state::completed: return multi_agent::agent_task_status::completed;
-      case task_state::canceled: return multi_agent::agent_task_status::cancelled;
-      case task_state::rejected: return multi_agent::agent_task_status::blocked;
+      case task_state::submitted:
+        return multi_agent::agent_task_status::submitted;
+      case task_state::working:
+        return multi_agent::agent_task_status::working;
+      case task_state::input_required:
+        return multi_agent::agent_task_status::input_required;
+      case task_state::completed:
+        return multi_agent::agent_task_status::completed;
+      case task_state::canceled:
+        return multi_agent::agent_task_status::cancelled;
+      case task_state::rejected:
+        return multi_agent::agent_task_status::blocked;
       case task_state::failed:
       case task_state::auth_required:
       case task_state::unknown:
@@ -123,11 +127,13 @@ private:
     std::string output;
     for (const auto& item : parts) {
       if (item.kind == part_kind::text) {
-        if (!output.empty()) output.push_back('\n');
+        if (!output.empty())
+          output.push_back('\n');
         output += item.text;
       }
       else if (item.kind == part_kind::data) {
-        if (!output.empty()) output.push_back('\n');
+        if (!output.empty())
+          output.push_back('\n');
         output += item.data.dump();
       }
     }
@@ -167,30 +173,28 @@ private:
         output.output = output.artifacts.front().data.dump();
       }
     }
-    if (output.status == multi_agent::agent_task_status::completed &&
-        output.output.empty() && remote.status.status_message) {
+    if (output.status == multi_agent::agent_task_status::completed && output.output.empty() &&
+        remote.status.status_message) {
       output.output = text_content(remote.status.status_message->parts);
     }
     if (output.status != multi_agent::agent_task_status::completed) {
       output.error_code = output.status == multi_agent::agent_task_status::cancelled
                             ? multi_agent::agent_task_error_code::cancelled
-                            : output.status == multi_agent::agent_task_status::blocked
-                                ? multi_agent::agent_task_error_code::agent_unavailable
-                                : multi_agent::agent_task_error_code::execution_failed;
+                          : output.status == multi_agent::agent_task_status::blocked
+                            ? multi_agent::agent_task_error_code::agent_unavailable
+                            : multi_agent::agent_task_error_code::execution_failed;
     }
     return output;
   }
 
-  static std::map<std::string, std::string> metadata_strings(
-    const nlohmann::json& source) {
+  static std::map<std::string, std::string> metadata_strings(const nlohmann::json& source) {
     if (!source.is_object()) {
       throw std::invalid_argument("A2A metadata must be an object");
     }
     std::map<std::string, std::string> output;
     for (auto item = source.begin(); item != source.end(); ++item) {
-      output[item.key()] = item.value().is_string()
-                             ? item.value().get<std::string>()
-                             : item.value().dump();
+      output[item.key()] =
+        item.value().is_string() ? item.value().get<std::string>() : item.value().dump();
     }
     return output;
   }
@@ -207,8 +211,7 @@ struct team_task_handler_options {
 
 class team_task_handler final : public task_handler {
 public:
-  explicit team_task_handler(team_task_handler_options options)
-      : options_(std::move(options)) {
+  explicit team_task_handler(team_task_handler_options options) : options_(std::move(options)) {
     if (!options_.runtime) {
       throw std::invalid_argument("A2A team task handler requires a team runtime");
     }
@@ -242,11 +245,9 @@ public:
   }
 
   result<task> send(
-    const send_message_params& params,
-    std::stop_token transport_stop_token) override {
-    const auto task_id = params.value.task_id.empty()
-                           ? params.value.message_id
-                           : params.value.task_id;
+    const send_message_params& params, std::stop_token transport_stop_token) override {
+    const auto task_id =
+      params.value.task_id.empty() ? params.value.message_id : params.value.task_id;
     if (task_id.empty()) {
       return failure(error_code::invalid_params, "A2A message requires a task or message id");
     }
@@ -255,9 +256,8 @@ public:
     auto stop_source = std::make_shared<std::stop_source>();
     std::optional<std::stop_callback<std::function<void()>>> transport_stop;
     if (transport_stop_token.stop_possible()) {
-      transport_stop.emplace(transport_stop_token, std::function<void()>([stop_source] {
-        stop_source->request_stop();
-      }));
+      transport_stop.emplace(transport_stop_token,
+        std::function<void()>([stop_source] { stop_source->request_stop(); }));
     }
     task working;
     multi_agent::agent_task_request local_request;
@@ -272,16 +272,13 @@ public:
         }
         if (!params.value.context_id.empty() &&
             params.value.context_id != found->second.value.context_id) {
-          return failure(
-            error_code::invalid_params,
+          return failure(error_code::invalid_params,
             "A2A continuation context does not match the existing task");
         }
         previous = found->second;
         working = found->second.value;
         working.status = {
-          .state = params.configuration.blocking
-                     ? task_state::working
-                     : task_state::submitted,
+          .state = params.configuration.blocking ? task_state::working : task_state::submitted,
         };
         working.history.push_back(params.value);
         merge_metadata(working.metadata, params.metadata);
@@ -311,8 +308,7 @@ public:
       };
       if (!params.configuration.blocking) {
         if (background_.size() >= options_.max_background_tasks) {
-          return failure(
-            error_code::internal_error,
+          return failure(error_code::internal_error,
             "A2A background task capacity exhausted",
             nlohmann::json {
               { "reason", "background_capacity_exhausted" },
@@ -324,12 +320,8 @@ public:
       tasks_[task_id] = { .value = working, .stop_source = stop_source };
       if (!params.configuration.blocking) {
         try {
-          background_.push_back(std::async(
-            std::launch::async,
-            [this,
-             working,
-             local_request = std::move(local_request),
-             stop_source]() mutable {
+          background_.push_back(std::async(std::launch::async,
+            [this, working, local_request = std::move(local_request), stop_source]() mutable {
               const auto task_id = working.id;
               try {
                 (void)execute_and_store(
@@ -345,10 +337,11 @@ public:
             }));
         }
         catch (const std::exception& ex) {
-          if (previous) tasks_[task_id] = std::move(*previous);
-          else tasks_.erase(task_id);
-          return failure(
-            error_code::internal_error,
+          if (previous)
+            tasks_[task_id] = std::move(*previous);
+          else
+            tasks_.erase(task_id);
+          return failure(error_code::internal_error,
             std::string("failed to start A2A background task: ") + ex.what(),
             nlohmann::json {
               { "reason", "background_task_start_failed" },
@@ -356,10 +349,11 @@ public:
             });
         }
         catch (...) {
-          if (previous) tasks_[task_id] = std::move(*previous);
-          else tasks_.erase(task_id);
-          return failure(
-            error_code::internal_error,
+          if (previous)
+            tasks_[task_id] = std::move(*previous);
+          else
+            tasks_.erase(task_id);
+          return failure(error_code::internal_error,
             "failed to start A2A background task",
             nlohmann::json {
               { "reason", "background_task_start_failed" },
@@ -370,7 +364,7 @@ public:
       }
     }
     return { .value = execute_and_store(
-      std::move(working), std::move(local_request), std::move(stop_source)) };
+               std::move(working), std::move(local_request), std::move(stop_source)) };
   }
 
   result<task> get(const task_query_params& params) override {
@@ -382,8 +376,7 @@ public:
     }
     auto output = found->second.value;
     if (params.history_length != 0 && output.history.size() > params.history_length) {
-      output.history.erase(
-        output.history.begin(),
+      output.history.erase(output.history.begin(),
         output.history.end() - static_cast<std::ptrdiff_t>(params.history_length));
     }
     return { .value = std::move(output) };
@@ -400,18 +393,14 @@ public:
         found->second.value.status.state == task_state::failed ||
         found->second.value.status.state == task_state::canceled ||
         found->second.value.status.state == task_state::rejected) {
-      return failure(
-        error_code::task_not_cancelable,
-        "A2A task is not cancelable: " + params.id);
+      return failure(error_code::task_not_cancelable, "A2A task is not cancelable: " + params.id);
     }
     if (found->second.value.status.state == task_state::input_required) {
       mark_cancelled(found->second.value);
       return { .value = found->second.value };
     }
     if (!found->second.stop_source) {
-      return failure(
-        error_code::task_not_cancelable,
-        "A2A task is not cancelable: " + params.id);
+      return failure(error_code::task_not_cancelable, "A2A task is not cancelable: " + params.id);
     }
     found->second.stop_source->request_stop();
     mark_cancelled(found->second.value);
@@ -425,32 +414,26 @@ private:
   };
 
   static result<task> failure(
-    error_code code,
-    std::string message,
-    std::optional<nlohmann::json> data = std::nullopt) {
+    error_code code, std::string message, std::optional<nlohmann::json> data = std::nullopt) {
     return { .failure = error {
-      .code = code,
-      .message = std::move(message),
-      .data = std::move(data),
-    } };
+               .code = code,
+               .message = std::move(message),
+               .data = std::move(data),
+             } };
   }
 
-  task execute_and_store(
-    task base,
-    multi_agent::agent_task_request request,
+  task execute_and_store(task base, multi_agent::agent_task_request request,
     std::shared_ptr<std::stop_source> stop_source) {
     task completed;
     {
       std::scoped_lock lock(mutex_);
       const auto found = tasks_.find(base.id);
-      if (found != tasks_.end() &&
-          found->second.value.status.state != task_state::canceled) {
+      if (found != tasks_.end() && found->second.value.status.state != task_state::canceled) {
         found->second.value.status.state = task_state::working;
       }
     }
     try {
-      auto local = options_.runtime->run(
-        std::move(request), stop_source->get_token());
+      auto local = options_.runtime->run(std::move(request), stop_source->get_token());
       if (stop_source->stop_requested()) {
         local.status = multi_agent::agent_task_status::cancelled;
         local.error_code = multi_agent::agent_task_error_code::cancelled;
@@ -520,7 +503,8 @@ private:
     try {
       std::scoped_lock lock(mutex_);
       const auto found = tasks_.find(task_id);
-      if (found == tasks_.end()) return;
+      if (found == tasks_.end())
+        return;
       if (found->second.value.status.state != task_state::canceled) {
         found->second.value.status.state = task_state::failed;
         found->second.value.status.status_message = message {
@@ -540,27 +524,30 @@ private:
   static std::string message_content(const message& value) {
     std::string output;
     for (const auto& item : value.parts) {
-      if (!output.empty()) output.push_back('\n');
-      if (item.kind == part_kind::text) output += item.text;
-      else if (item.kind == part_kind::data) output += item.data.dump();
-      else if (!item.file.uri.empty()) output += item.file.uri;
-      else output += item.file.name;
+      if (!output.empty())
+        output.push_back('\n');
+      if (item.kind == part_kind::text)
+        output += item.text;
+      else if (item.kind == part_kind::data)
+        output += item.data.dump();
+      else if (!item.file.uri.empty())
+        output += item.file.uri;
+      else
+        output += item.file.name;
     }
     return output;
   }
 
   static std::map<std::string, std::string> local_metadata(
-    const nlohmann::json& message_metadata,
-    const nlohmann::json& request_metadata) {
+    const nlohmann::json& message_metadata, const nlohmann::json& request_metadata) {
     if (!message_metadata.is_object() || !request_metadata.is_object()) {
       throw std::invalid_argument("A2A metadata must be an object");
     }
     std::map<std::string, std::string> output;
     const auto append = [&](const nlohmann::json& source) {
       for (auto item = source.begin(); item != source.end(); ++item) {
-        output[item.key()] = item.value().is_string()
-                               ? item.value().get<std::string>()
-                               : item.value().dump();
+        output[item.key()] =
+          item.value().is_string() ? item.value().get<std::string>() : item.value().dump();
       }
     };
     append(message_metadata);
@@ -568,9 +555,7 @@ private:
     return output;
   }
 
-  static void merge_metadata(
-    nlohmann::json& target,
-    const nlohmann::json& source) {
+  static void merge_metadata(nlohmann::json& target, const nlohmann::json& source) {
     if (!target.is_object() || !source.is_object()) {
       throw std::invalid_argument("A2A metadata must be an object");
     }
@@ -592,14 +577,22 @@ private:
 
   static task_state map_status(multi_agent::agent_task_status status) {
     switch (status) {
-      case multi_agent::agent_task_status::submitted: return task_state::submitted;
-      case multi_agent::agent_task_status::working: return task_state::working;
-      case multi_agent::agent_task_status::input_required: return task_state::input_required;
-      case multi_agent::agent_task_status::completed: return task_state::completed;
-      case multi_agent::agent_task_status::cancelled: return task_state::canceled;
-      case multi_agent::agent_task_status::timed_out: return task_state::failed;
-      case multi_agent::agent_task_status::blocked: return task_state::rejected;
-      case multi_agent::agent_task_status::failed: return task_state::failed;
+      case multi_agent::agent_task_status::submitted:
+        return task_state::submitted;
+      case multi_agent::agent_task_status::working:
+        return task_state::working;
+      case multi_agent::agent_task_status::input_required:
+        return task_state::input_required;
+      case multi_agent::agent_task_status::completed:
+        return task_state::completed;
+      case multi_agent::agent_task_status::cancelled:
+        return task_state::canceled;
+      case multi_agent::agent_task_status::timed_out:
+        return task_state::failed;
+      case multi_agent::agent_task_status::blocked:
+        return task_state::rejected;
+      case multi_agent::agent_task_status::failed:
+        return task_state::failed;
     }
     return task_state::failed;
   }
@@ -617,11 +610,12 @@ private:
       };
     }
     if (!local.output.empty()) {
-      upsert_artifact(base, {
-        .artifact_id = local.task_id + ":output",
-        .name = "result",
-        .parts = { part::text_part(local.output) },
-      });
+      upsert_artifact(base,
+        {
+          .artifact_id = local.task_id + ":output",
+          .name = "result",
+          .parts = { part::text_part(local.output) },
+        });
     }
     for (const auto& local_artifact : local.artifacts) {
       artifact converted {
@@ -643,10 +637,9 @@ private:
   }
 
   static void upsert_artifact(task& target, artifact value) {
-    const auto found = std::find_if(
-      target.artifacts.begin(), target.artifacts.end(), [&](const auto& existing) {
-        return existing.artifact_id == value.artifact_id;
-      });
+    const auto found = std::find_if(target.artifacts.begin(),
+      target.artifacts.end(),
+      [&](const auto& existing) { return existing.artifact_id == value.artifact_id; });
     if (found == target.artifacts.end()) {
       target.artifacts.push_back(std::move(value));
     }

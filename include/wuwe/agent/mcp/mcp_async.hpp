@@ -34,13 +34,8 @@ struct mcp_async_task_snapshot {
 class mcp_async_task_registry {
 public:
   template<typename Function>
-  std::string submit(
-    std::string id,
-    std::string method,
-    std::string target,
-    json params,
-    Function&& function,
-    std::chrono::milliseconds timeout = std::chrono::milliseconds { 0 }) {
+  std::string submit(std::string id, std::string method, std::string target, json params,
+    Function&& function, std::chrono::milliseconds timeout = std::chrono::milliseconds { 0 }) {
     if (id.empty()) {
       throw std::invalid_argument("MCP async task id must not be empty");
     }
@@ -67,15 +62,14 @@ public:
     }
     const auto inserted = tasks_.emplace(id, state).first;
     try {
-      state->future = std::async(std::launch::async,
-        [data, token, function = std::forward<Function>(function)]() mutable {
+      state->future = std::async(
+        std::launch::async, [data, token, function = std::forward<Function>(function)]() mutable {
           try {
             function(token);
             std::lock_guard lock(data->mutex);
             if (data->record.state == mcp_request_state::running) {
-              data->record.state = token.is_cancelled()
-                                      ? mcp_request_state::cancelled
-                                      : mcp_request_state::completed;
+              data->record.state =
+                token.is_cancelled() ? mcp_request_state::cancelled : mcp_request_state::completed;
               data->record.finished_at = std::chrono::system_clock::now();
             }
           }
@@ -119,12 +113,8 @@ public:
     return true;
   }
 
-  void progress(
-    const std::string& id,
-    json progress_token,
-    double value,
-    std::optional<double> total = std::nullopt,
-    std::string message = {}) {
+  void progress(const std::string& id, json progress_token, double value,
+    std::optional<double> total = std::nullopt, std::string message = {}) {
     const auto task = find_task(id);
     if (!task) {
       return;
@@ -177,12 +167,11 @@ public:
     for (auto it = tasks_.begin(); it != tasks_.end();) {
       const auto& task = it->second;
       std::lock_guard task_lock(task->data->mutex);
-      const auto ready = task->future.wait_for(std::chrono::milliseconds(0)) ==
-                         std::future_status::ready;
-      if (ready &&
-          (task->data->record.state == mcp_request_state::completed ||
-           task->data->record.state == mcp_request_state::failed ||
-           task->data->record.state == mcp_request_state::cancelled)) {
+      const auto ready =
+        task->future.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready;
+      if (ready && (task->data->record.state == mcp_request_state::completed ||
+                     task->data->record.state == mcp_request_state::failed ||
+                     task->data->record.state == mcp_request_state::cancelled)) {
         it = tasks_.erase(it);
       }
       else {
@@ -215,8 +204,7 @@ private:
 
   static void enforce_timeout(task_data& task) {
     std::lock_guard lock(task.mutex);
-    if (task.record.timeout.count() <= 0 ||
-        task.record.state != mcp_request_state::running) {
+    if (task.record.timeout.count() <= 0 || task.record.state != mcp_request_state::running) {
       return;
     }
     if (std::chrono::steady_clock::now() - task.started_at <= task.record.timeout) {

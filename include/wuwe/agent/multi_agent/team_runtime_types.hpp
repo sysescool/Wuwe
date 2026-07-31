@@ -19,17 +19,14 @@ struct team_runtime_options {
   std::shared_ptr<agent_registry> registry;
   team_observer observer;
   observability::event_sink* event_sink {};
-  team_telemetry_failure_mode telemetry_failure_mode {
-    team_telemetry_failure_mode::ignore
-  };
+  team_telemetry_failure_mode telemetry_failure_mode { team_telemetry_failure_mode::ignore };
   std::size_t max_parallel_tasks { 4 };
   std::chrono::milliseconds default_task_timeout { 0 };
   std::chrono::milliseconds cancellation_poll_interval { 10 };
 };
 
 using consensus_resolver = std::function<agent_task_result(
-  const std::vector<agent_task_result>&,
-  const team_session_snapshot&)>;
+  const std::vector<agent_task_result>&, const team_session_snapshot&)>;
 
 struct consensus_request {
   agent_task_request task;

@@ -37,14 +37,17 @@ struct scheduled_task_state {
     std::function<void()> notify;
     {
       std::scoped_lock lock(mutex);
-      if (!done) notify = cancellation_notifier;
+      if (!done)
+        notify = cancellation_notifier;
     }
-    if (notify) notify();
+    if (notify)
+      notify();
   }
 
   bool begin() noexcept {
     std::scoped_lock lock(mutex);
-    if (started || done) return false;
+    if (started || done)
+      return false;
     started = true;
     execution_thread = std::this_thread::get_id();
     cancellation_notifier = {};
@@ -54,7 +57,8 @@ struct scheduled_task_state {
   bool finish_without_running(std::exception_ptr error = {}) noexcept {
     {
       std::scoped_lock lock(mutex);
-      if (started || done) return false;
+      if (started || done)
+        return false;
       failure = std::move(error);
       cancellation_notifier = {};
       done = true;
@@ -66,7 +70,8 @@ struct scheduled_task_state {
   void finish(std::exception_ptr error = {}) noexcept {
     {
       std::scoped_lock lock(mutex);
-      if (done) return;
+      if (done)
+        return;
       failure = std::move(error);
       cancellation_notifier = {};
       execution_thread = {};
@@ -85,7 +90,8 @@ public:
   scheduled_task() = default;
 
   void request_stop() const noexcept {
-    if (state_) state_->request_stop();
+    if (state_)
+      state_->request_stop();
   }
 
   [[nodiscard]] bool stop_requested() const noexcept {
@@ -97,20 +103,23 @@ public:
   }
 
   [[nodiscard]] bool done() const noexcept {
-    if (!state_) return true;
+    if (!state_)
+      return true;
     std::scoped_lock lock(state_->mutex);
     return state_->done;
   }
 
   [[nodiscard]] bool running_on_current_thread() const noexcept {
-    if (!state_) return false;
+    if (!state_)
+      return false;
     std::scoped_lock lock(state_->mutex);
     return !state_->done && state_->started &&
-      state_->execution_thread == std::this_thread::get_id();
+           state_->execution_thread == std::this_thread::get_id();
   }
 
   void wait() const {
-    if (!state_) return;
+    if (!state_)
+      return;
     std::unique_lock lock(state_->mutex);
     if (!state_->done && state_->started &&
         state_->execution_thread == std::this_thread::get_id()) {
@@ -120,7 +129,8 @@ public:
   }
 
   [[nodiscard]] bool wait_for(std::chrono::milliseconds timeout) const {
-    if (!state_) return true;
+    if (!state_)
+      return true;
     std::unique_lock lock(state_->mutex);
     if (!state_->done && state_->started &&
         state_->execution_thread == std::this_thread::get_id()) {
@@ -130,14 +140,16 @@ public:
   }
 
   void rethrow_if_failed() const {
-    if (!state_) return;
+    if (!state_)
+      return;
     wait();
     std::exception_ptr failure;
     {
       std::scoped_lock lock(state_->mutex);
       failure = state_->failure;
     }
-    if (failure) std::rethrow_exception(failure);
+    if (failure)
+      std::rethrow_exception(failure);
   }
 
 private:
@@ -155,8 +167,7 @@ private:
 // execute() owns the running-thread bookkeeping used to reject self-waits.
 class scheduled_task_source {
 public:
-  scheduled_task_source()
-      : state_(std::make_shared<detail::scheduled_task_state>()) {
+  scheduled_task_source() : state_(std::make_shared<detail::scheduled_task_state>()) {
   }
 
   [[nodiscard]] scheduled_task task() const {
@@ -173,7 +184,8 @@ public:
 
   void set_cancellation_notifier(std::function<void()> notifier) const {
     std::scoped_lock lock(state_->mutex);
-    if (!state_->done) state_->cancellation_notifier = std::move(notifier);
+    if (!state_->done)
+      state_->cancellation_notifier = std::move(notifier);
   }
 
   [[nodiscard]] bool complete_without_running() const noexcept {
@@ -185,7 +197,8 @@ public:
   }
 
   void execute(const executor_work& work) const noexcept {
-    if (!state_->begin()) return;
+    if (!state_->begin())
+      return;
     try {
       work(state_->stop_source.get_token());
       state_->finish();
@@ -224,11 +237,8 @@ public:
 };
 
 struct thread_pool_options {
-  std::size_t threads {
-    (std::min)(std::size_t { 16 },
-      (std::max)(std::size_t { 1 },
-        static_cast<std::size_t>(std::thread::hardware_concurrency())))
-  };
+  std::size_t threads { (std::min)(std::size_t { 16 },
+    (std::max)(std::size_t { 1 }, static_cast<std::size_t>(std::thread::hardware_concurrency()))) };
   std::size_t queue_capacity { 1024 };
 };
 
@@ -246,9 +256,8 @@ public:
     workers_.reserve(options_.threads);
     try {
       for (std::size_t index = 0; index < options_.threads; ++index) {
-        workers_.emplace_back([state = state_](std::stop_token stop_token) {
-          worker_loop(state, stop_token);
-        });
+        workers_.emplace_back(
+          [state = state_](std::stop_token stop_token) { worker_loop(state, stop_token); });
         {
           std::scoped_lock lock(state_->mutex);
           ++state_->live_workers;
@@ -275,7 +284,8 @@ public:
     scheduled_task_source source;
     const std::weak_ptr<pool_state> weak_state = state_;
     source.set_cancellation_notifier([weak_state] {
-      if (const auto state = weak_state.lock()) state->ready.notify_one();
+      if (const auto state = weak_state.lock())
+        state->ready.notify_one();
     });
     {
       std::scoped_lock lock(state_->mutex);
@@ -319,33 +329,35 @@ public:
       workers.swap(workers_);
     }
     state_->ready.notify_all();
-    for (auto& worker : workers) worker.request_stop();
+    for (auto& worker : workers)
+      worker.request_stop();
 
     if (owns_current_thread()) {
       // Never join another worker from inside the same bounded domain: that
       // worker may itself be entering shutdown. Shared pool state keeps all
       // detached workers and accepted work alive until the domain drains.
       for (auto& worker : workers) {
-        if (worker.joinable()) worker.detach();
+        if (worker.joinable())
+          worker.detach();
       }
       return;
     }
 
     for (auto& worker : workers) {
-      if (!worker.joinable()) continue;
+      if (!worker.joinable())
+        continue;
       try {
         worker.join();
       }
       catch (...) {
         // shutdown() is noexcept. A still-joinable worker remains safe to detach
         // because its closure owns the shared pool state.
-        if (worker.joinable()) worker.detach();
+        if (worker.joinable())
+          worker.detach();
       }
     }
     std::unique_lock lock(state_->mutex);
-    state_->workers_completed.wait(lock, [&] {
-      return state_->live_workers == 0;
-    });
+    state_->workers_completed.wait(lock, [&] { return state_->live_workers == 0; });
   }
 
 private:
@@ -365,22 +377,20 @@ private:
   };
 
   static void worker_loop(
-    const std::shared_ptr<pool_state>& state,
-    std::stop_token worker_stop_token) noexcept {
+    const std::shared_ptr<pool_state>& state, std::stop_token worker_stop_token) noexcept {
     const auto previous_domain = detail::current_executor_domain;
     detail::current_executor_domain = state.get();
     while (true) {
       work_item item;
       {
         std::unique_lock lock(state->mutex);
-        state->ready.wait(lock, worker_stop_token, [&] {
-          return state->stopping || !state->queue.empty();
-        });
-        if ((state->stopping || worker_stop_token.stop_requested()) &&
-            state->queue.empty()) {
+        state->ready.wait(
+          lock, worker_stop_token, [&] { return state->stopping || !state->queue.empty(); });
+        if ((state->stopping || worker_stop_token.stop_requested()) && state->queue.empty()) {
           break;
         }
-        if (state->queue.empty()) continue;
+        if (state->queue.empty())
+          continue;
         item = std::move(state->queue.front());
         state->queue.pop_front();
       }
@@ -389,7 +399,8 @@ private:
     detail::current_executor_domain = previous_domain;
     {
       std::scoped_lock lock(state->mutex);
-      if (state->live_workers != 0) --state->live_workers;
+      if (state->live_workers != 0)
+        --state->live_workers;
     }
     state->workers_completed.notify_all();
   }
@@ -406,12 +417,10 @@ private:
 }
 
 [[nodiscard]] inline std::shared_ptr<executor> default_tool_executor() {
-  static auto instance = std::make_shared<thread_pool_executor>(
-    thread_pool_options { .threads = (std::min)(std::size_t { 32 },
-                            (std::max)(std::size_t { 4 },
-                              static_cast<std::size_t>(
-                                std::thread::hardware_concurrency()))),
-                          .queue_capacity = 1024 });
+  static auto instance = std::make_shared<thread_pool_executor>(thread_pool_options {
+    .threads = (std::min)(std::size_t { 32 },
+      (std::max)(std::size_t { 4 }, static_cast<std::size_t>(std::thread::hardware_concurrency()))),
+    .queue_capacity = 1024 });
   return instance;
 }
 

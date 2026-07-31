@@ -41,8 +41,7 @@ struct agent_execution_context {
   }
 
   [[nodiscard]] bool deadline_reached(
-    std::chrono::system_clock::time_point now =
-      std::chrono::system_clock::now()) const noexcept {
+    std::chrono::system_clock::time_point now = std::chrono::system_clock::now()) const noexcept {
     return deadline && now >= *deadline;
   }
 
@@ -51,8 +50,7 @@ struct agent_execution_context {
   }
 
   [[nodiscard]] std::optional<std::chrono::milliseconds> remaining_time(
-    std::chrono::system_clock::time_point now =
-      std::chrono::system_clock::now()) const noexcept {
+    std::chrono::system_clock::time_point now = std::chrono::system_clock::now()) const noexcept {
     if (!deadline) {
       return std::nullopt;
     }
@@ -64,13 +62,11 @@ struct agent_execution_context {
 };
 
 inline nlohmann::json execution_context_to_json(
-  const agent_execution_context& context,
-  execution_context_serialization_options options = {}) {
+  const agent_execution_context& context, execution_context_serialization_options options = {}) {
   auto metadata = context.metadata;
   if (!options.include_sensitive_metadata) {
-    std::erase_if(metadata, [](const auto& item) {
-      return sensitive_execution_context_metadata_key(item.first);
-    });
+    std::erase_if(metadata,
+      [](const auto& item) { return sensitive_execution_context_metadata_key(item.first); });
   }
   nlohmann::json output {
     { "run_id", context.run_id },
@@ -87,8 +83,8 @@ inline nlohmann::json execution_context_to_json(
   };
   if (context.deadline) {
     output["deadline_unix_ms"] =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-        context.deadline->time_since_epoch()).count();
+      std::chrono::duration_cast<std::chrono::milliseconds>(context.deadline->time_since_epoch())
+        .count();
   }
   else {
     output["deadline_unix_ms"] = nullptr;
@@ -96,8 +92,7 @@ inline nlohmann::json execution_context_to_json(
   return output;
 }
 
-inline agent_execution_context execution_context_from_json(
-  const nlohmann::json& value) {
+inline agent_execution_context execution_context_from_json(const nlohmann::json& value) {
   agent_execution_context context;
   context.run_id = value.value("run_id", std::string {});
   context.trace_id = value.value("trace_id", std::string {});
@@ -109,13 +104,10 @@ inline agent_execution_context execution_context_from_json(
   context.conversation_id = value.value("conversation_id", std::string {});
   context.agent_id = value.value("agent_id", std::string {});
   context.locale = value.value("locale", std::string {});
-  context.metadata = value.value(
-    "metadata", std::map<std::string, std::string> {});
-  if (value.contains("deadline_unix_ms") &&
-      !value.at("deadline_unix_ms").is_null()) {
+  context.metadata = value.value("metadata", std::map<std::string, std::string> {});
+  if (value.contains("deadline_unix_ms") && !value.at("deadline_unix_ms").is_null()) {
     context.deadline = std::chrono::system_clock::time_point(
-      std::chrono::milliseconds(
-        value.at("deadline_unix_ms").get<std::int64_t>()));
+      std::chrono::milliseconds(value.at("deadline_unix_ms").get<std::int64_t>()));
   }
   return context;
 }

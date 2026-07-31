@@ -120,8 +120,7 @@ struct evaluation_suite_result {
 
 using evaluation_observer = std::function<void(const evaluation_case_result&)>;
 
-inline nlohmann::json evaluation_metric_result_to_json(
-  const evaluation_metric_result& result) {
+inline nlohmann::json evaluation_metric_result_to_json(const evaluation_metric_result& result) {
   return {
     { "name", result.name },
     { "score", result.score },
@@ -132,8 +131,7 @@ inline nlohmann::json evaluation_metric_result_to_json(
   };
 }
 
-inline nlohmann::json evaluation_suite_result_to_json(
-  const evaluation_suite_result& result) {
+inline nlohmann::json evaluation_suite_result_to_json(const evaluation_suite_result& result) {
   auto metrics = nlohmann::json::array();
   for (const auto& metric : result.metrics) {
     metrics.push_back({

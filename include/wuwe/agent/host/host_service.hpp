@@ -47,8 +47,10 @@ public:
   }
 
 private:
-  explicit host_result(T value) : storage_(std::move(value)) {}
-  explicit host_result(host_error error) : storage_(std::move(error)) {}
+  explicit host_result(T value) : storage_(std::move(value)) {
+  }
+  explicit host_result(host_error error) : storage_(std::move(error)) {
+  }
 
   std::variant<T, host_error> storage_;
 };
@@ -154,11 +156,10 @@ struct event_page {
   };
 }
 
-[[nodiscard]] inline run_view run_view_from_runtime(
-  const runtime::agent_run_record& value) {
+[[nodiscard]] inline run_view run_view_from_runtime(const runtime::agent_run_record& value) {
   const auto* approval = value.suspension
-    ? &*value.suspension
-    : (value.active_continuation ? &*value.active_continuation : nullptr);
+                           ? &*value.suspension
+                           : (value.active_continuation ? &*value.active_continuation : nullptr);
   return {
     .run_id = value.id,
     .revision = value.revision,
@@ -167,17 +168,15 @@ struct event_page {
     .created_at = value.created_at,
     .updated_at = value.updated_at,
     .completed_at = value.completed_at,
-    .approval = approval
-      ? std::optional<approval_view>(approval_view_from_runtime(*approval))
-      : std::nullopt,
+    .approval =
+      approval ? std::optional<approval_view>(approval_view_from_runtime(*approval)) : std::nullopt,
     .result = value.result,
     .error = value.error,
     .metadata = value.metadata,
   };
 }
 
-[[nodiscard]] inline host_event host_event_from_runtime(
-  const runtime::agent_run_event& value) {
+[[nodiscard]] inline host_event host_event_from_runtime(const runtime::agent_run_event& value) {
   return {
     .run_id = value.run_id,
     .sequence = value.sequence,
@@ -196,23 +195,17 @@ public:
   virtual ~agent_host_service() = default;
 
   [[nodiscard]] virtual host_result<run_submission> create_run(
-    const host_call_context& call,
-    const create_run_request& request) = 0;
+    const host_call_context& call, const create_run_request& request) = 0;
   [[nodiscard]] virtual host_result<run_view> get_run(
-    const host_call_context& call,
-    const get_run_request& request) = 0;
+    const host_call_context& call, const get_run_request& request) = 0;
   [[nodiscard]] virtual host_result<run_submission> cancel_run(
-    const host_call_context& call,
-    const cancel_run_request& request) = 0;
+    const host_call_context& call, const cancel_run_request& request) = 0;
   [[nodiscard]] virtual host_result<run_submission> resolve_approval(
-    const host_call_context& call,
-    const resolve_approval_request& request) = 0;
+    const host_call_context& call, const resolve_approval_request& request) = 0;
   [[nodiscard]] virtual host_result<run_submission> resume_run(
-    const host_call_context& call,
-    const resume_run_request& request) = 0;
+    const host_call_context& call, const resume_run_request& request) = 0;
   [[nodiscard]] virtual host_result<event_page> list_events(
-    const host_call_context& call,
-    const list_events_request& request) = 0;
+    const host_call_context& call, const list_events_request& request) = 0;
 };
 
 } // namespace wuwe::agent::host

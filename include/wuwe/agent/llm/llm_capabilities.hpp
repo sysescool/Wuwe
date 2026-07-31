@@ -22,8 +22,7 @@ struct llm_request_validation {
 };
 
 [[nodiscard]] inline llm_request_validation validate_llm_request(
-  const ::wuwe::llm_request& request,
-  const ::wuwe::llm_provider_capabilities& capabilities) {
+  const ::wuwe::llm_request& request, const ::wuwe::llm_provider_capabilities& capabilities) {
   if (!std::isfinite(request.temperature) || request.temperature < 0.0) {
     return {
       .error_code = make_error_code(llm_error_code::invalid_request),
@@ -50,8 +49,7 @@ struct llm_request_validation {
         .message = "LLM tool names must be unique",
       };
     }
-    const auto schema = nlohmann::json::parse(
-      tool.parameters_json_schema, nullptr, false);
+    const auto schema = nlohmann::json::parse(tool.parameters_json_schema, nullptr, false);
     if (schema.is_discarded() || !schema.is_object()) {
       return {
         .error_code = make_error_code(llm_error_code::invalid_request),
@@ -89,7 +87,7 @@ struct llm_request_validation {
       };
     }
     if ((request.tool_choice->mode == ::wuwe::llm_tool_choice_mode::required ||
-         request.tool_choice->mode == ::wuwe::llm_tool_choice_mode::named) &&
+          request.tool_choice->mode == ::wuwe::llm_tool_choice_mode::named) &&
         request.tools.empty()) {
       return {
         .error_code = make_error_code(llm_error_code::invalid_request),
@@ -97,8 +95,7 @@ struct llm_request_validation {
       };
     }
     if (request.tool_choice->mode == ::wuwe::llm_tool_choice_mode::named &&
-        (request.tool_choice->name.empty() ||
-         !tool_names.contains(request.tool_choice->name))) {
+        (request.tool_choice->name.empty() || !tool_names.contains(request.tool_choice->name))) {
       return {
         .error_code = make_error_code(llm_error_code::invalid_request),
         .message = "named tool choice must reference a declared tool",
@@ -128,8 +125,7 @@ struct llm_request_validation {
       };
     }
   }
-  if (capabilities.declared && !request.stop_sequences.empty() &&
-      !capabilities.stop_sequences) {
+  if (capabilities.declared && !request.stop_sequences.empty() && !capabilities.stop_sequences) {
     return {
       .error_code = make_error_code(llm_error_code::unsupported_capability),
       .message = "LLM provider does not support stop sequences",
@@ -166,8 +162,8 @@ struct llm_request_validation {
       };
     }
   }
-  if (request.cache_mode != ::wuwe::llm_cache_mode::provider_default &&
-      capabilities.declared && !capabilities.explicit_cache_control) {
+  if (request.cache_mode != ::wuwe::llm_cache_mode::provider_default && capabilities.declared &&
+      !capabilities.explicit_cache_control) {
     return {
       .error_code = make_error_code(llm_error_code::unsupported_capability),
       .message = "LLM provider does not support explicit cache control",
@@ -177,10 +173,8 @@ struct llm_request_validation {
   return {};
 }
 
-[[nodiscard]] inline std::optional<::wuwe::llm_response>
-llm_request_rejection(
-  const ::wuwe::llm_request& request,
-  const ::wuwe::llm_provider_capabilities& capabilities) {
+[[nodiscard]] inline std::optional<::wuwe::llm_response> llm_request_rejection(
+  const ::wuwe::llm_request& request, const ::wuwe::llm_provider_capabilities& capabilities) {
   const auto validation = validate_llm_request(request, capabilities);
   if (validation) {
     return std::nullopt;
@@ -196,8 +190,7 @@ llm_request_rejection(
 }
 
 inline void emit_llm_request_rejection(
-  const ::wuwe::llm_stream_callbacks& callbacks,
-  const ::wuwe::llm_response& response) {
+  const ::wuwe::llm_stream_callbacks& callbacks, const ::wuwe::llm_response& response) {
   if (callbacks.on_event) {
     callbacks.on_event({
       .type = ::wuwe::llm_stream_event_type::error,

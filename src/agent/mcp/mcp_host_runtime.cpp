@@ -36,9 +36,7 @@ std::filesystem::path resolve_home_path(const std::filesystem::path& home) {
   return user_profile.empty() ? env_path("HOME") : user_profile;
 }
 
-void push_unique(
-  std::vector<std::filesystem::path>& paths,
-  const std::filesystem::path& path) {
+void push_unique(std::vector<std::filesystem::path>& paths, const std::filesystem::path& path) {
   if (path.empty()) {
     return;
   }
@@ -47,22 +45,19 @@ void push_unique(
   }
 }
 
-std::chrono::milliseconds optional_milliseconds(
-  const json& value,
-  std::string_view key,
-  std::chrono::milliseconds fallback,
-  const std::string& server_id) {
+std::chrono::milliseconds optional_milliseconds(const json& value, std::string_view key,
+  std::chrono::milliseconds fallback, const std::string& server_id) {
   if (!value.contains(key)) {
     return fallback;
   }
   if (!value.at(key).is_number_integer()) {
-    throw std::runtime_error("MCP host server " + std::string(key) +
-                             " must be an integer: " + server_id);
+    throw std::runtime_error(
+      "MCP host server " + std::string(key) + " must be an integer: " + server_id);
   }
   const auto count = value.at(key).get<long long>();
   if (count < 0) {
-    throw std::runtime_error("MCP host server " + std::string(key) +
-                             " must not be negative: " + server_id);
+    throw std::runtime_error(
+      "MCP host server " + std::string(key) + " must not be negative: " + server_id);
   }
   return std::chrono::milliseconds { count };
 }
@@ -89,11 +84,8 @@ std::string json_path(std::string root, std::string_view key) {
   return root;
 }
 
-void add_config_diagnostic(
-  std::vector<mcp_host_config_diagnostic>& diagnostics,
-  mcp_host_config_diagnostic_severity severity,
-  std::string path,
-  std::string message) {
+void add_config_diagnostic(std::vector<mcp_host_config_diagnostic>& diagnostics,
+  mcp_host_config_diagnostic_severity severity, std::string path, std::string message) {
   diagnostics.push_back({
     .severity = severity,
     .path = std::move(path),
@@ -101,72 +93,55 @@ void add_config_diagnostic(
   });
 }
 
-bool require_object(
-  std::vector<mcp_host_config_diagnostic>& diagnostics,
-  const json& value,
-  const std::string& path,
-  std::string_view label) {
+bool require_object(std::vector<mcp_host_config_diagnostic>& diagnostics, const json& value,
+  const std::string& path, std::string_view label) {
   if (value.is_object()) {
     return true;
   }
-  add_config_diagnostic(
-    diagnostics,
+  add_config_diagnostic(diagnostics,
     mcp_host_config_diagnostic_severity::error,
     path,
     std::string(label) + " must be an object");
   return false;
 }
 
-bool require_string(
-  std::vector<mcp_host_config_diagnostic>& diagnostics,
-  const json& value,
-  const std::string& path,
-  std::string_view label) {
+bool require_string(std::vector<mcp_host_config_diagnostic>& diagnostics, const json& value,
+  const std::string& path, std::string_view label) {
   if (value.is_string()) {
     return true;
   }
-  add_config_diagnostic(
-    diagnostics,
+  add_config_diagnostic(diagnostics,
     mcp_host_config_diagnostic_severity::error,
     path,
     std::string(label) + " must be a string");
   return false;
 }
 
-void validate_optional_bool(
-  std::vector<mcp_host_config_diagnostic>& diagnostics,
-  const json& value,
-  std::string_view key,
-  const std::string& server_path) {
+void validate_optional_bool(std::vector<mcp_host_config_diagnostic>& diagnostics, const json& value,
+  std::string_view key, const std::string& server_path) {
   if (value.contains(key) && !value.at(key).is_boolean()) {
-    add_config_diagnostic(
-      diagnostics,
+    add_config_diagnostic(diagnostics,
       mcp_host_config_diagnostic_severity::error,
       json_path(server_path, key),
       std::string(key) + " must be a boolean");
   }
 }
 
-void validate_optional_non_negative_integer(
-  std::vector<mcp_host_config_diagnostic>& diagnostics,
-  const json& value,
-  std::string_view key,
-  const std::string& server_path) {
+void validate_optional_non_negative_integer(std::vector<mcp_host_config_diagnostic>& diagnostics,
+  const json& value, std::string_view key, const std::string& server_path) {
   if (!value.contains(key)) {
     return;
   }
   const auto& field = value.at(key);
   if (!field.is_number_integer()) {
-    add_config_diagnostic(
-      diagnostics,
+    add_config_diagnostic(diagnostics,
       mcp_host_config_diagnostic_severity::error,
       json_path(server_path, key),
       std::string(key) + " must be an integer");
     return;
   }
   if (field.get<long long>() < 0) {
-    add_config_diagnostic(
-      diagnostics,
+    add_config_diagnostic(diagnostics,
       mcp_host_config_diagnostic_severity::error,
       json_path(server_path, key),
       std::string(key) + " must not be negative");
@@ -263,9 +238,7 @@ void mcp_host_runtime::start_entry(server_entry& entry) {
     entry.client.start(entry.config.command);
     if (entry.config.auto_initialize) {
       entry.client.initialize(
-        entry.config.client_info,
-        entry.config.capabilities,
-        entry.config.protocol_version);
+        entry.config.client_info, entry.config.capabilities, entry.config.protocol_version);
       if (entry.config.send_initialized_notification) {
         entry.client.notify("notifications/initialized");
       }
@@ -308,21 +281,24 @@ void mcp_host_runtime::record_failure(server_entry& entry, std::string error) {
   record_event(mcp_host_event_type::failure_recorded, entry, {}, entry.error);
 
   const auto delay = next_backoff_delay(entry);
-  entry.next_restart_at = delay.count() > 0
-      ? std::chrono::steady_clock::now() + delay
-      : std::chrono::steady_clock::time_point {};
+  entry.next_restart_at = delay.count() > 0 ? std::chrono::steady_clock::now() + delay
+                                            : std::chrono::steady_clock::time_point {};
 
   if (entry.config.circuit_breaker_failure_threshold > 0 &&
       entry.consecutive_failure_count >= entry.config.circuit_breaker_failure_threshold) {
     const auto cooldown = entry.config.circuit_breaker_cooldown;
     entry.state = mcp_host_server_state::circuit_open;
-    entry.circuit_open_until = cooldown.count() > 0
-        ? std::chrono::steady_clock::now() + cooldown
-        : std::chrono::steady_clock::time_point::max();
-    record_event(mcp_host_event_type::circuit_opened, entry, {}, entry.error, {}, {
-      { "failureThreshold", entry.config.circuit_breaker_failure_threshold },
-      { "cooldownMillis", cooldown.count() },
-    });
+    entry.circuit_open_until = cooldown.count() > 0 ? std::chrono::steady_clock::now() + cooldown
+                                                    : std::chrono::steady_clock::time_point::max();
+    record_event(mcp_host_event_type::circuit_opened,
+      entry,
+      {},
+      entry.error,
+      {},
+      {
+        { "failureThreshold", entry.config.circuit_breaker_failure_threshold },
+        { "cooldownMillis", cooldown.count() },
+      });
   }
 }
 
@@ -356,9 +332,8 @@ void mcp_host_runtime::restart_entry(server_entry& entry) {
   if (!can_restart(entry)) {
     const auto reason = restart_block_reason(entry);
     record_event(mcp_host_event_type::restart_blocked, entry, {}, reason);
-    throw std::runtime_error(reason.empty()
-      ? "MCP host server restart limit reached: " + entry.config.id
-      : reason);
+    throw std::runtime_error(
+      reason.empty() ? "MCP host server restart limit reached: " + entry.config.id : reason);
   }
   record_event(mcp_host_event_type::restart_started, entry);
   entry.client.stop();
@@ -415,13 +390,16 @@ json mcp_host_runtime::request(const std::string& id, std::string method, json p
   try {
     ++entry.request_count;
     const auto response = entry.client.request(method, params);
-    entry.state = entry.client.running() ? mcp_host_server_state::running
-                                         : mcp_host_server_state::stopped;
+    entry.state =
+      entry.client.running() ? mcp_host_server_state::running : mcp_host_server_state::stopped;
     entry.error.clear();
     if (entry.state == mcp_host_server_state::running) {
       reset_failure_policy(entry);
     }
-    record_event(mcp_host_event_type::request_succeeded, entry, method, {},
+    record_event(mcp_host_event_type::request_succeeded,
+      entry,
+      method,
+      {},
       std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - started_at));
     return response;
@@ -432,11 +410,14 @@ json mcp_host_runtime::request(const std::string& id, std::string method, json p
       try {
         restart_entry(entry);
         const auto response = entry.client.request(method, params);
-        entry.state = entry.client.running() ? mcp_host_server_state::running
-                                             : mcp_host_server_state::stopped;
+        entry.state =
+          entry.client.running() ? mcp_host_server_state::running : mcp_host_server_state::stopped;
         entry.error.clear();
         reset_failure_policy(entry);
-        record_event(mcp_host_event_type::request_succeeded, entry, method, {},
+        record_event(mcp_host_event_type::request_succeeded,
+          entry,
+          method,
+          {},
           std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started_at),
           { { "retried", true } });
@@ -444,26 +425,28 @@ json mcp_host_runtime::request(const std::string& id, std::string method, json p
       }
       catch (const std::exception& retry_ex) {
         record_failure(entry, retry_ex.what());
-        record_event(mcp_host_event_type::request_failed, entry, method, retry_ex.what(),
+        record_event(mcp_host_event_type::request_failed,
+          entry,
+          method,
+          retry_ex.what(),
           std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started_at),
           { { "retried", true } });
         throw;
       }
     }
-    record_event(mcp_host_event_type::request_failed, entry, method, ex.what(),
+    record_event(mcp_host_event_type::request_failed,
+      entry,
+      method,
+      ex.what(),
       std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - started_at));
     throw;
   }
 }
 
-std::future<json> mcp_host_runtime::request_async(
-  std::string id,
-  std::string method,
-  json params) {
-  return std::async(
-    std::launch::async,
+std::future<json> mcp_host_runtime::request_async(std::string id, std::string method, json params) {
+  return std::async(std::launch::async,
     [this, id = std::move(id), method = std::move(method), params = std::move(params)]() mutable {
       return request(id, std::move(method), std::move(params));
     });
@@ -476,13 +459,16 @@ void mcp_host_runtime::notify(const std::string& id, std::string method, json pa
   try {
     ++entry.request_count;
     entry.client.notify(std::move(method), std::move(params));
-    entry.state = entry.client.running() ? mcp_host_server_state::running
-                                         : mcp_host_server_state::stopped;
+    entry.state =
+      entry.client.running() ? mcp_host_server_state::running : mcp_host_server_state::stopped;
     entry.error.clear();
     if (entry.state == mcp_host_server_state::running) {
       reset_failure_policy(entry);
     }
-    record_event(mcp_host_event_type::notification_sent, entry, method, {},
+    record_event(mcp_host_event_type::notification_sent,
+      entry,
+      method,
+      {},
       std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - started_at));
   }
@@ -508,20 +494,22 @@ std::future<json> mcp_host_runtime::list_tools_async(std::string id, json params
 }
 
 json mcp_host_runtime::call_tool(const std::string& id, std::string name, json arguments) {
-  return request(id, "tools/call", {
-    { "name", std::move(name) },
-    { "arguments", std::move(arguments) },
-  });
+  return request(id,
+    "tools/call",
+    {
+      { "name", std::move(name) },
+      { "arguments", std::move(arguments) },
+    });
 }
 
 std::future<json> mcp_host_runtime::call_tool_async(
-  std::string id,
-  std::string name,
-  json arguments) {
-  return request_async(std::move(id), "tools/call", {
-    { "name", std::move(name) },
-    { "arguments", std::move(arguments) },
-  });
+  std::string id, std::string name, json arguments) {
+  return request_async(std::move(id),
+    "tools/call",
+    {
+      { "name", std::move(name) },
+      { "arguments", std::move(arguments) },
+    });
 }
 
 json mcp_host_runtime::list_resources(const std::string& id, json params) {
@@ -537,10 +525,12 @@ json mcp_host_runtime::list_prompts(const std::string& id, json params) {
 }
 
 json mcp_host_runtime::get_prompt(const std::string& id, std::string name, json arguments) {
-  return request(id, "prompts/get", {
-    { "name", std::move(name) },
-    { "arguments", std::move(arguments) },
-  });
+  return request(id,
+    "prompts/get",
+    {
+      { "name", std::move(name) },
+      { "arguments", std::move(arguments) },
+    });
 }
 
 bool mcp_host_runtime::health_check(const std::string& id) {
@@ -576,12 +566,18 @@ bool mcp_host_runtime::health_check(const std::string& id) {
     entry.error = ok ? std::string {} : std::string("ping returned non-success response");
     if (ok) {
       reset_failure_policy(entry);
-      record_event(mcp_host_event_type::health_check_succeeded, entry, "ping", {},
+      record_event(mcp_host_event_type::health_check_succeeded,
+        entry,
+        "ping",
+        {},
         std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - started_at));
     }
     else {
-      record_event(mcp_host_event_type::health_check_failed, entry, "ping", entry.error,
+      record_event(mcp_host_event_type::health_check_failed,
+        entry,
+        "ping",
+        entry.error,
         std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - started_at));
     }
@@ -592,7 +588,10 @@ bool mcp_host_runtime::health_check(const std::string& id) {
     if (can_restart(entry)) {
       try {
         restart_entry(entry);
-        record_event(mcp_host_event_type::health_check_succeeded, entry, "ping", {},
+        record_event(mcp_host_event_type::health_check_succeeded,
+          entry,
+          "ping",
+          {},
           std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started_at),
           { { "restarted", true } });
@@ -602,7 +601,10 @@ bool mcp_host_runtime::health_check(const std::string& id) {
         record_failure(entry, retry_ex.what());
       }
     }
-    record_event(mcp_host_event_type::health_check_failed, entry, "ping", entry.error,
+    record_event(mcp_host_event_type::health_check_failed,
+      entry,
+      "ping",
+      entry.error,
       std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - started_at));
     return false;
@@ -653,13 +655,12 @@ mcp_host_server_snapshot mcp_host_runtime::snapshot_for(server_entry& entry) con
       circuit_breaker_remaining.count() == 0) {
     entry.state = mcp_host_server_state::failed;
   }
-  const auto circuit_breaker_open = circuit_breaker_remaining.count() > 0 ||
-                                    entry.circuit_open_until ==
-                                      std::chrono::steady_clock::time_point::max();
+  const auto circuit_breaker_open =
+    circuit_breaker_remaining.count() > 0 ||
+    entry.circuit_open_until == std::chrono::steady_clock::time_point::max();
   const auto restart_available = entry.config.restart_on_failure &&
                                  entry.restart_count < entry.config.max_restart_attempts &&
-                                 restart_backoff_remaining.count() == 0 &&
-                                 !circuit_breaker_open;
+                                 restart_backoff_remaining.count() == 0 && !circuit_breaker_open;
 
   return {
     .id = entry.config.id,
@@ -681,13 +682,8 @@ mcp_host_server_snapshot mcp_host_runtime::snapshot_for(server_entry& entry) con
   };
 }
 
-void mcp_host_runtime::record_event(
-  mcp_host_event_type type,
-  const server_entry& entry,
-  std::string method,
-  std::string error,
-  std::chrono::milliseconds elapsed,
-  json metadata) {
+void mcp_host_runtime::record_event(mcp_host_event_type type, const server_entry& entry,
+  std::string method, std::string error, std::chrono::milliseconds elapsed, json metadata) {
   mcp_host_event event {
     .timestamp = std::chrono::system_clock::now(),
     .type = type,
@@ -811,7 +807,8 @@ std::vector<mcp_host_server_config> mcp_host_server_configs_from_json(const json
     mcp_host_server_config config;
     config.id = it.key();
     config.command.command = value["command"].get<std::string>();
-    config.command.working_directory = value.value("cwd", value.value("workingDirectory", std::string()));
+    config.command.working_directory =
+      value.value("cwd", value.value("workingDirectory", std::string()));
     if (value.contains("args")) {
       if (!value["args"].is_array()) {
         throw std::runtime_error("MCP host server args must be an array: " + it.key());
@@ -852,10 +849,10 @@ std::vector<mcp_host_server_config> mcp_host_server_configs_from_json(const json
       value.value("sendInitializedNotification", config.send_initialized_notification);
     config.restart_on_failure = value.value("restartOnFailure", config.restart_on_failure);
     config.max_restart_attempts = value.value("maxRestarts", config.max_restart_attempts);
-    config.restart_backoff = optional_milliseconds(
-      value, "restartBackoffMillis", config.restart_backoff, it.key());
-    config.max_restart_backoff = optional_milliseconds(
-      value, "maxRestartBackoffMillis", config.max_restart_backoff, it.key());
+    config.restart_backoff =
+      optional_milliseconds(value, "restartBackoffMillis", config.restart_backoff, it.key());
+    config.max_restart_backoff =
+      optional_milliseconds(value, "maxRestartBackoffMillis", config.max_restart_backoff, it.key());
     config.circuit_breaker_failure_threshold =
       value.value("circuitBreakerFailureThreshold", config.circuit_breaker_failure_threshold);
     config.circuit_breaker_cooldown = optional_milliseconds(
@@ -895,8 +892,7 @@ std::vector<mcp_host_config_diagnostic> mcp_host_config_diagnostics_from_json(
   }
   if (config_json.contains("mcpServers")) {
     if (servers) {
-      add_config_diagnostic(
-        diagnostics,
+      add_config_diagnostic(diagnostics,
         mcp_host_config_diagnostic_severity::warning,
         "$",
         "config contains both 'servers' and 'mcpServers'; 'servers' is used first");
@@ -907,8 +903,7 @@ std::vector<mcp_host_config_diagnostic> mcp_host_config_diagnostics_from_json(
     }
   }
   if (!servers) {
-    add_config_diagnostic(
-      diagnostics,
+    add_config_diagnostic(diagnostics,
       mcp_host_config_diagnostic_severity::error,
       "$",
       "MCP host config must contain 'servers' or 'mcpServers'");
@@ -918,8 +913,7 @@ std::vector<mcp_host_config_diagnostic> mcp_host_config_diagnostics_from_json(
     return diagnostics;
   }
   if (servers->empty()) {
-    add_config_diagnostic(
-      diagnostics,
+    add_config_diagnostic(diagnostics,
       mcp_host_config_diagnostic_severity::warning,
       servers_path,
       "MCP host config does not define any servers");
@@ -933,32 +927,30 @@ std::vector<mcp_host_config_diagnostic> mcp_host_config_diagnostics_from_json(
     const auto& value = it.value();
     if (value.contains("type") &&
         (!value["type"].is_string() || value["type"].get<std::string>() != "stdio")) {
-      add_config_diagnostic(
-        diagnostics,
+      add_config_diagnostic(diagnostics,
         mcp_host_config_diagnostic_severity::error,
         json_path(server_path, "type"),
         "MCP host runtime only supports stdio servers");
     }
     if (!value.contains("command")) {
-      add_config_diagnostic(
-        diagnostics,
+      add_config_diagnostic(diagnostics,
         mcp_host_config_diagnostic_severity::error,
         json_path(server_path, "command"),
         "MCP host server command is required");
     }
-    else if (require_string(diagnostics, value["command"], json_path(server_path, "command"),
+    else if (require_string(diagnostics,
+               value["command"],
+               json_path(server_path, "command"),
                "MCP host server command") &&
              value["command"].get<std::string>().empty()) {
-      add_config_diagnostic(
-        diagnostics,
+      add_config_diagnostic(diagnostics,
         mcp_host_config_diagnostic_severity::error,
         json_path(server_path, "command"),
         "MCP host server command must not be empty");
     }
     if (value.contains("args")) {
       if (!value["args"].is_array()) {
-        add_config_diagnostic(
-          diagnostics,
+        add_config_diagnostic(diagnostics,
           mcp_host_config_diagnostic_severity::error,
           json_path(server_path, "args"),
           "MCP host server args must be an array");
@@ -966,8 +958,7 @@ std::vector<mcp_host_config_diagnostic> mcp_host_config_diagnostics_from_json(
       else {
         for (std::size_t index = 0; index < value["args"].size(); ++index) {
           if (!value["args"][index].is_string()) {
-            add_config_diagnostic(
-              diagnostics,
+            add_config_diagnostic(diagnostics,
               mcp_host_config_diagnostic_severity::error,
               json_path(server_path, "args") + "[" + std::to_string(index) + "]",
               "MCP host server args entries must be strings");
@@ -976,12 +967,11 @@ std::vector<mcp_host_config_diagnostic> mcp_host_config_diagnostics_from_json(
       }
     }
     if (value.contains("env")) {
-      if (require_object(diagnostics, value["env"], json_path(server_path, "env"),
-            "MCP host server env")) {
+      if (require_object(
+            diagnostics, value["env"], json_path(server_path, "env"), "MCP host server env")) {
         for (auto env_it = value["env"].begin(); env_it != value["env"].end(); ++env_it) {
           if (!env_it.value().is_string()) {
-            add_config_diagnostic(
-              diagnostics,
+            add_config_diagnostic(diagnostics,
               mcp_host_config_diagnostic_severity::error,
               json_path(json_path(server_path, "env"), env_it.key()),
               "MCP host server env entries must be strings");
@@ -989,20 +979,27 @@ std::vector<mcp_host_config_diagnostic> mcp_host_config_diagnostics_from_json(
         }
       }
     }
-    if (value.contains("clientInfo") &&
-        require_object(diagnostics, value["clientInfo"], json_path(server_path, "clientInfo"),
-          "MCP host server clientInfo")) {
+    if (value.contains("clientInfo") && require_object(diagnostics,
+                                          value["clientInfo"],
+                                          json_path(server_path, "clientInfo"),
+                                          "MCP host server clientInfo")) {
       if (value["clientInfo"].contains("name")) {
-        require_string(diagnostics, value["clientInfo"]["name"],
-          json_path(json_path(server_path, "clientInfo"), "name"), "clientInfo.name");
+        require_string(diagnostics,
+          value["clientInfo"]["name"],
+          json_path(json_path(server_path, "clientInfo"), "name"),
+          "clientInfo.name");
       }
       if (value["clientInfo"].contains("version")) {
-        require_string(diagnostics, value["clientInfo"]["version"],
-          json_path(json_path(server_path, "clientInfo"), "version"), "clientInfo.version");
+        require_string(diagnostics,
+          value["clientInfo"]["version"],
+          json_path(json_path(server_path, "clientInfo"), "version"),
+          "clientInfo.version");
       }
     }
     if (value.contains("capabilities")) {
-      require_object(diagnostics, value["capabilities"], json_path(server_path, "capabilities"),
+      require_object(diagnostics,
+        value["capabilities"],
+        json_path(server_path, "capabilities"),
         "MCP host server capabilities");
     }
     validate_optional_bool(diagnostics, value, "autoInitialize", server_path);
@@ -1048,8 +1045,7 @@ std::vector<mcp_host_config_diagnostic> mcp_host_config_diagnostics_from_file(
 }
 
 std::vector<std::filesystem::path> mcp_host_user_config_paths(
-  const std::filesystem::path& home,
-  const std::filesystem::path& appdata) {
+  const std::filesystem::path& home, const std::filesystem::path& appdata) {
   std::vector<std::filesystem::path> paths;
   const auto resolved_home = resolve_home_path(home);
   const auto resolved_appdata = appdata.empty() ? env_path("APPDATA") : appdata;
@@ -1066,18 +1062,17 @@ std::vector<std::filesystem::path> mcp_host_user_config_paths(
 #else
   if (!resolved_home.empty()) {
     push_unique(paths,
-      resolved_home / "Library" / "Application Support" / "Claude" /
-        "claude_desktop_config.json");
-    push_unique(paths,
-      resolved_home / "Library" / "Application Support" / "Code" / "User" / "mcp.json");
-    push_unique(paths,
-      resolved_home / "Library" / "Application Support" / "Cursor" / "User" / "mcp.json");
+      resolved_home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json");
+    push_unique(
+      paths, resolved_home / "Library" / "Application Support" / "Code" / "User" / "mcp.json");
+    push_unique(
+      paths, resolved_home / "Library" / "Application Support" / "Cursor" / "User" / "mcp.json");
     push_unique(paths, resolved_home / ".continue" / "config.json");
   }
   const auto xdg_config_home = env_path("XDG_CONFIG_HOME");
-  const auto config_home = !xdg_config_home.empty()
-      ? xdg_config_home
-      : resolved_home.empty() ? std::filesystem::path {} : resolved_home / ".config";
+  const auto config_home = !xdg_config_home.empty() ? xdg_config_home
+                           : resolved_home.empty()  ? std::filesystem::path {}
+                                                    : resolved_home / ".config";
   if (!config_home.empty()) {
     push_unique(paths, config_home / "Code" / "User" / "mcp.json");
     push_unique(paths, config_home / "Cursor" / "User" / "mcp.json");

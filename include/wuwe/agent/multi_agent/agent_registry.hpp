@@ -38,8 +38,7 @@ struct agent_registry_state {
 };
 
 inline bool has_skills(
-  const agent_descriptor& descriptor,
-  const std::vector<std::string>& required) {
+  const agent_descriptor& descriptor, const std::vector<std::string>& required) {
   return std::all_of(required.begin(), required.end(), [&](const auto& id) {
     return std::any_of(descriptor.skills.begin(), descriptor.skills.end(), [&](const auto& skill) {
       return skill.id == id;
@@ -56,10 +55,8 @@ public:
   agent_lease& operator=(const agent_lease&) = delete;
 
   agent_lease(agent_lease&& other) noexcept
-      : state_(std::move(other.state_)),
-        descriptor_(std::move(other.descriptor_)),
-        executor_(std::move(other.executor_)),
-        agent_id_(std::move(other.agent_id_)) {
+      : state_(std::move(other.state_)), descriptor_(std::move(other.descriptor_)),
+        executor_(std::move(other.executor_)), agent_id_(std::move(other.agent_id_)) {
     other.agent_id_.clear();
   }
 
@@ -94,14 +91,10 @@ public:
 private:
   friend class agent_registry;
 
-  agent_lease(
-    std::shared_ptr<detail::agent_registry_state> state,
-    agent_descriptor descriptor,
+  agent_lease(std::shared_ptr<detail::agent_registry_state> state, agent_descriptor descriptor,
     std::shared_ptr<agent_executor> executor)
-      : state_(std::move(state)),
-        descriptor_(std::move(descriptor)),
-        executor_(std::move(executor)),
-        agent_id_(descriptor_.id) {
+      : state_(std::move(state)), descriptor_(std::move(descriptor)),
+        executor_(std::move(executor)), agent_id_(descriptor_.id) {
   }
 
   void release() noexcept {
@@ -138,9 +131,7 @@ public:
   agent_registry() : state_(std::make_shared<detail::agent_registry_state>()) {
   }
 
-  agent_registry& add(
-    agent_descriptor descriptor,
-    std::shared_ptr<agent_executor> executor,
+  agent_registry& add(agent_descriptor descriptor, std::shared_ptr<agent_executor> executor,
     agent_availability availability = agent_availability::available) {
     validate(descriptor, executor);
     std::scoped_lock lock(state_->mutex);
@@ -148,11 +139,12 @@ public:
       throw std::invalid_argument("duplicate agent id: " + descriptor.id);
     }
     const auto id = descriptor.id;
-    state_->entries.emplace(id, detail::agent_registry_entry {
-      .descriptor = std::move(descriptor),
-      .executor = std::move(executor),
-      .availability = availability,
-    });
+    state_->entries.emplace(id,
+      detail::agent_registry_entry {
+        .descriptor = std::move(descriptor),
+        .executor = std::move(executor),
+        .availability = availability,
+      });
     return *this;
   }
 
@@ -196,8 +188,7 @@ public:
   }
 
   [[nodiscard]] agent_acquire_result acquire(
-    const std::string& preferred_agent,
-    const std::vector<std::string>& required_skills) const {
+    const std::string& preferred_agent, const std::vector<std::string>& required_skills) const {
     std::scoped_lock lock(state_->mutex);
     if (!preferred_agent.empty()) {
       const auto found = state_->entries.find(preferred_agent);
@@ -224,8 +215,7 @@ public:
         continue;
       }
       if (!best || entry.active_tasks < best->active_tasks ||
-          (entry.active_tasks == best->active_tasks &&
-           entry.descriptor.id < best->descriptor.id)) {
+          (entry.active_tasks == best->active_tasks && entry.descriptor.id < best->descriptor.id)) {
         best = &entry;
       }
     }
@@ -247,8 +237,7 @@ public:
 
 private:
   static void validate(
-    const agent_descriptor& descriptor,
-    const std::shared_ptr<agent_executor>& executor) {
+    const agent_descriptor& descriptor, const std::shared_ptr<agent_executor>& executor) {
     if (descriptor.id.empty() || descriptor.name.empty()) {
       throw std::invalid_argument("agent descriptor requires id and name");
     }
@@ -258,8 +247,7 @@ private:
     if (!executor) {
       throw std::invalid_argument("agent registration requires an executor");
     }
-    if (!executor->capabilities().concurrent_execution &&
-        descriptor.max_concurrency > 1) {
+    if (!executor->capabilities().concurrent_execution && descriptor.max_concurrency > 1) {
       throw std::invalid_argument(
         "non-concurrent agent executors require max_concurrency equal to one");
     }
@@ -285,8 +273,7 @@ private:
   }
 
   agent_acquire_result acquire_entry(
-    detail::agent_registry_entry& entry,
-    const std::vector<std::string>& required_skills) const {
+    detail::agent_registry_entry& entry, const std::vector<std::string>& required_skills) const {
     if (!detail::has_skills(entry.descriptor, required_skills)) {
       return { .error = agent_task_error_code::capability_not_found,
         .message = "preferred agent does not satisfy the required skills" };

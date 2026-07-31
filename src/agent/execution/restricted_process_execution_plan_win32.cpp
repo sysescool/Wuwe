@@ -16,8 +16,7 @@ namespace {
 std::atomic<unsigned long long> plan_counter {};
 
 restricted_execution_plan_result make_plan_result(
-  restricted_execution_plan_status status,
-  std::string detail = {}) {
+  restricted_execution_plan_status status, std::string detail = {}) {
   return {
     .status = status,
     .detail = std::move(detail),
@@ -25,11 +24,10 @@ restricted_execution_plan_result make_plan_result(
 }
 
 std::string next_profile_name() {
-  const auto now =
-    std::chrono::steady_clock::now().time_since_epoch().count();
+  const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
   const auto counter = plan_counter.fetch_add(1, std::memory_order_relaxed);
-  return "wuwe-restricted-exec-" + std::to_string(GetCurrentProcessId()) +
-         "-" + std::to_string(now) + "-" + std::to_string(counter);
+  return "wuwe-restricted-exec-" + std::to_string(GetCurrentProcessId()) + "-" +
+         std::to_string(now) + "-" + std::to_string(counter);
 }
 
 std::wstring widen_ascii(std::string_view text) {
@@ -51,8 +49,7 @@ std::string narrow_ascii(std::wstring_view text) {
 }
 
 std::map<std::wstring, std::wstring> make_environment(
-  const restricted_process_backend_config& config,
-  const execution_request& request) {
+  const restricted_process_backend_config& config, const execution_request& request) {
   std::map<std::wstring, std::wstring> result;
   for (const auto& [name, value] : config.base_environment) {
     result.emplace(widen_ascii(name), widen_ascii(value));
@@ -63,10 +60,8 @@ std::map<std::wstring, std::wstring> make_environment(
   return result;
 }
 
-std::filesystem::path workspace_root_for(
-  const restricted_process_backend_config& config,
-  const execution_request& request,
-  const restricted_appcontainer_profile& profile) {
+std::filesystem::path workspace_root_for(const restricted_process_backend_config& config,
+  const execution_request& request, const restricted_appcontainer_profile& profile) {
   if (!request.workdir.empty()) {
     return request.workdir;
   }
@@ -77,20 +72,15 @@ std::filesystem::path workspace_root_for(
 }
 
 std::filesystem::path runtime_root_for(
-  const restricted_process_backend_config& config,
-  const restricted_appcontainer_profile& profile) {
+  const restricted_process_backend_config& config, const restricted_appcontainer_profile& profile) {
   if (!config.runtime_staging_root.empty()) {
     return config.runtime_staging_root / profile.name() / "runtime";
   }
   return profile.storage_path() / "runtime";
 }
 
-restricted_execution_plan_result grant_tree_or_fail(
-  const std::filesystem::path& path,
-  PSID sid,
-  DWORD directory_access,
-  DWORD file_access,
-  std::string_view label) {
+restricted_execution_plan_result grant_tree_or_fail(const std::filesystem::path& path, PSID sid,
+  DWORD directory_access, DWORD file_access, std::string_view label) {
   const auto grant = grant_restricted_tree_access({
     .path = path,
     .sid = sid,
@@ -98,25 +88,18 @@ restricted_execution_plan_result grant_tree_or_fail(
     .file_access = file_access,
   });
   if (grant.status != restricted_acl_grant_status::ok) {
-    return make_plan_result(
-      restricted_execution_plan_status::acl_grant_failed,
-      std::string(label) + ": " + to_string(grant.status) + " " +
-        grant.detail);
+    return make_plan_result(restricted_execution_plan_status::acl_grant_failed,
+      std::string(label) + ": " + to_string(grant.status) + " " + grant.detail);
   }
   return {};
 }
 
 restricted_execution_plan_result grant_directory_or_fail(
-  const std::filesystem::path& path,
-  PSID sid,
-  DWORD access,
-  std::string_view label) {
+  const std::filesystem::path& path, PSID sid, DWORD access, std::string_view label) {
   const auto grant = grant_restricted_directory_access(path, sid, access);
   if (grant.status != restricted_acl_grant_status::ok) {
-    return make_plan_result(
-      restricted_execution_plan_status::acl_grant_failed,
-      std::string(label) + ": " + to_string(grant.status) + " " +
-        grant.detail);
+    return make_plan_result(restricted_execution_plan_status::acl_grant_failed,
+      std::string(label) + ": " + to_string(grant.status) + " " + grant.detail);
   }
   return {};
 }
@@ -142,11 +125,9 @@ const char* to_string(restricted_execution_plan_status status) noexcept {
 }
 
 restricted_execution_plan_result prepare_restricted_execution_plan(
-  const restricted_process_backend_config& config,
-  const execution_request& request) {
+  const restricted_process_backend_config& config, const execution_request& request) {
   if (request.language != execution_language::python) {
-    return make_plan_result(
-      restricted_execution_plan_status::unsupported_language);
+    return make_plan_result(restricted_execution_plan_status::unsupported_language);
   }
 
   auto profile_result = create_restricted_appcontainer_profile({
@@ -156,26 +137,20 @@ restricted_execution_plan_result prepare_restricted_execution_plan(
   });
   if (profile_result.status != restricted_appcontainer_profile_status::ok ||
       !profile_result.profile.has_value()) {
-    return make_plan_result(
-      restricted_execution_plan_status::profile_failed,
-      to_string(profile_result.status) + std::string(" ") +
-        profile_result.detail);
+    return make_plan_result(restricted_execution_plan_status::profile_failed,
+      to_string(profile_result.status) + std::string(" ") + profile_result.detail);
   }
 
   auto profile = std::move(*profile_result.profile);
   const auto runtime_root = runtime_root_for(config, profile);
-  auto runtime_staging =
-    stage_minimal_python_runtime_for_restricted_process({
-      .source_python = config.python_interpreter,
-      .destination_home = runtime_root,
-      .replace_existing = true,
-    });
-  if (runtime_staging.status !=
-      restricted_python_runtime_staging_status::ok) {
-    return make_plan_result(
-      restricted_execution_plan_status::runtime_staging_failed,
-      to_string(runtime_staging.status) + std::string(" ") +
-        runtime_staging.detail);
+  auto runtime_staging = stage_minimal_python_runtime_for_restricted_process({
+    .source_python = config.python_interpreter,
+    .destination_home = runtime_root,
+    .replace_existing = true,
+  });
+  if (runtime_staging.status != restricted_python_runtime_staging_status::ok) {
+    return make_plan_result(restricted_execution_plan_status::runtime_staging_failed,
+      to_string(runtime_staging.status) + std::string(" ") + runtime_staging.detail);
   }
 
   auto workspace_result = create_restricted_request_workspace({
@@ -186,50 +161,32 @@ restricted_execution_plan_result prepare_restricted_execution_plan(
   });
   if (workspace_result.status != restricted_request_workspace_status::ok ||
       !workspace_result.workspace.has_value()) {
-    return make_plan_result(
-      restricted_execution_plan_status::workspace_failed,
-      to_string(workspace_result.status) + std::string(" ") +
-        workspace_result.detail);
+    return make_plan_result(restricted_execution_plan_status::workspace_failed,
+      to_string(workspace_result.status) + std::string(" ") + workspace_result.detail);
   }
 
   auto workspace = std::move(*workspace_result.workspace);
   constexpr DWORD read_execute = FILE_GENERIC_READ | FILE_GENERIC_EXECUTE;
-  if (auto grant = grant_tree_or_fail(
-        runtime_root,
-        profile.sid(),
-        read_execute,
-        read_execute,
-        "runtime");
+  if (auto grant =
+        grant_tree_or_fail(runtime_root, profile.sid(), read_execute, read_execute, "runtime");
       grant.status != restricted_execution_plan_status::ok) {
     return grant;
   }
   if (auto grant = grant_tree_or_fail(
-        workspace.root(),
-        profile.sid(),
-        read_execute,
-        read_execute,
-        "workspace");
+        workspace.root(), profile.sid(), read_execute, read_execute, "workspace");
       grant.status != restricted_execution_plan_status::ok) {
     return grant;
   }
   for (const auto& root : config.readable_roots) {
-    if (auto grant = grant_tree_or_fail(
-          root,
-          profile.sid(),
-          read_execute,
-          read_execute,
-          "readable_root");
+    if (auto grant =
+          grant_tree_or_fail(root, profile.sid(), read_execute, read_execute, "readable_root");
         grant.status != restricted_execution_plan_status::ok) {
       return grant;
     }
   }
   for (const auto& root : config.writable_roots) {
-    if (auto grant = grant_tree_or_fail(
-          root,
-          profile.sid(),
-          GENERIC_ALL,
-          GENERIC_ALL,
-          "writable_root");
+    if (auto grant =
+          grant_tree_or_fail(root, profile.sid(), GENERIC_ALL, GENERIC_ALL, "writable_root");
         grant.status != restricted_execution_plan_status::ok) {
       return grant;
     }
@@ -285,12 +242,9 @@ execution_termination_reason termination_for_launch(
   return execution_termination_reason::exited;
 }
 
-void add_restricted_metadata(
-  execution_result& result,
-  const restricted_process_backend_config& config,
-  const execution_request& request) {
-  const auto enforcement =
-    restricted_process_backend_configured_contract(config);
+void add_restricted_metadata(execution_result& result,
+  const restricted_process_backend_config& config, const execution_request& request) {
+  const auto enforcement = restricted_process_backend_configured_contract(config);
   result.metadata["backend_name"] = "restricted_process";
   result.metadata["isolation_level"] = "restricted_process";
   result.metadata["backend_available"] = "false";
@@ -300,56 +254,38 @@ void add_restricted_metadata(
   result.metadata["use_job_object"] = config.use_job_object ? "true" : "false";
   result.metadata["inherit_parent_environment"] =
     config.inherit_parent_environment ? "true" : "false";
-  result.metadata["cleanup_runtime_staging"] =
-    config.cleanup_runtime_staging ? "true" : "false";
-  result.metadata["readable_roots_count"] =
-    std::to_string(config.readable_roots.size());
-  result.metadata["writable_roots_count"] =
-    std::to_string(config.writable_roots.size());
+  result.metadata["cleanup_runtime_staging"] = config.cleanup_runtime_staging ? "true" : "false";
+  result.metadata["readable_roots_count"] = std::to_string(config.readable_roots.size());
+  result.metadata["writable_roots_count"] = std::to_string(config.writable_roots.size());
   result.metadata["timeout_ms"] = std::to_string(request.limits.timeout.count());
-  result.metadata["max_stdout_bytes"] =
-    std::to_string(request.limits.max_stdout_bytes);
-  result.metadata["max_stderr_bytes"] =
-    std::to_string(request.limits.max_stderr_bytes);
-  result.metadata["shell_execution_enforcement"] =
-    sandbox::to_string(enforcement.shell_execution);
-  result.metadata["timeout_enforcement"] =
-    sandbox::to_string(enforcement.timeout);
-  result.metadata["cancellation_enforcement"] =
-    sandbox::to_string(enforcement.cancellation);
-  result.metadata["stdout_limit_enforcement"] =
-    sandbox::to_string(enforcement.stdout_limit);
-  result.metadata["stderr_limit_enforcement"] =
-    sandbox::to_string(enforcement.stderr_limit);
+  result.metadata["max_stdout_bytes"] = std::to_string(request.limits.max_stdout_bytes);
+  result.metadata["max_stderr_bytes"] = std::to_string(request.limits.max_stderr_bytes);
+  result.metadata["shell_execution_enforcement"] = sandbox::to_string(enforcement.shell_execution);
+  result.metadata["timeout_enforcement"] = sandbox::to_string(enforcement.timeout);
+  result.metadata["cancellation_enforcement"] = sandbox::to_string(enforcement.cancellation);
+  result.metadata["stdout_limit_enforcement"] = sandbox::to_string(enforcement.stdout_limit);
+  result.metadata["stderr_limit_enforcement"] = sandbox::to_string(enforcement.stderr_limit);
   result.metadata["environment_allowlist_enforcement"] =
     sandbox::to_string(enforcement.environment_allowlist);
   result.metadata["working_directory_enforcement"] =
     sandbox::to_string(enforcement.working_directory);
   result.metadata["process_count_limit_enforcement"] =
     sandbox::to_string(enforcement.process_count_limit);
-  result.metadata["cpu_time_limit_enforcement"] =
-    sandbox::to_string(enforcement.cpu_time_limit);
-  result.metadata["memory_limit_enforcement"] =
-    sandbox::to_string(enforcement.memory_limit);
+  result.metadata["cpu_time_limit_enforcement"] = sandbox::to_string(enforcement.cpu_time_limit);
+  result.metadata["memory_limit_enforcement"] = sandbox::to_string(enforcement.memory_limit);
   result.metadata["process_tree_cleanup_enforcement"] =
     sandbox::to_string(enforcement.process_tree_cleanup);
   result.metadata["file_read_deny_enforcement"] =
     sandbox::to_string(enforcement.filesystem_read_deny);
   result.metadata["file_write_deny_enforcement"] =
     sandbox::to_string(enforcement.filesystem_write_deny);
-  result.metadata["network_deny_enforcement"] =
-    sandbox::to_string(enforcement.network_deny);
-  result.metadata["max_process_count"] =
-    std::to_string(request.limits.max_process_count);
-  result.metadata["max_memory_bytes"] =
-    std::to_string(request.limits.max_memory_bytes);
-  result.metadata["max_cpu_time_ms"] =
-    std::to_string(request.limits.max_cpu_time.count());
+  result.metadata["network_deny_enforcement"] = sandbox::to_string(enforcement.network_deny);
+  result.metadata["max_process_count"] = std::to_string(request.limits.max_process_count);
+  result.metadata["max_memory_bytes"] = std::to_string(request.limits.max_memory_bytes);
+  result.metadata["max_cpu_time_ms"] = std::to_string(request.limits.max_cpu_time.count());
 }
 
-void add_plan_metadata(
-  execution_result& result,
-  const restricted_execution_plan& plan) {
+void add_plan_metadata(execution_result& result, const restricted_execution_plan& plan) {
   result.metadata["appcontainer_profile"] = narrow_ascii(plan.profile.name());
   result.metadata["workspace_root"] = plan.workspace.root().string();
   result.metadata["script_path"] = plan.workspace.script_path().string();
@@ -360,8 +296,7 @@ void add_plan_metadata(
 }
 
 void cleanup_external_runtime_staging(
-  const restricted_process_backend_config& config,
-  const restricted_execution_plan& plan) {
+  const restricted_process_backend_config& config, const restricted_execution_plan& plan) {
   if (!config.cleanup_runtime_staging || config.runtime_staging_root.empty()) {
     return;
   }
@@ -371,27 +306,22 @@ void cleanup_external_runtime_staging(
   std::filesystem::remove_all(cleanup_root, ignored);
 }
 
-execution_result run_restricted_execution_plan(
-  const restricted_process_backend_config& config,
-  const execution_request& request,
-  std::stop_token stop_token) {
+execution_result run_restricted_execution_plan(const restricted_process_backend_config& config,
+  const execution_request& request, std::stop_token stop_token) {
   const auto started = std::chrono::steady_clock::now();
   execution_result result;
   add_restricted_metadata(result, config, request);
 
   auto plan_result = prepare_restricted_execution_plan(config, request);
   result.metadata["restricted_plan_status"] = to_string(plan_result.status);
-  if (plan_result.status != restricted_execution_plan_status::ok ||
-      !plan_result.plan.has_value()) {
+  if (plan_result.status != restricted_execution_plan_status::ok || !plan_result.plan.has_value()) {
     result.termination_reason =
       plan_result.status == restricted_execution_plan_status::unsupported_language
         ? execution_termination_reason::backend_error
         : execution_termination_reason::launch_failed;
-    result.error_message =
-      std::string("restricted execution plan failed: ") +
-      to_string(plan_result.status) + " " + plan_result.detail;
-    result.metadata["error_code"] =
-      std::string("restricted_plan_") + to_string(plan_result.status);
+    result.error_message = std::string("restricted execution plan failed: ") +
+                           to_string(plan_result.status) + " " + plan_result.detail;
+    result.metadata["error_code"] = std::string("restricted_plan_") + to_string(plan_result.status);
     result.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - started);
     return result;
@@ -400,8 +330,7 @@ execution_result run_restricted_execution_plan(
   auto& plan = *plan_result.plan;
   add_plan_metadata(result, plan);
   plan.launch_request.stop_token = stop_token;
-  auto launch = launch_restricted_appcontainer_process(
-    std::move(plan.launch_request));
+  auto launch = launch_restricted_appcontainer_process(std::move(plan.launch_request));
 
   result.exit_code = static_cast<int>(launch.capture.exit_code);
   result.timed_out = launch.capture.timed_out;
@@ -412,16 +341,13 @@ execution_result run_restricted_execution_plan(
   result.stderr_text = std::move(launch.capture.stderr_text);
   result.termination_reason = termination_for_launch(launch);
   result.metadata["restricted_launch_status"] = to_string(launch.status);
-  result.metadata["restricted_launch_win32_error"] =
-    std::to_string(launch.win32_error);
+  result.metadata["restricted_launch_win32_error"] = std::to_string(launch.win32_error);
   if (!launch.detail.empty()) {
     result.metadata["restricted_launch_detail"] = launch.detail;
   }
   if (launch.status != restricted_appcontainer_launch_status::ok) {
-    result.error_message =
-      std::string("restricted launch failed: ") + to_string(launch.status);
-    result.metadata["error_code"] =
-      std::string("restricted_launch_") + to_string(launch.status);
+    result.error_message = std::string("restricted launch failed: ") + to_string(launch.status);
+    result.metadata["error_code"] = std::string("restricted_launch_") + to_string(launch.status);
   }
   else if (result.timed_out) {
     result.error_message = "restricted execution timed out";

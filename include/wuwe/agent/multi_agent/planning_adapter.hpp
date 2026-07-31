@@ -21,8 +21,7 @@ public:
   }
 
   planning::plan_step_result execute(
-    const planning::plan_step& step,
-    const planning::plan_execution_context& context) override {
+    const planning::plan_step& step, const planning::plan_execution_context& context) override {
     if (!step.assigned_agent || step.assigned_agent->empty()) {
       return planning::plan_step_result::blocked("step has no assigned agent");
     }
@@ -30,13 +29,15 @@ public:
     if (input.empty() && !step.input_json.is_null()) {
       input = step.input_json.dump();
     }
-    const auto result = runtime_->run({
-      .id = context.current_plan.id + ":" + step.id,
-      .session_id = context.current_plan.id,
-      .input = std::move(input),
-      .preferred_agent = *step.assigned_agent,
-      .metadata = step.metadata,
-    }, context.stop_token);
+    const auto result = runtime_->run(
+      {
+        .id = context.current_plan.id + ":" + step.id,
+        .session_id = context.current_plan.id,
+        .input = std::move(input),
+        .preferred_agent = *step.assigned_agent,
+        .metadata = step.metadata,
+      },
+      context.stop_token);
 
     planning::plan_step_result output;
     output.output = result.output;
@@ -52,9 +53,8 @@ public:
     catch (...) {
     }
     for (const auto& artifact : result.artifacts) {
-      output.artifacts[artifact.id] = artifact.data.is_null()
-                                        ? nlohmann::json(artifact.content)
-                                        : artifact.data;
+      output.artifacts[artifact.id] =
+        artifact.data.is_null() ? nlohmann::json(artifact.content) : artifact.data;
     }
     switch (result.status) {
       case agent_task_status::completed:
@@ -85,10 +85,8 @@ public:
       return {};
     }
     return {
-      .cooperative_cancellation =
-        registered->executor_capabilities.cooperative_cancellation,
-      .concurrent_execution =
-        registered->executor_capabilities.concurrent_execution,
+      .cooperative_cancellation = registered->executor_capabilities.cooperative_cancellation,
+      .concurrent_execution = registered->executor_capabilities.concurrent_execution,
     };
   }
 

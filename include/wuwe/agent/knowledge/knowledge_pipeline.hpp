@@ -58,25 +58,19 @@ public:
       return *this;
     }
 
-    builder& file_backed(
-      std::filesystem::path store_path,
-      std::filesystem::path index_path) {
+    builder& file_backed(std::filesystem::path store_path, std::filesystem::path index_path) {
       store_ = std::make_shared<file_knowledge_store>(std::move(store_path));
       index_ = std::make_shared<file_knowledge_index>(std::move(index_path));
       return *this;
     }
 
-    builder& sqlite_index(
-      std::filesystem::path store_path,
-      std::filesystem::path index_path) {
+    builder& sqlite_index(std::filesystem::path store_path, std::filesystem::path index_path) {
       store_ = std::make_shared<file_knowledge_store>(std::move(store_path));
       index_ = std::make_shared<sqlite_knowledge_index>(std::move(index_path));
       return *this;
     }
 
-    builder& qdrant_index(
-      std::filesystem::path store_path,
-      qdrant_knowledge_index_config config) {
+    builder& qdrant_index(std::filesystem::path store_path, qdrant_knowledge_index_config config) {
       store_ = std::make_shared<file_knowledge_store>(std::move(store_path));
       index_ = std::make_shared<qdrant_knowledge_index>(std::move(config));
       return *this;
@@ -94,14 +88,9 @@ public:
       }
 
       auto retriever = std::make_shared<knowledge_retriever>(
-        store_,
-        index_,
-        embedding_model_,
-        std::move(splitter_),
-        std::move(indexing_policy_));
+        store_, index_, embedding_model_, std::move(splitter_), std::move(indexing_policy_));
 
-      return knowledge_pipeline(
-        std::move(store_),
+      return knowledge_pipeline(std::move(store_),
         std::move(index_),
         std::move(embedding_model_),
         std::move(retriever),
@@ -138,16 +127,11 @@ public:
   }
 
 private:
-  knowledge_pipeline(
-    std::shared_ptr<knowledge_store> store,
-    std::shared_ptr<knowledge_index> index,
+  knowledge_pipeline(std::shared_ptr<knowledge_store> store, std::shared_ptr<knowledge_index> index,
     std::shared_ptr<::wuwe::agent::memory::embedding_model> embedding_model,
-    std::shared_ptr<knowledge_retriever> retriever,
-    knowledge_policy context_policy)
-      : store_(std::move(store)),
-        index_(std::move(index)),
-        embedding_model_(std::move(embedding_model)),
-        retriever_(std::move(retriever)),
+    std::shared_ptr<knowledge_retriever> retriever, knowledge_policy context_policy)
+      : store_(std::move(store)), index_(std::move(index)),
+        embedding_model_(std::move(embedding_model)), retriever_(std::move(retriever)),
         context_policy_(std::move(context_policy)) {
   }
 

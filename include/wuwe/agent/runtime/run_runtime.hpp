@@ -36,22 +36,19 @@ struct tool_result_admission {
 
 class agent_run_runtime {
 public:
-  explicit agent_run_runtime(std::shared_ptr<agent_run_store> store)
-      : store_(std::move(store)) {
+  explicit agent_run_runtime(std::shared_ptr<agent_run_store> store) : store_(std::move(store)) {
     if (!store_) {
       throw std::invalid_argument("agent_run_runtime requires a store");
     }
     validate_agent_run_store_capabilities(store_->capabilities());
   }
 
-  [[nodiscard]] agent_run_store_capabilities store_capabilities()
-    const noexcept {
+  [[nodiscard]] agent_run_store_capabilities store_capabilities() const noexcept {
     return store_->capabilities();
   }
 
   [[nodiscard]] agent_run_record start(
-    core::agent_execution_context context,
-    std::map<std::string, std::string> metadata = {}) {
+    core::agent_execution_context context, std::map<std::string, std::string> metadata = {}) {
     for (const auto& [key, _] : context.metadata) {
       if (core::sensitive_execution_context_metadata_key(key)) {
         throw std::invalid_argument(
@@ -70,10 +67,11 @@ public:
       .context = std::move(context),
       .metadata = std::move(metadata),
     };
-    const auto write = store_->create(record, {
-      .type = "run_created",
-      .status = agent_run_status::created,
-    });
+    const auto write = store_->create(record,
+      {
+        .type = "run_created",
+        .status = agent_run_status::created,
+      });
     if (write.status == run_store_write_status::already_exists) {
       throw std::invalid_argument("agent run already exists: " + record.id);
     }
@@ -84,23 +82,17 @@ public:
     return record;
   }
 
-  [[nodiscard]] std::optional<agent_run_record> get(
-    const std::string& run_id) const {
+  [[nodiscard]] std::optional<agent_run_record> get(const std::string& run_id) const {
     return store_->load(run_id);
   }
 
   [[nodiscard]] std::vector<agent_run_event> list_events(
-    const std::string& run_id,
-    std::uint64_t after_sequence = 0) const {
+    const std::string& run_id, std::uint64_t after_sequence = 0) const {
     return store_->list_events(run_id, after_sequence);
   }
 
-  run_store_write_result transition(
-    const std::string& run_id,
-    std::uint64_t expected_revision,
-    agent_run_status status,
-    std::string event_type,
-    nlohmann::json data = {},
+  run_store_write_result transition(const std::string& run_id, std::uint64_t expected_revision,
+    agent_run_status status, std::string event_type, nlohmann::json data = {},
     std::map<std::string, std::string> metadata = {}) {
     if (event_type.empty()) {
       throw std::invalid_argument("agent run transition requires an event type");
@@ -116,9 +108,8 @@ public:
       };
     }
     if (!valid_transition(record->status, status)) {
-      throw std::logic_error(
-        "invalid agent run transition from " + to_string(record->status) +
-        " to " + to_string(status));
+      throw std::logic_error("invalid agent run transition from " + to_string(record->status) +
+                             " to " + to_string(status));
     }
     record->status = status;
     record->updated_at = std::chrono::system_clock::now();
@@ -127,20 +118,18 @@ public:
       record->suspension.reset();
       record->active_continuation.reset();
     }
-    return store_->update(expected_revision, std::move(*record), {
-      .type = std::move(event_type),
-      .status = status,
-      .data = std::move(data),
-      .metadata = std::move(metadata),
-    });
+    return store_->update(expected_revision,
+      std::move(*record),
+      {
+        .type = std::move(event_type),
+        .status = status,
+        .data = std::move(data),
+        .metadata = std::move(metadata),
+      });
   }
 
-  run_store_write_result finish(
-    const std::string& run_id,
-    std::uint64_t expected_revision,
-    agent_run_status status,
-    nlohmann::json result,
-    std::string error = {},
+  run_store_write_result finish(const std::string& run_id, std::uint64_t expected_revision,
+    agent_run_status status, nlohmann::json result, std::string error = {},
     std::string event_type = {}) {
     if (!terminal(status)) {
       throw std::invalid_argument("agent run finish requires a terminal status");
@@ -156,9 +145,8 @@ public:
       };
     }
     if (!valid_transition(record->status, status)) {
-      throw std::logic_error(
-        "invalid terminal agent run transition from " +
-        to_string(record->status) + " to " + to_string(status));
+      throw std::logic_error("invalid terminal agent run transition from " +
+                             to_string(record->status) + " to " + to_string(status));
     }
     record->status = status;
     record->result = result;
@@ -170,19 +158,18 @@ public:
     if (event_type.empty()) {
       event_type = "run_" + to_string(status);
     }
-    return store_->update(expected_revision, std::move(*record), {
-      .type = std::move(event_type),
-      .status = status,
-      .data = std::move(result),
-    });
+    return store_->update(expected_revision,
+      std::move(*record),
+      {
+        .type = std::move(event_type),
+        .status = status,
+        .data = std::move(result),
+      });
   }
 
-  run_store_write_result cancel(
-    const std::string& run_id,
-    std::uint64_t expected_revision,
+  run_store_write_result cancel(const std::string& run_id, std::uint64_t expected_revision,
     std::string reason = "agent run cancelled") {
-    return finish(
-      run_id,
+    return finish(run_id,
       expected_revision,
       agent_run_status::cancelled,
       nlohmann::json::object(),
@@ -190,12 +177,8 @@ public:
       "run_cancelled");
   }
 
-  run_store_write_result append_event(
-    const std::string& run_id,
-    std::uint64_t expected_revision,
-    std::string event_type,
-    nlohmann::json data = {},
-    std::string tool_call_id = {},
+  run_store_write_result append_event(const std::string& run_id, std::uint64_t expected_revision,
+    std::string event_type, nlohmann::json data = {}, std::string tool_call_id = {},
     std::map<std::string, std::string> metadata = {}) {
     if (event_type.empty()) {
       throw std::invalid_argument("agent run event requires a type");
@@ -211,18 +194,18 @@ public:
       };
     }
     record->updated_at = std::chrono::system_clock::now();
-    return store_->update(expected_revision, std::move(*record), {
-      .type = std::move(event_type),
-      .tool_call_id = std::move(tool_call_id),
-      .data = std::move(data),
-      .metadata = std::move(metadata),
-    });
+    return store_->update(expected_revision,
+      std::move(*record),
+      {
+        .type = std::move(event_type),
+        .tool_call_id = std::move(tool_call_id),
+        .data = std::move(data),
+        .metadata = std::move(metadata),
+      });
   }
 
   run_store_write_result suspend_for_approval(
-    const std::string& run_id,
-    std::uint64_t expected_revision,
-    agent_run_suspension suspension) {
+    const std::string& run_id, std::uint64_t expected_revision, agent_run_suspension suspension) {
     if (suspension.tool_call_id.empty() || suspension.tool_name.empty()) {
       throw std::invalid_argument(
         "agent run approval suspension requires a tool call id and tool name");
@@ -264,12 +247,9 @@ public:
     });
   }
 
-  run_store_write_result resolve_approval(
-    const std::string& run_id,
-    std::uint64_t expected_revision,
-    const std::string& continuation_token,
-    approval_resolution resolution,
-    std::string reason = {},
+  run_store_write_result resolve_approval(const std::string& run_id,
+    std::uint64_t expected_revision, const std::string& continuation_token,
+    approval_resolution resolution, std::string reason = {},
     std::map<std::string, std::string> metadata = {}) {
     if (resolution == approval_resolution::pending) {
       throw std::invalid_argument("approval resolution must be approved or denied");
@@ -284,12 +264,10 @@ public:
         .revision = record->revision,
       };
     }
-    if (record->status != agent_run_status::waiting_for_approval ||
-        !record->suspension) {
+    if (record->status != agent_run_status::waiting_for_approval || !record->suspension) {
       throw std::logic_error("agent run is not waiting for approval");
     }
-    if (!constant_time_equal(
-          record->suspension->continuation_token, continuation_token)) {
+    if (!constant_time_equal(record->suspension->continuation_token, continuation_token)) {
       throw std::invalid_argument("invalid continuation token");
     }
     if (record->suspension->resolution != approval_resolution::pending) {
@@ -304,9 +282,8 @@ public:
     record->updated_at = *record->suspension->resolved_at;
     if (resolution == approval_resolution::denied) {
       record->status = agent_run_status::failed;
-      record->error = record->suspension->reason.empty()
-        ? "tool approval denied"
-        : record->suspension->reason;
+      record->error =
+        record->suspension->reason.empty() ? "tool approval denied" : record->suspension->reason;
       record->completed_at = record->updated_at;
     }
     const auto tool_call_id = record->suspension->tool_call_id;
@@ -329,10 +306,8 @@ public:
     });
   }
 
-  approval_claim_result claim_approved_continuation(
-    const std::string& run_id,
-    std::uint64_t expected_revision,
-    const std::string& continuation_token) {
+  approval_claim_result claim_approved_continuation(const std::string& run_id,
+    std::uint64_t expected_revision, const std::string& continuation_token) {
     auto record = store_->load(run_id);
     if (!record) {
       return { .status = run_store_write_status::not_found };
@@ -343,34 +318,31 @@ public:
         .revision = record->revision,
       };
     }
-    const bool first_claim =
-      record->status == agent_run_status::waiting_for_approval &&
-      record->suspension &&
-      record->suspension->resolution == approval_resolution::approved;
+    const bool first_claim = record->status == agent_run_status::waiting_for_approval &&
+                             record->suspension &&
+                             record->suspension->resolution == approval_resolution::approved;
     const bool recovery_claim =
-      record->status == agent_run_status::running &&
-      record->active_continuation &&
+      record->status == agent_run_status::running && record->active_continuation &&
       record->active_continuation->resolution == approval_resolution::approved;
     if (!first_claim && !recovery_claim) {
       throw std::logic_error("agent run has no approved continuation to claim");
     }
-    const auto continuation = first_claim
-      ? record->suspension
-      : record->active_continuation;
-    if (!constant_time_equal(
-          continuation->continuation_token, continuation_token)) {
+    const auto continuation = first_claim ? record->suspension : record->active_continuation;
+    if (!constant_time_equal(continuation->continuation_token, continuation_token)) {
       throw std::invalid_argument("invalid continuation token");
     }
     record->status = agent_run_status::running;
     record->updated_at = std::chrono::system_clock::now();
     record->active_continuation = continuation;
     record->suspension.reset();
-    const auto write = store_->update(expected_revision, std::move(*record), {
-      .type = first_claim ? "run_resumed" : "run_resume_reclaimed",
-      .status = agent_run_status::running,
-      .tool_call_id = continuation->tool_call_id,
-      .data = { { "approval_id", continuation->approval_id } },
-    });
+    const auto write = store_->update(expected_revision,
+      std::move(*record),
+      {
+        .type = first_claim ? "run_resumed" : "run_resume_reclaimed",
+        .status = agent_run_status::running,
+        .tool_call_id = continuation->tool_call_id,
+        .data = { { "approval_id", continuation->approval_id } },
+      });
     return {
       .status = write.status,
       .revision = write.revision,
@@ -379,9 +351,7 @@ public:
   }
 
   tool_result_admission admit_tool_result(
-    const std::string& run_id,
-    std::uint64_t expected_revision,
-    admitted_tool_result result) {
+    const std::string& run_id, std::uint64_t expected_revision, admitted_tool_result result) {
     auto record = store_->load(run_id);
     if (!record) {
       return { .status = run_store_write_status::not_found };
@@ -395,10 +365,8 @@ public:
         throw std::logic_error(
           "tool call result was already admitted with a different idempotency key");
       }
-      if (!result.tool_name.empty() &&
-          result.tool_name != existing->second.tool_name) {
-        throw std::logic_error(
-          "tool call result was already admitted for a different tool");
+      if (!result.tool_name.empty() && result.tool_name != existing->second.tool_name) {
+        throw std::logic_error("tool call result was already admitted for a different tool");
       }
       return {
         .status = run_store_write_status::applied,
@@ -408,8 +376,7 @@ public:
       };
     }
     if (record->status != agent_run_status::running) {
-      throw std::logic_error(
-        "new tool results may only be admitted to a running agent run");
+      throw std::logic_error("new tool results may only be admitted to a running agent run");
     }
     if (record->revision != expected_revision) {
       return {
@@ -433,8 +400,7 @@ public:
     return {
       .status = write.status,
       .revision = write.revision,
-      .result = write ? std::optional<admitted_tool_result>(std::move(result))
-                      : std::nullopt,
+      .result = write ? std::optional<admitted_tool_result>(std::move(result)) : std::nullopt,
     };
   }
 
@@ -447,23 +413,18 @@ public:
   }
 
 private:
-  [[nodiscard]] static bool valid_transition(
-    agent_run_status from,
-    agent_run_status to) noexcept {
+  [[nodiscard]] static bool valid_transition(agent_run_status from, agent_run_status to) noexcept {
     if (from == to) {
       return !terminal(from);
     }
     switch (from) {
       case agent_run_status::created:
-        return to == agent_run_status::running ||
-               to == agent_run_status::cancelled;
+        return to == agent_run_status::running || to == agent_run_status::cancelled;
       case agent_run_status::running:
         return to == agent_run_status::waiting_for_approval || terminal(to);
       case agent_run_status::waiting_for_approval:
-        return to == agent_run_status::running ||
-               to == agent_run_status::failed ||
-               to == agent_run_status::cancelled ||
-               to == agent_run_status::timed_out;
+        return to == agent_run_status::running || to == agent_run_status::failed ||
+               to == agent_run_status::cancelled || to == agent_run_status::timed_out;
       case agent_run_status::completed:
       case agent_run_status::failed:
       case agent_run_status::cancelled:
@@ -474,17 +435,12 @@ private:
   }
 
   [[nodiscard]] static bool constant_time_equal(
-    const std::string& lhs,
-    const std::string& rhs) noexcept {
+    const std::string& lhs, const std::string& rhs) noexcept {
     std::size_t difference = lhs.size() ^ rhs.size();
     const auto count = (std::max)(lhs.size(), rhs.size());
     for (std::size_t index = 0; index < count; ++index) {
-      const auto left = index < lhs.size()
-        ? static_cast<unsigned char>(lhs[index])
-        : 0U;
-      const auto right = index < rhs.size()
-        ? static_cast<unsigned char>(rhs[index])
-        : 0U;
+      const auto left = index < lhs.size() ? static_cast<unsigned char>(lhs[index]) : 0U;
+      const auto right = index < rhs.size() ? static_cast<unsigned char>(rhs[index]) : 0U;
       difference |= left ^ right;
     }
     return difference == 0;

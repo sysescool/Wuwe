@@ -12,8 +12,7 @@ public:
   virtual ~memory_ranker() = default;
 
   virtual std::vector<memory_record> rank(
-    const memory_query& query,
-    std::vector<memory_record> candidates) const = 0;
+    const memory_query& query, std::vector<memory_record> candidates) const = 0;
 };
 
 } // namespace wuwe::agent::memory

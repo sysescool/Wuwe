@@ -38,18 +38,16 @@ std::uint64_t fnv1a64(std::string_view text, std::uint64_t seed) {
 }
 
 std::string qdrant_point_id(const knowledge_chunk& chunk) {
-  const std::string key = chunk.document_id + '\n' + chunk.id + '\n' +
-                          std::to_string(chunk.start_offset);
+  const std::string key =
+    chunk.document_id + '\n' + chunk.id + '\n' + std::to_string(chunk.start_offset);
   const auto high = fnv1a64(key, 14695981039346656037ull);
   const auto low = fnv1a64(key, 1099511628211ull);
 
   std::ostringstream output;
-  output << std::hex << std::setfill('0')
-         << std::setw(8) << static_cast<std::uint32_t>(high >> 32) << '-'
-         << std::setw(4) << static_cast<std::uint16_t>(high >> 16) << '-'
-         << std::setw(4) << static_cast<std::uint16_t>((high & 0x0fffull) | 0x5000ull) << '-'
-         << std::setw(4) << static_cast<std::uint16_t>(((low >> 48) & 0x3fffull) | 0x8000ull)
-         << '-'
+  output << std::hex << std::setfill('0') << std::setw(8) << static_cast<std::uint32_t>(high >> 32)
+         << '-' << std::setw(4) << static_cast<std::uint16_t>(high >> 16) << '-' << std::setw(4)
+         << static_cast<std::uint16_t>((high & 0x0fffull) | 0x5000ull) << '-' << std::setw(4)
+         << static_cast<std::uint16_t>(((low >> 48) & 0x3fffull) | 0x8000ull) << '-'
          << std::setw(12) << (low & 0xffffffffffffull);
   return output.str();
 }
@@ -62,9 +60,7 @@ json embedding_json(const std::vector<float>& embedding) {
   return result;
 }
 
-json chunk_payload(
-  const knowledge_chunk& chunk,
-  const qdrant_knowledge_index_config& config,
+json chunk_payload(const knowledge_chunk& chunk, const qdrant_knowledge_index_config& config,
   std::size_t embedding_dimension) {
   json payload {
     { "chunk_id", chunk.id },
@@ -126,9 +122,8 @@ json query_filter(const knowledge_query& query) {
 
 void throw_http_error(const char* action, const ::wuwe::http_response& response) {
   if (response.error_code) {
-    throw std::runtime_error(
-      std::string("qdrant knowledge index failed to ") + action + ": " +
-      response.error_code.message());
+    throw std::runtime_error(std::string("qdrant knowledge index failed to ") + action + ": " +
+                             response.error_code.message());
   }
 }
 
@@ -146,8 +141,7 @@ qdrant_knowledge_index::qdrant_knowledge_index(qdrant_knowledge_index_config con
 }
 
 qdrant_knowledge_index::qdrant_knowledge_index(
-  qdrant_knowledge_index_config config,
-  std::shared_ptr<::wuwe::http_client> http)
+  qdrant_knowledge_index_config config, std::shared_ptr<::wuwe::http_client> http)
     : config_(std::move(config)), http_(std::move(http)) {
   if (!http_) {
     throw std::invalid_argument("qdrant_knowledge_index requires an http_client");
@@ -159,14 +153,12 @@ qdrant_knowledge_index::qdrant_knowledge_index(
 }
 
 void qdrant_knowledge_index::upsert(
-  const knowledge_chunk& chunk,
-  const std::vector<float>& embedding) {
+  const knowledge_chunk& chunk, const std::vector<float>& embedding) {
   upsert_batch({ chunk }, { embedding });
 }
 
 void qdrant_knowledge_index::upsert_batch(
-  const std::vector<knowledge_chunk>& chunks,
-  const std::vector<std::vector<float>>& embeddings) {
+  const std::vector<knowledge_chunk>& chunks, const std::vector<std::vector<float>>& embeddings) {
   if (chunks.size() != embeddings.size()) {
     throw std::invalid_argument("qdrant_knowledge_index upsert_batch size mismatch");
   }
@@ -179,7 +171,8 @@ void qdrant_knowledge_index::upsert_batch(
   }
   for (const auto& embedding : embeddings) {
     if (embedding.size() != vector_size) {
-      throw std::invalid_argument("qdrant_knowledge_index requires consistent embedding dimensions");
+      throw std::invalid_argument(
+        "qdrant_knowledge_index requires consistent embedding dimensions");
     }
   }
 
@@ -219,8 +212,7 @@ void qdrant_knowledge_index::upsert_batch(
 }
 
 std::vector<knowledge_result> qdrant_knowledge_index::search(
-  const knowledge_query& query,
-  const std::vector<float>& embedding) const {
+  const knowledge_query& query, const std::vector<float>& embedding) const {
   if (embedding.empty() || query.text.empty()) {
     return {};
   }
@@ -273,8 +265,7 @@ std::vector<knowledge_result> qdrant_knowledge_index::search(
 
     const auto vector_score = item.value("score", 0.0);
     const auto lexical_score = detail::lexical_knowledge_score(query.text, *chunk);
-    const auto score =
-      query.vector_weight * vector_score + query.lexical_weight * lexical_score;
+    const auto score = query.vector_weight * vector_score + query.lexical_weight * lexical_score;
     if (score < query.minimum_score) {
       continue;
     }
@@ -287,16 +278,16 @@ std::vector<knowledge_result> qdrant_knowledge_index::search(
     });
   }
 
-  std::sort(results.begin(), results.end(), [](const knowledge_result& lhs,
-                                                const knowledge_result& rhs) {
-    if (lhs.score != rhs.score) {
-      return lhs.score > rhs.score;
-    }
-    if (lhs.chunk.document_id != rhs.chunk.document_id) {
-      return lhs.chunk.document_id < rhs.chunk.document_id;
-    }
-    return lhs.chunk.start_offset < rhs.chunk.start_offset;
-  });
+  std::sort(
+    results.begin(), results.end(), [](const knowledge_result& lhs, const knowledge_result& rhs) {
+      if (lhs.score != rhs.score) {
+        return lhs.score > rhs.score;
+      }
+      if (lhs.chunk.document_id != rhs.chunk.document_id) {
+        return lhs.chunk.document_id < rhs.chunk.document_id;
+      }
+      return lhs.chunk.start_offset < rhs.chunk.start_offset;
+    });
 
   if (query.limit != 0 && results.size() > query.limit) {
     results.resize(query.limit);

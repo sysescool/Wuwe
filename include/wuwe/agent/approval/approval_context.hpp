@@ -12,9 +12,7 @@
 namespace wuwe::agent::approval {
 
 [[nodiscard]] inline approval_request make_approval_request(
-  const core::agent_execution_context& context,
-  std::string id,
-  std::string summary,
+  const core::agent_execution_context& context, std::string id, std::string summary,
   std::vector<capability::capability_request> capabilities = {},
   std::map<std::string, std::string> metadata = {}) {
   core::apply_execution_context_attributes(metadata, context);

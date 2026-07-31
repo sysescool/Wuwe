@@ -36,12 +36,10 @@ public:
   ~restricted_appcontainer_profile();
 
   restricted_appcontainer_profile(const restricted_appcontainer_profile&) = delete;
-  restricted_appcontainer_profile& operator=(
-    const restricted_appcontainer_profile&) = delete;
+  restricted_appcontainer_profile& operator=(const restricted_appcontainer_profile&) = delete;
 
   restricted_appcontainer_profile(restricted_appcontainer_profile&& other) noexcept;
-  restricted_appcontainer_profile& operator=(
-    restricted_appcontainer_profile&& other) noexcept;
+  restricted_appcontainer_profile& operator=(restricted_appcontainer_profile&& other) noexcept;
 
   [[nodiscard]] PSID sid() const noexcept {
     return sid_;
@@ -68,20 +66,16 @@ private:
 };
 
 struct restricted_appcontainer_profile_result {
-  restricted_appcontainer_profile_status status {
-    restricted_appcontainer_profile_status::ok
-  };
+  restricted_appcontainer_profile_status status { restricted_appcontainer_profile_status::ok };
   std::optional<restricted_appcontainer_profile> profile;
   HRESULT hresult { S_OK };
   DWORD win32_error { ERROR_SUCCESS };
   std::string detail;
 };
 
-[[nodiscard]] const char* to_string(
-  restricted_appcontainer_profile_status status) noexcept;
+[[nodiscard]] const char* to_string(restricted_appcontainer_profile_status status) noexcept;
 
-[[nodiscard]] restricted_appcontainer_profile_result
-create_restricted_appcontainer_profile(
+[[nodiscard]] restricted_appcontainer_profile_result create_restricted_appcontainer_profile(
   const restricted_appcontainer_profile_request& request);
 
 } // namespace wuwe::agent::execution::detail
