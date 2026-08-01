@@ -90,4 +90,22 @@ skill_package::skill_package(skill_manifest manifest, skill_provenance provenanc
     data { std::move(manifest), std::move(provenance), std::move(resources) });
 }
 
+skill_package_create_result skill_package::create(skill_manifest manifest,
+  skill_provenance provenance, std::map<std::string, skill_resource> resources) {
+  try {
+    return {
+      .package = std::make_shared<const skill_package>(
+        std::move(manifest), std::move(provenance), std::move(resources)),
+    };
+  }
+  catch (const std::invalid_argument& exception) {
+    return {
+      .error = {
+        .code = skill_error_code::invalid_package,
+        .message = exception.what(),
+      },
+    };
+  }
+}
+
 } // namespace wuwe::agent::skills

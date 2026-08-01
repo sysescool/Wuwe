@@ -15,6 +15,25 @@
 
 namespace wuwe::agent::skills {
 
+enum class skill_error_code {
+  none,
+  invalid_manifest,
+  invalid_package,
+  invalid_registration,
+  registration_conflict,
+};
+
+[[nodiscard]] const char* to_string(skill_error_code value) noexcept;
+
+struct skill_error_info {
+  skill_error_code code { skill_error_code::none };
+  std::string message;
+
+  [[nodiscard]] explicit operator bool() const noexcept {
+    return code != skill_error_code::none;
+  }
+};
+
 enum class skill_resource_kind {
   instructions,
   prompt,

@@ -28,6 +28,12 @@ struct semantic_version {
     const semantic_version& lhs, const semantic_version& rhs) noexcept;
 };
 
+// SemVer precedence deliberately ignores build metadata. semantic_version's
+// equality and total ordering represent the complete version identity instead,
+// so distinct build variants can coexist in ordered registries.
+[[nodiscard]] std::strong_ordering compare_precedence(
+  const semantic_version& lhs, const semantic_version& rhs) noexcept;
+
 enum class version_comparison {
   equal,
   less,

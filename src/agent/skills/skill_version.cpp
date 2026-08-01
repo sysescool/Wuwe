@@ -175,7 +175,7 @@ std::string semantic_version::string() const {
   return output;
 }
 
-std::strong_ordering operator<=>(
+std::strong_ordering compare_precedence(
   const semantic_version& lhs, const semantic_version& rhs) noexcept {
   if (const auto value = lhs.major <=> rhs.major; value != 0) {
     return value;
@@ -199,8 +199,17 @@ std::strong_ordering operator<=>(
   return lhs.prerelease.size() <=> rhs.prerelease.size();
 }
 
+std::strong_ordering operator<=>(
+  const semantic_version& lhs, const semantic_version& rhs) noexcept {
+  if (const auto precedence = compare_precedence(lhs, rhs); precedence != 0) {
+    return precedence;
+  }
+  return lhs.build <=> rhs.build;
+}
+
 bool operator==(const semantic_version& lhs, const semantic_version& rhs) noexcept {
-  return (lhs <=> rhs) == std::strong_ordering::equal;
+  return lhs.major == rhs.major && lhs.minor == rhs.minor && lhs.patch == rhs.patch &&
+         lhs.prerelease == rhs.prerelease && lhs.build == rhs.build;
 }
 
 version_requirement version_requirement::any() {
@@ -327,19 +336,15 @@ bool version_requirement::matches(const semantic_version& version) const noexcep
   return std::all_of(comparators_.begin(), comparators_.end(), [&](const auto& comparator) {
     switch (comparator.comparison) {
       case version_comparison::equal:
-        return version.major == comparator.version.major &&
-               version.minor == comparator.version.minor &&
-               version.patch == comparator.version.patch &&
-               version.prerelease == comparator.version.prerelease &&
-               version.build == comparator.version.build;
+        return version == comparator.version;
       case version_comparison::less:
-        return version < comparator.version;
+        return compare_precedence(version, comparator.version) < 0;
       case version_comparison::less_equal:
-        return version <= comparator.version;
+        return compare_precedence(version, comparator.version) <= 0;
       case version_comparison::greater:
-        return version > comparator.version;
+        return compare_precedence(version, comparator.version) > 0;
       case version_comparison::greater_equal:
-        return version >= comparator.version;
+        return compare_precedence(version, comparator.version) >= 0;
     }
     return false;
   });

@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -34,9 +35,22 @@ struct skill_manifest_limits {
   std::size_t max_json_depth { 64 };
 };
 
+struct skill_manifest_parse_result {
+  std::optional<skill_manifest> manifest;
+  skill_error_info error;
+
+  [[nodiscard]] explicit operator bool() const noexcept {
+    return manifest.has_value() && !error;
+  }
+};
+
 [[nodiscard]] skill_manifest parse_skill_manifest(
   std::string_view input, const skill_manifest_limits& limits = {});
+[[nodiscard]] skill_manifest_parse_result try_parse_skill_manifest(
+  std::string_view input, const skill_manifest_limits& limits = {});
 [[nodiscard]] skill_manifest skill_manifest_from_json(
+  const nlohmann::json& input, const skill_manifest_limits& limits = {});
+[[nodiscard]] skill_manifest_parse_result try_skill_manifest_from_json(
   const nlohmann::json& input, const skill_manifest_limits& limits = {});
 [[nodiscard]] nlohmann::json skill_manifest_to_json(const skill_manifest& manifest);
 void validate_skill_manifest(const skill_manifest& manifest);

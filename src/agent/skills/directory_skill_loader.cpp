@@ -522,15 +522,13 @@ skill_load_result directory_skill_loader::load(const std::filesystem::path& rela
       skill_load_error_code::manifest_too_large,
       options_.reject_hard_links);
 
-    skill_manifest manifest;
-    try {
-      manifest = parse_skill_manifest(
-        raw_manifest.content, { .max_manifest_bytes = options_.max_manifest_bytes });
-    }
-    catch (const std::exception& exception) {
+    auto parsed_manifest = try_parse_skill_manifest(
+      raw_manifest.content, { .max_manifest_bytes = options_.max_manifest_bytes });
+    if (!parsed_manifest) {
       fail(skill_load_error_code::manifest_invalid,
-        "invalid skill manifest: " + std::string(exception.what()));
+        "invalid skill manifest: " + parsed_manifest.error.message);
     }
+    auto manifest = std::move(*parsed_manifest.manifest);
     skill_id = manifest.descriptor.id;
     if (manifest.resources.size() > options_.max_resources) {
       fail(skill_load_error_code::resource_count_exceeded,
@@ -649,8 +647,12 @@ skill_load_result directory_skill_loader::load(const std::filesystem::path& rela
         { "manifest_sha256", raw_manifest.digest },
       },
     };
-    auto package = std::make_shared<const skill_package>(
+    auto created = skill_package::create(
       std::move(manifest), std::move(provenance), std::move(resources));
+    if (!created) {
+      fail(skill_load_error_code::package_invalid, created.error.message);
+    }
+    auto package = std::move(created.package);
 
     publish_skill_event(event_sink,
       context,

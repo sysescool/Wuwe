@@ -54,6 +54,13 @@ skill_dependency dependency(std::string id, std::string requirement, bool option
   };
 }
 
+skill_registration_result require_registered(skill_registry& registry, skill_package_ptr value,
+  skill_registration_policy policy = skill_registration_policy::reject_conflict) {
+  auto result = registry.register_package(std::move(value), policy);
+  require(static_cast<bool>(result), "skill package registration succeeds");
+  return result;
+}
+
 void semver_is_strict_and_follows_precedence_rules() {
   const std::vector<std::string> ordered {
     "1.0.0-alpha",
@@ -69,8 +76,11 @@ void semver_is_strict_and_follows_precedence_rules() {
     require(semantic_version::parse(ordered[index - 1]) < semantic_version::parse(ordered[index]),
       "SemVer prerelease precedence follows the normative ordering");
   }
-  require(semantic_version::parse("1.2.3+linux") == semantic_version::parse("1.2.3+windows"),
-    "SemVer build metadata does not affect precedence or equality");
+  const auto linux = semantic_version::parse("1.2.3+linux");
+  const auto windows = semantic_version::parse("1.2.3+windows");
+  require(linux != windows, "SemVer build metadata participates in complete version identity");
+  require(compare_precedence(linux, windows) == std::strong_ordering::equal,
+    "SemVer build metadata does not affect precedence");
   require(semantic_version::parse("1.2.3-alpha.9").string() == "1.2.3-alpha.9",
     "SemVer round-trips through its canonical representation");
 
@@ -148,6 +158,9 @@ void manifest_parser_is_strict_and_bounded() {
   require(parsed.descriptor.id == "com.example.review" && parsed.resources.size() == 1 &&
             parsed.dependencies.size() == 1 && parsed.capabilities.size() == 1,
     "strict manifest parsing retains all declared contract sections");
+  const auto parsed_result = try_parse_skill_manifest(valid);
+  require(parsed_result && parsed_result.manifest->descriptor.id == "com.example.review",
+    "manifest parsing provides a result-based API for external data");
   require(skill_manifest_from_json(skill_manifest_to_json(parsed)).descriptor.version ==
             parsed.descriptor.version,
     "manifest JSON serialization is round-trip safe");
@@ -213,6 +226,9 @@ void manifest_parser_is_strict_and_bounded() {
     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
   require_invalid([&] { (void)skill_manifest_from_json(uppercase_digest); },
     "resource digests use one canonical lowercase representation");
+  const auto invalid_result = try_skill_manifest_from_json(uppercase_digest);
+  require(!invalid_result && invalid_result.error.code == skill_error_code::invalid_manifest,
+    "manifest result APIs expose a stable typed error category");
 }
 
 void packages_are_immutable_and_registry_snapshots_are_stable() {
@@ -220,25 +236,34 @@ void packages_are_immutable_and_registry_snapshots_are_stable() {
     const skill_manifest&>);
   skill_registry registry;
   const auto first = package("com.example.skill", "1.0.0");
-  registry.register_package(first);
-  registry.register_package(first);
-  registry.register_package(package("com.example.skill", "1.0.0"));
+  require(require_registered(registry, first).status == skill_registration_status::inserted,
+    "first registration reports insertion");
+  require(require_registered(registry, first).status == skill_registration_status::unchanged,
+    "registering the same package reports an idempotent outcome");
+  require(require_registered(registry, first, skill_registration_policy::replace).status ==
+            skill_registration_status::unchanged,
+    "explicit replacement remains idempotent when immutable content is unchanged");
+  require(require_registered(registry, package("com.example.skill", "1.0.0")).status ==
+            skill_registration_status::unchanged,
+    "registering equivalent immutable content is idempotent");
   require(registry.snapshot().size() == 1,
     "registering the same immutable package identity is idempotent");
-  require_invalid(
-    [&] {
-      registry.register_package(
-        package("com.example.skill", "1.0.0", { dependency("com.example.other", "1.0.0", true) }));
-    },
-    "the same skill version cannot be silently replaced by different package content");
+  const auto conflict = registry.register_package(
+    package("com.example.skill", "1.0.0", { dependency("com.example.other", "1.0.0", true) }));
+  require(!conflict && conflict.error.code == skill_error_code::registration_conflict &&
+            conflict.previous == first,
+    "registration conflicts are returned as typed operational failures");
   const auto replacement =
     package("com.example.skill", "1.0.0", { dependency("com.example.other", "1.0.0", true) });
-  registry.register_package(replacement, skill_registration_policy::replace);
+  const auto replaced =
+    require_registered(registry, replacement, skill_registration_policy::replace);
+  require(replaced.status == skill_registration_status::replaced && replaced.previous == first,
+    "explicit replacement reports the previous immutable package");
   require(
     registry.snapshot().find("com.example.skill", semantic_version::parse("1.0.0")) == replacement,
     "package replacement requires an explicit strongly typed registration policy");
   const auto before = registry.snapshot();
-  registry.register_package(package("com.example.skill", "2.0.0"));
+  require_registered(registry, package("com.example.skill", "2.0.0"));
   const auto after = registry.snapshot();
   require(before.size() == 1 && after.size() == 2 &&
             before.select("com.example.skill", version_requirement::any())->descriptor().version ==
@@ -247,18 +272,29 @@ void packages_are_immutable_and_registry_snapshots_are_stable() {
               semantic_version::parse("2.0.0"),
     "copy-on-write registry snapshots remain immutable and select the highest stable version");
 
+  require_registered(registry, package("com.example.build", "1.0.0+linux"));
+  require_registered(registry, package("com.example.build", "1.0.0+windows"));
+  require(registry.snapshot().find(
+            "com.example.build", semantic_version::parse("1.0.0+linux")) != nullptr &&
+            registry.snapshot().find(
+              "com.example.build", semantic_version::parse("1.0.0+windows")) != nullptr,
+    "registry identity preserves distinct build metadata variants");
+
   std::atomic<bool> consistent { true };
   std::thread reader([&] {
     for (int iteration = 0; iteration < 1000; ++iteration) {
       const auto snapshot = registry.snapshot();
       const auto count = snapshot.size();
-      if (count < 2 || count > 22 || snapshot.packages().size() != count) {
+      if (count < 4 || count > 24 || snapshot.packages().size() != count) {
         consistent = false;
       }
     }
   });
   for (int patch = 1; patch <= 20; ++patch) {
-    registry.register_package(package("com.example.concurrent", "1.0." + std::to_string(patch)));
+    if (!registry.register_package(
+          package("com.example.concurrent", "1.0." + std::to_string(patch)))) {
+      consistent = false;
+    }
   }
   reader.join();
   require(consistent.load(), "registry snapshots support consistent lock-free concurrent reads");
@@ -293,15 +329,25 @@ void packages_enforce_exact_resource_snapshots() {
         });
     },
     "zero-byte resource declarations cannot bypass exact size validation");
+  const auto invalid_package = skill_package::create(manifest,
+    {},
+    {
+      { "main", { .descriptor = descriptor, .content = "x", .sha256 = empty_sha256 } },
+    });
+  require(!invalid_package && invalid_package.error.code == skill_error_code::invalid_package,
+    "package construction provides a typed result API for external package data");
 }
 
 void resolver_is_deterministic_backtracking_and_dependency_first() {
   skill_registry registry;
-  registry.register_package(package("common", "1.5.0"));
-  registry.register_package(package("common", "2.5.0"));
-  registry.register_package(package("app", "1.0.0", { dependency("common", "^1.0.0") }));
-  registry.register_package(package("app", "2.0.0", { dependency("common", "^2.0.0") }));
-  registry.register_package(package("zother", "1.0.0", { dependency("common", "^1.0.0") }));
+  require_registered(registry, package("common", "1.5.0"));
+  require_registered(registry, package("common", "2.5.0"));
+  require_registered(
+    registry, package("app", "1.0.0", { dependency("common", "^1.0.0") }));
+  require_registered(
+    registry, package("app", "2.0.0", { dependency("common", "^2.0.0") }));
+  require_registered(
+    registry, package("zother", "1.0.0", { dependency("common", "^1.0.0") }));
 
   const auto result = skill_resolver().resolve(
     registry.snapshot(), { .roots = { dependency("app", "*"), dependency("zother", "1.0.0") } });
@@ -321,8 +367,8 @@ void resolver_is_deterministic_backtracking_and_dependency_first() {
 
 void resolver_reports_cycles_conflicts_optional_dependencies_and_limits() {
   skill_registry registry;
-  registry.register_package(package("a", "1.0.0", { dependency("b", "1.0.0") }));
-  registry.register_package(package("b", "1.0.0", { dependency("a", "1.0.0") }));
+  require_registered(registry, package("a", "1.0.0", { dependency("b", "1.0.0") }));
+  require_registered(registry, package("b", "1.0.0", { dependency("a", "1.0.0") }));
   const auto cycle = skill_resolver().resolve(
     registry.snapshot(), { .roots = { dependency("a", "1.0.0"), dependency("b", "1.0.0") } });
   require(
@@ -330,7 +376,7 @@ void resolver_reports_cycles_conflicts_optional_dependencies_and_limits() {
     "dependency cycles are rejected with a structured diagnostic");
 
   skill_registry optional_registry;
-  optional_registry.register_package(
+  require_registered(optional_registry,
     package("root", "1.0.0", { dependency("missing", "^1.0.0", true) }));
   const auto optional = skill_resolver().resolve(
     optional_registry.snapshot(), { .roots = { dependency("root", "1.0.0") } });

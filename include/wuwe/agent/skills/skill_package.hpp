@@ -3,18 +3,21 @@
 
 #include <map>
 #include <memory>
-#include <stdexcept>
 #include <string>
-#include <utility>
 
 #include <wuwe/agent/skills/skill_manifest.hpp>
 
 namespace wuwe::agent::skills {
 
+struct skill_package_create_result;
+
 class skill_package final {
 public:
   skill_package(skill_manifest manifest, skill_provenance provenance,
     std::map<std::string, skill_resource> resources);
+
+  [[nodiscard]] static skill_package_create_result create(skill_manifest manifest,
+    skill_provenance provenance, std::map<std::string, skill_resource> resources);
 
   [[nodiscard]] const skill_manifest& manifest() const noexcept {
     return data_->manifest;
@@ -44,6 +47,15 @@ private:
 };
 
 using skill_package_ptr = std::shared_ptr<const skill_package>;
+
+struct skill_package_create_result {
+  skill_package_ptr package;
+  skill_error_info error;
+
+  [[nodiscard]] explicit operator bool() const noexcept {
+    return package != nullptr && !error;
+  }
+};
 
 } // namespace wuwe::agent::skills
 

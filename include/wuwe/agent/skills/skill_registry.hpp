@@ -18,11 +18,28 @@ enum class skill_registration_policy {
   replace,
 };
 
+enum class skill_registration_status {
+  none,
+  inserted,
+  unchanged,
+  replaced,
+};
+
+[[nodiscard]] const char* to_string(skill_registration_status value) noexcept;
+
+struct skill_registration_result {
+  skill_registration_status status { skill_registration_status::none };
+  skill_package_ptr package;
+  skill_package_ptr previous;
+  skill_error_info error;
+
+  [[nodiscard]] explicit operator bool() const noexcept {
+    return status != skill_registration_status::none && !error;
+  }
+};
+
 class skill_registry_snapshot final {
 public:
-  using version_map = std::map<semantic_version, skill_package_ptr, std::greater<>>;
-  using package_map = std::map<std::string, version_map>;
-
   skill_registry_snapshot();
 
   [[nodiscard]] std::size_t size() const noexcept;
@@ -37,6 +54,9 @@ public:
   [[nodiscard]] std::vector<skill_package_ptr> packages() const;
 
 private:
+  using version_map = std::map<semantic_version, skill_package_ptr, std::greater<>>;
+  using package_map = std::map<std::string, version_map>;
+
   friend class skill_registry;
   explicit skill_registry_snapshot(std::shared_ptr<const package_map> packages);
   std::shared_ptr<const package_map> packages_;
@@ -46,7 +66,7 @@ class skill_registry final {
 public:
   skill_registry();
 
-  void register_package(skill_package_ptr package,
+  [[nodiscard]] skill_registration_result register_package(skill_package_ptr package,
     skill_registration_policy policy = skill_registration_policy::reject_conflict);
   [[nodiscard]] bool unregister_package(const std::string& id, const semantic_version& version);
   [[nodiscard]] skill_registry_snapshot snapshot() const noexcept;

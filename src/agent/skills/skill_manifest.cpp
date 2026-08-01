@@ -406,6 +406,21 @@ skill_manifest parse_skill_manifest(std::string_view input, const skill_manifest
   }
 }
 
+skill_manifest_parse_result try_parse_skill_manifest(
+  std::string_view input, const skill_manifest_limits& limits) {
+  try {
+    return { .manifest = parse_skill_manifest(input, limits) };
+  }
+  catch (const std::invalid_argument& exception) {
+    return {
+      .error = {
+        .code = skill_error_code::invalid_manifest,
+        .message = exception.what(),
+      },
+    };
+  }
+}
+
 skill_manifest skill_manifest_from_json(const json& input, const skill_manifest_limits& limits) {
   validate_json_limits(input, limits, 0, "$");
   reject_unknown(input,
@@ -549,6 +564,29 @@ skill_manifest skill_manifest_from_json(const json& input, const skill_manifest_
   }
   validate_skill_manifest(output);
   return output;
+}
+
+skill_manifest_parse_result try_skill_manifest_from_json(
+  const json& input, const skill_manifest_limits& limits) {
+  try {
+    return { .manifest = skill_manifest_from_json(input, limits) };
+  }
+  catch (const std::invalid_argument& exception) {
+    return {
+      .error = {
+        .code = skill_error_code::invalid_manifest,
+        .message = exception.what(),
+      },
+    };
+  }
+  catch (const json::exception& exception) {
+    return {
+      .error = {
+        .code = skill_error_code::invalid_manifest,
+        .message = exception.what(),
+      },
+    };
+  }
 }
 
 json skill_manifest_to_json(const skill_manifest& manifest) {

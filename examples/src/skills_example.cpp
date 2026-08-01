@@ -17,7 +17,12 @@ int main(int argc, char** argv) {
   }
 
   skills::skill_registry registry;
-  registry.register_package(loaded.package);
+  const auto registered = registry.register_package(loaded.package);
+  if (!registered) {
+    std::cerr << "registration failed [" << skills::to_string(registered.error.code)
+              << "]: " << registered.error.message << '\n';
+    return 1;
+  }
 
   const auto resolved = skills::skill_resolver().resolve(registry.snapshot(),
     {

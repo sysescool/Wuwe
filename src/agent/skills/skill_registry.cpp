@@ -5,6 +5,20 @@
 
 namespace wuwe::agent::skills {
 
+const char* to_string(skill_registration_status value) noexcept {
+  switch (value) {
+    case skill_registration_status::none:
+      return "none";
+    case skill_registration_status::inserted:
+      return "inserted";
+    case skill_registration_status::unchanged:
+      return "unchanged";
+    case skill_registration_status::replaced:
+      return "replaced";
+  }
+  return "unknown";
+}
+
 skill_registry_snapshot::skill_registry_snapshot()
     : packages_(std::make_shared<const package_map>()) {
 }
@@ -78,31 +92,72 @@ skill_registry::skill_registry()
     : packages_(std::make_shared<const skill_registry_snapshot::package_map>()) {
 }
 
-void skill_registry::register_package(skill_package_ptr package, skill_registration_policy policy) {
+skill_registration_result skill_registry::register_package(
+  skill_package_ptr package, skill_registration_policy policy) {
   if (!package) {
-    throw std::invalid_argument("cannot register a null skill package");
+    return {
+      .error = {
+        .code = skill_error_code::invalid_registration,
+        .message = "cannot register a null skill package",
+      },
+    };
   }
   const auto& descriptor = package->descriptor();
   if (descriptor.id.empty()) {
-    throw std::invalid_argument("cannot register a skill package with an empty id");
+    return {
+      .package = std::move(package),
+      .error = {
+        .code = skill_error_code::invalid_registration,
+        .message = "cannot register a skill package with an empty id",
+      },
+    };
   }
+  const auto id = descriptor.id;
+  const auto version = descriptor.version;
 
   std::lock_guard lock(write_mutex_);
   const auto current = packages_.load(std::memory_order_acquire);
-  auto next = std::make_shared<skill_registry_snapshot::package_map>(*current);
-  auto& versions = (*next)[descriptor.id];
-  const auto existing = versions.find(descriptor.version);
-  if (existing != versions.end() && policy == skill_registration_policy::reject_conflict) {
-    if (existing->second == package ||
-        existing->second->provenance().content_sha256 == package->provenance().content_sha256) {
-      return;
+  const auto current_id = current->find(id);
+  skill_package_ptr existing;
+  if (current_id != current->end()) {
+    const auto found = current_id->second.find(version);
+    if (found != current_id->second.end()) {
+      existing = found->second;
     }
-    throw std::invalid_argument("skill package '" + descriptor.id + "@" +
-                                descriptor.version.string() + "' is already registered");
   }
-  versions[descriptor.version] = std::move(package);
+  if (existing &&
+      (existing == package ||
+        existing->provenance().content_sha256 == package->provenance().content_sha256)) {
+    return {
+      .status = skill_registration_status::unchanged,
+      .package = std::move(existing),
+    };
+  }
+  if (existing && policy == skill_registration_policy::reject_conflict) {
+    const auto message =
+      "skill package '" + id + "@" + version.string() + "' is already registered";
+    return {
+      .package = std::move(package),
+      .previous = existing,
+      .error = {
+        .code = skill_error_code::registration_conflict,
+        .message = message,
+      },
+    };
+  }
+
+  auto next = std::make_shared<skill_registry_snapshot::package_map>(*current);
+  auto& versions = (*next)[id];
+  versions[version] = std::move(package);
+  const auto registered = versions.at(version);
   packages_.store(std::shared_ptr<const skill_registry_snapshot::package_map>(std::move(next)),
     std::memory_order_release);
+  return {
+    .status = existing ? skill_registration_status::replaced
+                       : skill_registration_status::inserted,
+    .package = registered,
+    .previous = existing,
+  };
 }
 
 bool skill_registry::unregister_package(const std::string& id, const semantic_version& version) {

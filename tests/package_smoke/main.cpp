@@ -1,4 +1,5 @@
 #include <chrono>
+#include <compare>
 #include <string>
 #include <utility>
 
@@ -14,7 +15,14 @@ int main() {
 
   wuwe::agent::skills::skill_registry skills;
   const auto skill_version = wuwe::agent::skills::semantic_version::parse("1.0.0");
-  if (skill_version.major != 1 || !skills.snapshot().empty()) {
+  const auto linux_build = wuwe::agent::skills::semantic_version::parse("1.0.0+linux");
+  const auto windows_build = wuwe::agent::skills::semantic_version::parse("1.0.0+windows");
+  if (skill_version.major != 1 || !skills.snapshot().empty() || linux_build == windows_build ||
+      wuwe::agent::skills::compare_precedence(linux_build, windows_build) !=
+        std::strong_ordering::equal ||
+      std::string(wuwe::agent::skills::to_string(
+        wuwe::agent::skills::skill_error_code::registration_conflict)) !=
+        "registration_conflict") {
     return 1;
   }
 

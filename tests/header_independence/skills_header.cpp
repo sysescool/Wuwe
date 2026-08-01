@@ -1,3 +1,5 @@
+#include <compare>
+
 #include <wuwe/agent/skills/skills.hpp>
 
 #ifdef WUWE_AGENT_A2A_SKILLS_ADAPTER_HPP
@@ -14,5 +16,8 @@
 
 bool skills_header_is_independent() {
   const auto version = wuwe::agent::skills::semantic_version::parse("1.0.0");
-  return version.major == 1 && wuwe::agent::skills::current_skill_manifest_schema_version == 1;
+  const auto build = wuwe::agent::skills::semantic_version::parse("1.0.0+build");
+  return version.major == 1 && version != build &&
+         wuwe::agent::skills::compare_precedence(version, build) == std::strong_ordering::equal &&
+         wuwe::agent::skills::current_skill_manifest_schema_version == 1;
 }
