@@ -94,7 +94,11 @@ SHA-256 establishes byte integrity, not publisher authenticity. Local directorie
 
 ```cpp
 skills::skill_registry registry;
-registry.register_package(loaded.package);
+auto registered = registry.register_package(loaded.package);
+if (!registered) {
+  // Inspect registered.error.code, registered.error.message, and
+  // registered.previous for a conflicting immutable package.
+}
 
 auto resolution = skills::skill_resolver().resolve(registry.snapshot(), {
   .roots = {{
@@ -106,10 +110,35 @@ auto resolution = skills::skill_resolver().resolve(registry.snapshot(), {
 
 Registry reads are lock-free snapshots; writes publish a new immutable map. A snapshot remains stable if the live registry later changes. Resolution is deterministic, dependency-first, bounded, cycle-aware, and backtracks when the highest candidate conflicts with another constraint. Prerelease packages are selected only when a requirement explicitly names a prerelease.
 
+`semantic_version` equality represents the complete version identity, including
+build metadata. `compare_precedence()` implements SemVer precedence and ignores
+build metadata. Consequently `1.0.0+linux` and `1.0.0+windows` may coexist as
+distinct packages while comparison ranges treat them at the same precedence.
+
 Registering the same `(id, version, digest)` is idempotent. Different content at
 the same ID and version is rejected unless the host deliberately supplies
 `skill_registration_policy::replace`; existing snapshots and activations still
 retain the package they already hold.
+
+## Error contract
+
+Skills follows one error policy across layers:
+
+- deterministic value parsing and construction provide a conventional throwing
+  API plus a typed result alternative (`try_parse_skill_manifest()` and
+  `skill_package::create()`);
+- filesystem loading and Registry mutation return result objects with stable
+  error codes and messages;
+- dependency resolution and activation return structured diagnostics because one
+  operation may produce multiple warnings or failures;
+- constructors for host-owned adapters may throw `std::invalid_argument` for
+  programming or configuration errors established before runtime.
+
+Result APIs convert expected contract failures, not arbitrary process-level C++
+failures such as allocation errors, unless an operation explicitly documents a
+`noexcept` boundary such as the directory loader. Callers therefore do not need
+exception handling for package conflicts, malformed external manifests, missing
+dependencies, or unavailable runtime requirements.
 
 An activation consumes the exact resolved packages. It never performs a second floating version lookup, so a run cannot silently drift after resolution.
 
