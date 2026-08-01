@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "org.wuwe.examples.review",
+  "version": "1.0.0",
+  "name": "Review",
+  "description": "Review an artifact against a stable engineering rubric.",
+  "tags": ["review", "quality"],
+  "input_modes": ["text/plain"],
+  "output_modes": ["text/markdown"],
+  "instructions": ["main"],
+  "resources": [
+    {
+      "id": "main",
+      "path": "SKILL.md",
+      "kind": "instructions",
+      "media_type": "text/markdown",
+      "size": 206,
+      "sha256": "02a614403ae2e74cbb6e15ceebf0a7e341310f8745aec04e249fe20b79fcba08"
+    }
+  ],
+  "requires": {
+    "skills": [],
+    "tools": [],
+    "capabilities": [],
+    "knowledge": []
+  },
+  "metadata": {
+    "owner": "wuwe"
+  }
+}

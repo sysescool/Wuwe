@@ -14,6 +14,7 @@ bool sqlite_schema_header_is_independent();
 bool filesystem_tools_header_is_independent();
 bool process_tools_header_is_independent();
 bool llm_dispatch_header_is_independent();
+bool skills_header_is_independent();
 bool version_header_is_independent();
 bool umbrella_header_is_independent();
 
@@ -26,7 +27,8 @@ int main() {
              filesystem_header_is_independent() && metadata_header_is_independent() &&
              sqlite_schema_header_is_independent() && filesystem_tools_header_is_independent() &&
              process_tools_header_is_independent() && llm_dispatch_header_is_independent() &&
-             version_header_is_independent() && umbrella_header_is_independent()
+             skills_header_is_independent() && version_header_is_independent() &&
+             umbrella_header_is_independent()
            ? 0
            : 1;
 }

@@ -12,6 +12,12 @@ int main() {
     return 1;
   }
 
+  wuwe::agent::skills::skill_registry skills;
+  const auto skill_version = wuwe::agent::skills::semantic_version::parse("1.0.0");
+  if (skill_version.major != 1 || !skills.snapshot().empty()) {
+    return 1;
+  }
+
   auto filesystem_backend = wuwe::agent::filesystem::make_local_filesystem_backend();
   auto process_backend = wuwe::agent::process::make_local_process_backend();
   if (!filesystem_backend || !process_backend || process_backend->info().name != "local_process") {

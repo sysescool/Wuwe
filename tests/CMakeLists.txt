@@ -203,6 +203,17 @@ wuwe_copy_runtime_dlls(a2a_tests)
 
 add_test(NAME a2a_tests COMMAND a2a_tests)
 
+foreach(skills_test
+    skills_core_tests
+    skills_loader_tests
+    skills_activation_tests
+    skills_integration_tests)
+    add_executable(${skills_test} ${skills_test}.cpp)
+    target_link_libraries(${skills_test} PRIVATE wuwe)
+    wuwe_copy_runtime_dlls(${skills_test})
+    add_test(NAME ${skills_test} COMMAND ${skills_test})
+endforeach()
+
 add_executable(header_independence_tests
     header_independence/main.cpp
     header_independence/evaluation_header.cpp
@@ -221,6 +232,7 @@ add_executable(header_independence_tests
     header_independence/filesystem_tools_header.cpp
     header_independence/process_tools_header.cpp
     header_independence/llm_dispatch_header.cpp
+    header_independence/skills_header.cpp
     header_independence/version_header.cpp
     header_independence/umbrella_header.cpp
 )
@@ -301,6 +313,10 @@ add_dependencies(mcp_tests ${WUWE_MCP_STDIO_TEST_TARGET})
 target_compile_definitions(mcp_tests PRIVATE
     WUWE_MCP_STDIO_EXAMPLE_PATH="$<TARGET_FILE:${WUWE_MCP_STDIO_TEST_TARGET}>"
 )
+add_dependencies(skills_integration_tests ${WUWE_MCP_STDIO_TEST_TARGET})
+target_compile_definitions(skills_integration_tests PRIVATE
+    WUWE_MCP_STDIO_EXAMPLE_PATH="$<TARGET_FILE:${WUWE_MCP_STDIO_TEST_TARGET}>"
+)
 
 add_test(NAME mcp_tests COMMAND mcp_tests)
 
@@ -314,6 +330,7 @@ set_tests_properties(
     best_of_n_tests
     multi_agent_tests
     a2a_tests
+    skills_core_tests
     reasoning_tests
     mcp_tests
     PROPERTIES LABELS "concurrency"
