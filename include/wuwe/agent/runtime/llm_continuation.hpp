@@ -29,7 +29,7 @@ inline llm_context_source context_source_from_json(const nlohmann::json& value) 
   if (value.is_number_integer()) {
     const auto source = value.get<int>();
     if (source >= static_cast<int>(llm_context_source::automatic) &&
-        source <= static_cast<int>(llm_context_source::other)) {
+        source <= static_cast<int>(llm_context_source::skill)) {
       return static_cast<llm_context_source>(source);
     }
   }
@@ -45,6 +45,8 @@ inline llm_context_source context_source_from_json(const nlohmann::json& value) 
       return llm_context_source::memory;
     if (source == "knowledge")
       return llm_context_source::knowledge;
+    if (source == "skill")
+      return llm_context_source::skill;
     if (source == "tool_result")
       return llm_context_source::tool_result;
     if (source == "other")
@@ -197,6 +199,7 @@ inline nlohmann::json request_to_json(const llm_request& value) {
           { "conversation", value.context_budget->limits.conversation },
           { "memory", value.context_budget->limits.memory },
           { "knowledge", value.context_budget->limits.knowledge },
+          { "skills", value.context_budget->limits.skills },
           { "tool_schemas", value.context_budget->limits.tool_schemas },
           { "tool_results", value.context_budget->limits.tool_results },
           { "other", value.context_budget->limits.other },
@@ -276,6 +279,7 @@ inline llm_request request_from_json(const nlohmann::json& value) {
         .conversation = limits.value("conversation", std::size_t {}),
         .memory = limits.value("memory", std::size_t {}),
         .knowledge = limits.value("knowledge", std::size_t {}),
+        .skills = limits.value("skills", std::size_t {}),
         .tool_schemas = limits.value("tool_schemas", std::size_t {}),
         .tool_results = limits.value("tool_results", std::size_t {}),
         .other = limits.value("other", std::size_t {}),

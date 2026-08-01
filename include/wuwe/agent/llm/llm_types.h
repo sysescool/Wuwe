@@ -51,6 +51,7 @@ enum class llm_context_source {
   knowledge,
   tool_result,
   other,
+  skill,
 };
 
 inline std::string_view to_string(llm_context_source source) noexcept {
@@ -69,6 +70,8 @@ inline std::string_view to_string(llm_context_source source) noexcept {
       return "tool_result";
     case llm_context_source::other:
       return "other";
+    case llm_context_source::skill:
+      return "skill";
   }
   return "automatic";
 }
@@ -78,6 +81,7 @@ struct llm_context_component_limits {
   std::size_t conversation { 0 };
   std::size_t memory { 0 };
   std::size_t knowledge { 0 };
+  std::size_t skills { 0 };
   std::size_t tool_schemas { 0 };
   std::size_t tool_results { 0 };
   std::size_t other { 0 };

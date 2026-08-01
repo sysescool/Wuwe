@@ -3,6 +3,7 @@
 
 #include <wuwe/agent/a2a/a2a.hpp>
 #include <wuwe/agent/a2a/multi_agent_adapter.hpp>
+#include <wuwe/agent/a2a/skills_adapter.hpp>
 #include <wuwe/agent/approval/approval_module.hpp>
 #include <wuwe/agent/audit/audit_module.hpp>
 #include <wuwe/agent/capability/capability.hpp>
@@ -43,9 +44,11 @@
 #include <wuwe/agent/llm/resilient_llm_client.hpp>
 #include <wuwe/agent/llm/scripted_llm_client.hpp>
 #include <wuwe/agent/mcp/mcp.hpp>
+#include <wuwe/agent/mcp/skills_adapter.hpp>
 #include <wuwe/agent/memory/memory.hpp>
 #include <wuwe/agent/multi_agent/multi_agent.hpp>
 #include <wuwe/agent/multi_agent/planning_adapter.hpp>
+#include <wuwe/agent/multi_agent/skills_adapter.hpp>
 #include <wuwe/agent/orchestration/orchestration.hpp>
 #include <wuwe/agent/planning/planning.hpp>
 #include <wuwe/agent/process/process.hpp>
@@ -54,6 +57,7 @@
 #include <wuwe/agent/routing/routing.hpp>
 #include <wuwe/agent/runtime/runtime.hpp>
 #include <wuwe/agent/sandbox/sandbox_module.hpp>
+#include <wuwe/agent/skills/skills.hpp>
 #include <wuwe/agent/tools/json_schema.hpp>
 #include <wuwe/agent/tools/tool.hpp>
 #include <wuwe/common/print.h>

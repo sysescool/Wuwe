@@ -135,6 +135,7 @@ struct context_budget_usage {
   std::size_t conversation { 0 };
   std::size_t memory { 0 };
   std::size_t knowledge { 0 };
+  std::size_t skills { 0 };
   std::size_t tool_schemas { 0 };
   std::size_t tool_results { 0 };
   std::size_t other { 0 };
@@ -143,7 +144,7 @@ struct context_budget_usage {
   [[nodiscard]] std::size_t input_total() const noexcept {
     std::size_t total = system;
     for (const auto value :
-      { conversation, memory, knowledge, tool_schemas, tool_results, other }) {
+      { conversation, memory, knowledge, skills, tool_schemas, tool_results, other }) {
       detail::saturating_context_token_add(total, value);
     }
     return total;
@@ -244,6 +245,7 @@ public:
     static constexpr llm_context_source reduction_order[] {
       llm_context_source::memory,
       llm_context_source::knowledge,
+      llm_context_source::skill,
       llm_context_source::tool_result,
       llm_context_source::conversation,
       llm_context_source::other,
@@ -296,6 +298,7 @@ private:
       { llm_context_source::system, budget.limits.system, budget.allow_system_truncation, 0 },
       { llm_context_source::memory, budget.limits.memory, true, 0 },
       { llm_context_source::knowledge, budget.limits.knowledge, true, 0 },
+      { llm_context_source::skill, budget.limits.skills, true, 0 },
       { llm_context_source::tool_result, budget.limits.tool_results, true, 0 },
       { llm_context_source::conversation,
         budget.limits.conversation,
@@ -429,6 +432,8 @@ private:
         return usage.memory;
       case llm_context_source::knowledge:
         return usage.knowledge;
+      case llm_context_source::skill:
+        return usage.skills;
       case llm_context_source::tool_result:
         return usage.tool_results;
       case llm_context_source::other:
@@ -449,6 +454,8 @@ private:
         return usage.memory;
       case llm_context_source::knowledge:
         return usage.knowledge;
+      case llm_context_source::skill:
+        return usage.skills;
       case llm_context_source::tool_result:
         return usage.tool_results;
       case llm_context_source::other:
