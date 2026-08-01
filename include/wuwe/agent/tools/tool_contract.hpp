@@ -194,13 +194,7 @@ struct tool_provider_capabilities {
   return "strict";
 }
 
-struct tool_capability_requirement {
-  std::string name;
-  capability::capability_risk_level risk { capability::capability_risk_level::low };
-  std::string summary;
-  std::vector<std::string> resources;
-  std::map<std::string, std::string> metadata;
-};
+using tool_capability_requirement = capability::capability_requirement;
 
 struct tool_descriptor {
   std::string name;

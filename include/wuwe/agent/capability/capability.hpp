@@ -14,6 +14,14 @@ enum class capability_risk_level {
   critical,
 };
 
+struct capability_requirement {
+  std::string name;
+  capability_risk_level risk { capability_risk_level::low };
+  std::string summary;
+  std::vector<std::string> resources;
+  std::map<std::string, std::string> metadata;
+};
+
 struct capability_request {
   std::string name;
   capability_risk_level risk { capability_risk_level::low };
