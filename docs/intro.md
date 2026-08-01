@@ -24,6 +24,7 @@ Its modules are independently usable. A host can start with one provider client 
 | Context budget | Unified allocation across system prompts, conversation, memory, retrieval, tool schemas/results, and reserved output |
 | Resource routing | Capability-aware model profiles, token and cost budgets, and dynamic model selection |
 | Tools | Typed schemas, JSON argument parsing, dispatch, and provider composition |
+| Skills | Strict packages, SemVer dependencies, immutable registry snapshots, governed activation, and explicit runtime projections |
 | Filesystem | Root-scoped reads, writes, exact edits, search, transfer, revisions, approvals, and audit |
 | Process | Allowlisted argv execution, bounded I/O, process-tree cleanup, and an opt-in shell adapter |
 | Reasoning | Simple, ReAct, reflect-and-retry, plan-execute, and Best-of-N runs with budgets and traces |
@@ -67,6 +68,6 @@ Optional capabilities stay explicit:
 
 1. [Build and run Wuwe](getting-started.md).
 2. Configure an [LLM provider](llm-providers.md) and [typed tools](llm-tools.md).
-3. Compose the [agent runtime](agent-runtime.md), optional [Agent Host protocol](agent-host-protocol.md), [orchestration](orchestration.md), [reasoning](reasoning.md), [planning](planning.md), [multi-agent runtime](multi-agent.md), [reflection](reflection.md), [learning and adaptation](learning-adaptation.md), or [exploration and discovery](exploration-discovery.md) layer you need.
+3. Compose the [agent runtime](agent-runtime.md), reusable [Skills](skills.md), optional [Agent Host protocol](agent-host-protocol.md), [orchestration](orchestration.md), [reasoning](reasoning.md), [planning](planning.md), [multi-agent runtime](multi-agent.md), [reflection](reflection.md), [learning and adaptation](learning-adaptation.md), or [exploration and discovery](exploration-discovery.md) layer you need.
 4. Add [memory](memory-management.md), [knowledge retrieval](knowledge-retrieval.md), [MCP](mcp.md), or remote [A2A](a2a.md) interoperability.
 5. Review [security and governance](security-governance.md), [observability](observability.md), [storage contracts](storage-contracts.md), [dependencies](dependencies.md), [packaging](packaging.md), and [controlled execution](execution-runtime.md) before deployment.

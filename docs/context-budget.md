@@ -7,7 +7,7 @@ description: Allocate a model context window across prompts, conversation, memor
 # Context budget
 
 `llm_context_budget` gives one request-level policy authority over the complete
-model context. It accounts for system messages, conversation, Memory, Knowledge,
+model context. It accounts for system messages, conversation, Skills, Memory, Knowledge,
 tool schemas, tool-result exchanges, other messages, and reserved model output.
 Memory and Knowledge mark their injected messages explicitly; ordinary requests
 can set `chat_message::context_source` when they add another context component.
@@ -22,6 +22,7 @@ request.context_budget = wuwe::llm_context_budget {
   .limits = {
     .system = 12000,
     .conversation = 60000,
+    .skills = 12000,
     .memory = 12000,
     .knowledge = 24000,
     .tool_schemas = 12000,
@@ -39,12 +40,17 @@ context and accumulated tool results are included. A budget failure returns
 request.
 
 The default policy preserves system messages and complete tool schemas. It first
-reduces Memory, Knowledge, old tool exchanges, old conversation, and other
+reduces Memory, Knowledge, Skills, old tool exchanges, old conversation, and other
 context. The configured number of newest conversation messages is neither
 dropped nor truncated. Assistant tool-call messages and their matching tool
 results are removed as one exchange, so trimming cannot create an invalid chat
 history. Set `allow_system_truncation` only when the host has explicitly designed
 its system prompt to tolerate truncation.
+
+Skill adapters set `chat_message::context_source` to
+`llm_context_source::skill`. This keeps reusable instructions visible in
+`context_budget_usage::skills` and independently bounded by `.limits.skills`
+instead of hiding them inside the general system or conversation totals.
 
 `context_budget_manager` is independently usable when a host assembles requests
 outside `llm_agent_runner`. Its result contains before/after component usage,

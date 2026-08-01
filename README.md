@@ -17,7 +17,7 @@
 
 Wuwe is a C++20 framework for building tool-using, stateful, and auditable AI agents in native applications, services, and command-line programs.
 
-It provides independently usable modules for model access, resource-aware routing, typed tools, reasoning with Best-of-N selection, reflection, planning, multi-agent collaboration, A2A, typed fan-out/fan-in orchestration, memory, retrieval-augmented generation, guardrails, evaluation, offline learning and adaptation, controlled exploration and discovery, MCP, networking, policy, approvals, audit, observability, and controlled execution.
+It provides independently usable modules for model access, resource-aware routing, typed tools, reusable Skills, reasoning with Best-of-N selection, reflection, planning, multi-agent collaboration, A2A, typed fan-out/fan-in orchestration, memory, retrieval-augmented generation, guardrails, evaluation, offline learning and adaptation, controlled exploration and discovery, MCP, networking, policy, approvals, audit, observability, and controlled execution.
 
 ## Release support
 
@@ -41,6 +41,7 @@ is not promised. See [Versioning and compatibility](docs/versioning.md), the
 | --- | --- |
 | Models and tools | OpenAI-compatible, Anthropic, Gemini, and Ollama clients; capability-aware model routing; token and cost budgets; streaming; typed schemas and dispatch |
 | Agent runtime | Tool loops, callbacks, cancellation, reasoning modes, team sessions, skill dispatch, parallel collaboration, consensus, plans, and traces |
+| Skills | Strict manifests, immutable packages, SemVer dependency resolution, governed activation, trust-aware instruction projection, and explicit runtime adapters |
 | Agent interoperability | A2A Agent Cards, Messages, Tasks, Artifacts, discovery, JSON-RPC, HTTP transport, and local/remote team adapters |
 | Orchestration | Typed chains, context-aware cancellation, bounded fan-out/fan-in, dynamic parallel mapping, retries, recovery, and routing |
 | State and knowledge | Scoped memory, file and SQLite persistence, embeddings, retrieval, reranking, grounding, and citations |
@@ -102,6 +103,10 @@ ctest --test-dir build-tsan -L concurrency --repeat until-fail:20 --output-on-fa
 ```
 
 See [Getting started](https://lkimuk.github.io/Wuwe/docs/getting-started/) and [Dependencies](https://lkimuk.github.io/Wuwe/docs/dependencies/).
+
+For reusable agent behavior, see [Skills](docs/skills.md). Skills assemble declared
+instructions and requirements without executing scripts, granting capabilities, or
+bypassing Tool Contract, approval, and audit boundaries.
 
 ## Minimal client
 

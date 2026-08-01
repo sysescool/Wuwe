@@ -38,6 +38,10 @@ compatibility after recompilation, not cross-release C++ ABI compatibility.
   or resumable work instead of retaining process-local callbacks as state.
 - Inspect `storage_capabilities()` before assuming transactions, migrations,
   multi-process coordination, or distributed consistency.
+- If adopting Skills, use the authoritative `skill.json` format and register only
+  immutable loaded packages. Do not treat legacy Multi-Agent or A2A skill
+  descriptors as executable packages, and do not promote local package trust from
+  a matching hash alone.
 
 ## Execution boundary changes
 

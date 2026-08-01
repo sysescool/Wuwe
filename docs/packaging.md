@@ -42,6 +42,7 @@ Windows produces a `.zip`; Linux produces a `.tar.gz`. Build each archive on its
 - public headers and static libraries
 - `wuwe-config.cmake` and exported CMake targets
 - docs and example source
+- the strict local Skill package example under `examples/skills`
 - `README.md`, `CHANGELOG.md`, `LICENSE`, `VERSION`, and `vcpkg.json`
 - `manifest.json` with resolved build and runtime capabilities
 - `checksums.sha256`

@@ -48,6 +48,7 @@ Modules expose the event shape appropriate to their work:
 | Exploration and discovery | `exploration_observer` and common event sink for finalized hypothesis runs and evidence records |
 | Resource routing | `model_routing_observer`, common event sink, and Reasoning `model_routed` traces |
 | Multi-Agent | `team_observer` and common event sink for dispatch, task, and consensus lifecycle |
+| Skills | Common event sink for package loading and activation lifecycle; events contain identities, counts, decisions, and digests but no resource content |
 | Memory | A module-specific audit callback on `memory_context` |
 | Knowledge / RAG | `knowledge_event_sink` with in-memory, common-event, Prometheus-text, and OTEL-style adapters |
 | MCP host | `mcp_host_event_sink` with in-memory, JSONL, fan-out, common-event, Prometheus-text, and OTEL-style adapters |

@@ -8,6 +8,12 @@ description: Build MCP servers, clients, process hosts, gateways, and HTTP endpo
 
 Wuwe defaults to MCP protocol version `2025-06-18` and retains compatibility with `2024-11-05` for exposing tools and context, consuming external servers, and aggregating multiple process servers behind one host. Initialize requests negotiate an explicitly supported version; unsupported versions receive an error containing the supported-version list. Clients and host entries can select a supported version without changing global state.
 
+Skills integration is explicit. `mcp_skill_tool_provider` binds an allowlisted
+set of `(server_id, tool_name, exposed_name)` entries into the normal Wuwe Tool
+Contract surface. Activating a Skill never imports every Tool advertised by an MCP
+server and never bypasses MCP access policy, capability policy, or approval. See
+[Skills](skills.md) for the package and activation boundary.
+
 ## Server
 
 `mcp_server` supports:

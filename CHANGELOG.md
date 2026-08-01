@@ -12,6 +12,10 @@ Wuwe 1.0.0 is the first stable public release. It replaces the unreleased
 
 ### Added
 
+- A first-class Skills module with strict versioned manifests, immutable verified
+  packages, SemVer dependency resolution, bounded activation, trust-aware LLM and
+  Planning projection, explicit Knowledge/Multi-Agent/A2A/MCP adapters, and
+  independent context-budget accounting.
 - Durable agent runs with persistence, recovery, approval, cancellation,
   scheduling, lifecycle events, and host integration.
 - Resource-aware LLM routing with capability checks, token budgets, cost

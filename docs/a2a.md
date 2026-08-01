@@ -8,6 +8,12 @@ description: Discover remote agents and exchange Agent Cards, Messages, Tasks, A
 
 The A2A module connects remote agents without treating MCP as an agent-to-agent protocol. It provides Agent Card discovery, typed Message/Part/Task/Artifact models, JSON codecs, JSON-RPC methods, in-process and HTTP transports, client and service boundaries, and adapters for the Multi-Agent runtime.
 
+A2A Agent Card skills are protocol advertisements. They are not equivalent to a
+locally verified [Wuwe Skill package](skills.md). The Skills adapter can publish a
+bounded descriptor and Wuwe version/digest extension, but a descriptor received
+from a remote card remains `retrieved_untrusted` and non-activatable until a host
+obtains and verifies a package through a separate supply-chain process.
+
 ## Supported protocol surface
 
 The public types model the A2A `0.3.0` data shape and these JSON-RPC operations:

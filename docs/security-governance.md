@@ -91,6 +91,14 @@ records are denied; explicitly public or matching tenant/user/role labels are
 required. Identity comes from the host execution context by default, not from model
 tool arguments.
 
+Skills use the same provenance boundary. A local Skill package is untrusted by
+default even when all SHA-256 checks pass: integrity does not establish publisher
+authenticity. Only a host source policy may promote trust. Untrusted Skill
+instructions are rendered as escaped data rather than system instructions, and
+Skill capability declarations never create authorization. Script resources are
+loaded as inert verified bytes and are never executed by the Skills module. See
+[Skills](skills.md) for loader enforcement and the local-directory TOCTOU limit.
+
 ## Sandbox enforcement contracts
 
 `sandbox_backend_info` reports backend availability, isolation level, features, and a field-by-field `sandbox_enforcement_contract`. Enforcement levels distinguish controls that are enforced, partial, not enforced, not applicable, or planned.

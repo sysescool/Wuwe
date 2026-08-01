@@ -8,6 +8,13 @@ description: Register specialized agents, share team sessions, delegate tasks, r
 
 The Multi-Agent module provides a local team runtime above individual model and tool loops. It owns agent registration, skill-based dispatch, lifecycle and capacity checks, shared sessions, task state, parallel execution, consensus, cancellation, telemetry, and Planning integration.
 
+`multi_agent::agent_skill` is a lightweight routing summary, not an executable
+package. The independent [Skills module](skills.md) owns strict manifests,
+resources, dependencies, and activation. Use
+`<wuwe/agent/multi_agent/skills_adapter.hpp>` to publish a verified package as
+routing metadata; the projection deliberately does not transfer package ownership
+or runtime authorization.
+
 ## Agent contract
 
 An `agent_descriptor` declares stable identity, role, skills, metadata, and `max_concurrency`. An `agent_executor` performs one `agent_task_request` with a shared `team_session`, `stop_token`, effective `deadline`, and `remaining_time()` helper:

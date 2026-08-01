@@ -151,6 +151,16 @@ cancellation and isolate the late result in the same way as a hard deadline.
 
 See [Context budget](context-budget.md) for unified request-window allocation.
 
+## Skills integration
+
+The independent [Skills module](skills.md) can resolve and activate reusable
+instruction packages before a run. `apply_skill_activation()` preserves content
+trust, labels Skill messages for separate context budgeting, and exposes only the
+Tools declared by the activation. Wrap the actual provider with
+`scoped_tool_provider` as well; filtering model-visible schemas alone is not an
+invocation security boundary. Skills never grant capabilities or skip the normal
+Tool Contract, approval, cancellation, and audit path.
+
 ## Durable runs
 
 `agent_run_runtime` adds a storage-neutral state machine:
