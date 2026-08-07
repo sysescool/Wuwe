@@ -73,7 +73,7 @@ public:
 
 private:
   mutable std::mutex write_mutex_;
-  std::atomic<std::shared_ptr<const skill_registry_snapshot::package_map>> packages_;
+  std::shared_ptr<const skill_registry_snapshot::package_map> packages_;
 };
 
 } // namespace wuwe::agent::skills

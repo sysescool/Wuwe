@@ -44,7 +44,7 @@ struct llm_pricing {
   const auto reasoning_rate =
     pricing.reasoning_per_million_tokens_usd.value_or(pricing.output_per_million_tokens_usd);
   constexpr double scale = 1'000'000.0;
-  const auto priced = [scale](int tokens, double rate) {
+  const auto priced = [](int tokens, double rate) {
     const auto value = static_cast<double>(tokens) * rate / scale;
     return std::isfinite(value) ? value : (std::numeric_limits<double>::max)();
   };
