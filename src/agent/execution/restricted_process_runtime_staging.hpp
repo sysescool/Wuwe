@@ -17,6 +17,8 @@ enum class restricted_python_runtime_staging_status {
   source_python_not_regular_file,
   source_home_missing,
   source_lib_missing,
+  source_reparse_point,
+  destination_reparse_point,
   create_destination_failed,
   copy_failed,
   write_configuration_failed,

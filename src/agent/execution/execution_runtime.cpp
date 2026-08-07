@@ -76,6 +76,8 @@ void add_backend_attributes(audit::audit_event& event, const execution_backend* 
   event.attributes["file_write_deny_enforcement"] =
     sandbox::to_string(info.enforcement.filesystem_write_deny);
   event.attributes["network_deny_enforcement"] = sandbox::to_string(info.enforcement.network_deny);
+  event.attributes["network_filter_enforcement"] =
+    sandbox::to_string(info.enforcement.network_filter);
 }
 
 std::string policy_event_name(const capability::capability_policy_result& result) {

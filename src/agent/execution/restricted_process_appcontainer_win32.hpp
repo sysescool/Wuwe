@@ -21,6 +21,7 @@ enum class restricted_appcontainer_profile_status {
   delete_existing_failed,
   sid_string_failed,
   storage_path_failed,
+  cleanup_failed,
 };
 
 struct restricted_appcontainer_profile_request {
@@ -28,6 +29,20 @@ struct restricted_appcontainer_profile_request {
   std::wstring display_name;
   std::wstring description;
   bool replace_existing { true };
+};
+
+enum class restricted_appcontainer_profile_cleanup_status {
+  ok,
+  delete_failed,
+};
+
+struct restricted_appcontainer_profile_cleanup_result {
+  restricted_appcontainer_profile_cleanup_status status {
+    restricted_appcontainer_profile_cleanup_status::ok
+  };
+  HRESULT hresult { S_OK };
+  DWORD win32_error { ERROR_SUCCESS };
+  std::string detail;
 };
 
 class restricted_appcontainer_profile {
@@ -53,6 +68,8 @@ public:
     return name_;
   }
 
+  [[nodiscard]] restricted_appcontainer_profile_cleanup_result cleanup() noexcept;
+
 private:
   friend struct restricted_appcontainer_profile_result;
   friend restricted_appcontainer_profile_result create_restricted_appcontainer_profile(
@@ -74,6 +91,8 @@ struct restricted_appcontainer_profile_result {
 };
 
 [[nodiscard]] const char* to_string(restricted_appcontainer_profile_status status) noexcept;
+
+[[nodiscard]] const char* to_string(restricted_appcontainer_profile_cleanup_status status) noexcept;
 
 [[nodiscard]] restricted_appcontainer_profile_result create_restricted_appcontainer_profile(
   const restricted_appcontainer_profile_request& request);

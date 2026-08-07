@@ -3,6 +3,7 @@
 
 #ifdef _WIN32
 
+#include <memory>
 #include <optional>
 #include <stop_token>
 #include <string>
@@ -10,24 +11,31 @@
 #include <wuwe/agent/execution/execution_core.hpp>
 #include <wuwe/agent/execution/restricted_process_backend.hpp>
 
+#include "restricted_process_acl_win32.hpp"
 #include "restricted_process_appcontainer_launch_win32.hpp"
 #include "restricted_process_appcontainer_win32.hpp"
 #include "restricted_process_request_workspace.hpp"
 #include "restricted_process_runtime_staging.hpp"
+#include "restricted_process_sandbox_plan_win32.hpp"
 
 namespace wuwe::agent::execution::detail {
 
 enum class restricted_execution_plan_status {
   ok,
+  sandbox_compile_failed,
   unsupported_language,
   profile_failed,
   runtime_staging_failed,
   workspace_failed,
+  working_directory_denied,
+  invalid_environment,
+  invalid_limits,
   acl_grant_failed,
 };
 
 struct restricted_execution_plan {
   restricted_appcontainer_profile profile;
+  restricted_acl_lease acl_lease;
   restricted_request_workspace workspace;
   restricted_python_runtime_staging_result runtime_staging;
   restricted_appcontainer_launch_request launch_request;
@@ -39,12 +47,23 @@ struct restricted_execution_plan_result {
   restricted_execution_plan_status status { restricted_execution_plan_status::ok };
   std::optional<restricted_execution_plan> plan;
   std::string detail;
+  std::optional<restricted_acl_grant_result> acl_cleanup;
+  int acl_cleanup_attempts {};
+  std::optional<restricted_appcontainer_profile_cleanup_result> profile_cleanup;
+  int profile_cleanup_attempts {};
 };
 
 [[nodiscard]] const char* to_string(restricted_execution_plan_status status) noexcept;
 
 [[nodiscard]] restricted_execution_plan_result prepare_restricted_execution_plan(
+  const windows_restricted_process_sandbox_plan& sandbox_plan, const execution_request& request);
+
+[[nodiscard]] restricted_execution_plan_result prepare_restricted_execution_plan(
   const restricted_process_backend_config& config, const execution_request& request);
+
+[[nodiscard]] execution_result run_restricted_execution_plan(
+  std::shared_ptr<const windows_restricted_process_sandbox_plan> sandbox_plan,
+  const execution_request& request, std::stop_token stop_token = {});
 
 [[nodiscard]] execution_result run_restricted_execution_plan(
   const restricted_process_backend_config& config, const execution_request& request,

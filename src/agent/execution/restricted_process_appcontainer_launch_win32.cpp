@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <future>
+#include <limits>
 #include <utility>
 
 namespace wuwe::agent::execution::detail {
@@ -305,6 +306,8 @@ const char* to_string(restricted_appcontainer_launch_status status) noexcept {
       return "ok";
     case restricted_appcontainer_launch_status::invalid_appcontainer_sid:
       return "invalid_appcontainer_sid";
+    case restricted_appcontainer_launch_status::invalid_limits:
+      return "invalid_limits";
     case restricted_appcontainer_launch_status::create_pipe_failed:
       return "create_pipe_failed";
     case restricted_appcontainer_launch_status::set_handle_information_failed:
@@ -333,6 +336,12 @@ restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
   restricted_appcontainer_launch_request request) {
   if (request.appcontainer_sid == nullptr) {
     return make_launch_result(restricted_appcontainer_launch_status::invalid_appcontainer_sid);
+  }
+  if (request.max_process_count > (std::numeric_limits<DWORD>::max)() ||
+      request.max_memory_bytes > (std::numeric_limits<SIZE_T>::max)() ||
+      request.max_cpu_time.count() > (std::numeric_limits<LONGLONG>::max)() / 10000LL) {
+    return make_launch_result(
+      restricted_appcontainer_launch_status::invalid_limits, ERROR_INVALID_PARAMETER, "limits");
   }
 
   SECURITY_ATTRIBUTES security_attributes {
@@ -538,10 +547,14 @@ restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
     stdin_future.get();
   }
 
-  if (!GetExitCodeProcess(process_handle.get(), &result.capture.exit_code)) {
+  DWORD exit_code = 0;
+  if (!GetExitCodeProcess(process_handle.get(), &exit_code)) {
     result.status = restricted_appcontainer_launch_status::get_exit_code_failed;
     result.win32_error = GetLastError();
     result.detail = "GetExitCodeProcess";
+  }
+  else {
+    result.capture.exit_code = exit_code;
   }
   result.capture.stdout_text = stdout_future.get();
   result.capture.stderr_text = stderr_future.get();

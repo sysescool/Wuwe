@@ -42,6 +42,15 @@ wuwe_copy_runtime_dlls(tool_output_projection_tests)
 
 add_test(NAME tool_output_projection_tests COMMAND tool_output_projection_tests)
 
+add_executable(sandbox_contract_tests
+    sandbox_contract_tests.cpp
+)
+
+target_link_libraries(sandbox_contract_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(sandbox_contract_tests)
+
+add_test(NAME sandbox_contract_tests COMMAND sandbox_contract_tests)
+
 add_executable(runtime_tests
     runtime_tests.cpp
 )
@@ -244,6 +253,9 @@ add_executable(header_independence_tests
     header_independence/sqlite_schema_header.cpp
     header_independence/filesystem_tools_header.cpp
     header_independence/process_tools_header.cpp
+    header_independence/sandbox_policy_header.cpp
+    header_independence/sandbox_plan_header.cpp
+    header_independence/sandbox_codec_header.cpp
     header_independence/llm_dispatch_header.cpp
     header_independence/skills_header.cpp
     header_independence/version_header.cpp

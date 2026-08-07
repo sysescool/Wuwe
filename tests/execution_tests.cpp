@@ -53,6 +53,7 @@ namespace execution_detail = wuwe::agent::execution::detail;
 #include "../src/agent/execution/restricted_process_appcontainer_win32.hpp"
 #include "../src/agent/execution/restricted_process_backend_candidate.hpp"
 #include "../src/agent/execution/restricted_process_execution_plan_win32.hpp"
+#include "../src/agent/execution/restricted_process_path_win32.hpp"
 #include "../src/agent/execution/restricted_process_request_workspace.hpp"
 
 class test_unique_handle {
@@ -944,6 +945,55 @@ void grant_tree_access_to_sid(
   require_condition(result.status == execution_detail::restricted_acl_grant_status::ok,
     std::string("grant restricted tree access failed: ") +
       execution_detail::to_string(result.status) + " " + result.detail);
+}
+
+bool path_acl_contains_sid(const std::filesystem::path& path, PSID sid) {
+  PACL dacl = nullptr;
+  PSECURITY_DESCRIPTOR descriptor = nullptr;
+  auto path_text = path.wstring();
+  const auto error = GetNamedSecurityInfoW(path_text.data(),
+    SE_FILE_OBJECT,
+    DACL_SECURITY_INFORMATION,
+    nullptr,
+    nullptr,
+    &dacl,
+    nullptr,
+    &descriptor);
+  require_error_code(error, ERROR_SUCCESS, "GetNamedSecurityInfoW(ACL lease probe)");
+  struct descriptor_cleanup {
+    PSECURITY_DESCRIPTOR descriptor;
+    ~descriptor_cleanup() {
+      if (descriptor != nullptr) {
+        LocalFree(descriptor);
+      }
+    }
+  } cleanup { descriptor };
+
+  if (dacl == nullptr) {
+    return false;
+  }
+  ACL_SIZE_INFORMATION information {};
+  require_win32(
+    GetAclInformation(dacl, &information, sizeof(information), AclSizeInformation) != FALSE,
+    "GetAclInformation(ACL lease probe)");
+  for (DWORD index = 0; index < information.AceCount; ++index) {
+    void* raw_ace = nullptr;
+    require_win32(GetAce(dacl, index, &raw_ace) != FALSE, "GetAce(ACL lease probe)");
+    const auto* header = static_cast<const ACE_HEADER*>(raw_ace);
+    const void* ace_sid = nullptr;
+    if (header->AceType == ACCESS_ALLOWED_ACE_TYPE) {
+      const auto* ace = static_cast<const ACCESS_ALLOWED_ACE*>(raw_ace);
+      ace_sid = &ace->SidStart;
+    }
+    else if (header->AceType == ACCESS_DENIED_ACE_TYPE) {
+      const auto* ace = static_cast<const ACCESS_DENIED_ACE*>(raw_ace);
+      ace_sid = &ace->SidStart;
+    }
+    if (ace_sid != nullptr && EqualSid(const_cast<void*>(ace_sid), sid) != FALSE) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool token_can_access_path(HANDLE token, const std::filesystem::path& path, DWORD desired_access) {
@@ -1991,7 +2041,8 @@ void test_windows_appcontainer_child_enforces_file_boundaries() {
     run_dir);
 
   if (capture.exit_code != 0 || !capture.stderr_text.empty()) {
-    std::cerr << "AppContainer file access child exit_code=" << capture.exit_code << "\n";
+    std::cerr << "AppContainer file access child exit_code="
+              << (capture.exit_code ? std::to_string(*capture.exit_code) : "none") << "\n";
     std::cerr << "stdout:\n" << capture.stdout_text << "\n";
     std::cerr << "stderr:\n" << capture.stderr_text << "\n";
   }
@@ -2037,7 +2088,8 @@ void test_windows_appcontainer_probe_launches_child_with_stdio_and_job() {
     run_dir);
 
   if (capture.exit_code != 0 || !capture.stderr_text.empty()) {
-    std::cerr << "AppContainer probe child exit_code=" << capture.exit_code << "\n";
+    std::cerr << "AppContainer probe child exit_code="
+              << (capture.exit_code ? std::to_string(*capture.exit_code) : "none") << "\n";
     std::cerr << "stdout:\n" << capture.stdout_text << "\n";
     std::cerr << "stderr:\n" << capture.stderr_text << "\n";
   }
@@ -2108,6 +2160,37 @@ void test_restricted_process_runtime_staging_resolves_python3_alias() {
     "restricted runtime staging should copy the real interpreter contents");
 }
 
+void test_restricted_process_runtime_staging_rejects_reparse_source_tree() {
+  const auto run_root = make_probe_run_directory("restricted-runtime-reparse");
+  probe_directory_cleanup cleanup(run_root);
+  const auto source_home = run_root / "source";
+  const auto outside_encodings = run_root / "outside-encodings";
+  const auto encodings_junction = source_home / "Lib" / "encodings";
+  const auto destination = run_root / "destination";
+  std::filesystem::create_directories(source_home / "Lib");
+  std::filesystem::create_directories(outside_encodings);
+  { std::ofstream(source_home / "python.exe", std::ios::binary) << "not-a-real-runtime"; }
+  { std::ofstream(outside_encodings / "secret.py", std::ios::binary) << "must-not-copy"; }
+
+  if (!create_test_junction(encodings_junction, outside_encodings)) {
+    std::cerr << "Skipping restricted runtime reparse probe: junction creation failed. "
+              << "GetLastError=" << GetLastError() << "\n";
+    return;
+  }
+  const auto result = execution_detail::stage_minimal_python_runtime_for_restricted_process({
+    .source_python = source_home / "python.exe",
+    .destination_home = destination,
+  });
+  RemoveDirectoryW(encodings_junction.wstring().c_str());
+
+  require_condition(
+    result.status ==
+      execution_detail::restricted_python_runtime_staging_status::source_reparse_point,
+    "runtime staging must reject reparse points before copying their targets");
+  require_condition(!std::filesystem::exists(destination / "Lib" / "encodings" / "secret.py"),
+    "runtime staging must never copy data through a reparse point");
+}
+
 void test_restricted_process_appcontainer_profile_reports_empty_name() {
   const auto result = execution_detail::create_restricted_appcontainer_profile({});
 
@@ -2118,6 +2201,22 @@ void test_restricted_process_appcontainer_profile_reports_empty_name() {
     "restricted AppContainer profile status should have stable text");
   require_condition(!result.profile.has_value(),
     "restricted AppContainer profile should not return a profile for empty name");
+}
+
+void test_restricted_process_appcontainer_profile_cleanup_is_explicit_and_idempotent() {
+  auto appcontainer = make_test_appcontainer_profile(appcontainer_profile_name(),
+    L"Wuwe Profile Cleanup Probe",
+    L"Wuwe test-only AppContainer profile cleanup probe");
+  const auto first = appcontainer.cleanup();
+  require_condition(
+    first.status == execution_detail::restricted_appcontainer_profile_cleanup_status::ok,
+    "explicit AppContainer profile cleanup should succeed");
+  require_condition(appcontainer.sid() == nullptr && appcontainer.name().empty(),
+    "successful profile cleanup must release its identity state");
+  const auto second = appcontainer.cleanup();
+  require_condition(
+    second.status == execution_detail::restricted_appcontainer_profile_cleanup_status::ok,
+    "AppContainer profile cleanup should be idempotent");
 }
 
 void test_restricted_process_appcontainer_launch_reports_invalid_sid() {
@@ -2132,6 +2231,24 @@ void test_restricted_process_appcontainer_launch_reports_invalid_sid() {
   require_condition(
     std::string_view(execution_detail::to_string(result.status)) == "invalid_appcontainer_sid",
     "restricted AppContainer launch status should have stable text");
+  require_condition(!result.capture.exit_code.has_value(),
+    "a rejected launch must not fabricate a process exit code");
+}
+
+void test_restricted_process_appcontainer_launch_failure_has_no_exit_code() {
+  auto appcontainer = make_test_appcontainer_profile(appcontainer_profile_name(),
+    L"Wuwe Launch Failure Probe",
+    L"Wuwe test-only AppContainer launch failure probe");
+  const auto result = execution_detail::launch_restricted_appcontainer_process({
+    .executable = std::filesystem::temp_directory_path() / "wuwe-missing-launch-target.exe",
+    .appcontainer_sid = appcontainer.sid(),
+  });
+
+  require_condition(
+    result.status == execution_detail::restricted_appcontainer_launch_status::launch_failed,
+    "a missing executable must be reported as a launch failure");
+  require_condition(!result.capture.exit_code.has_value(),
+    "CreateProcess failure must leave the process exit code empty");
 }
 
 void test_restricted_process_acl_reports_invalid_sid() {
@@ -2176,6 +2293,84 @@ void test_restricted_process_acl_grants_tree_access() {
     "restricted ACL tree grant should count root and child directories");
   require_condition(
     result.files_granted == 2, "restricted ACL tree grant should count copied files");
+}
+
+void test_restricted_process_acl_restore_retries_without_losing_state() {
+  auto appcontainer = make_test_appcontainer_profile(appcontainer_profile_name(),
+    L"Wuwe ACL Restore Probe",
+    L"Wuwe test-only restricted ACL restore probe");
+  const auto root = make_probe_run_directory("restricted-acl-restore");
+  probe_directory_cleanup cleanup(root);
+  const auto file = root / "locked.txt";
+  { std::ofstream(file, std::ios::binary) << "locked"; }
+
+  execution_detail::restricted_acl_lease lease;
+  const auto grant = execution_detail::grant_restricted_tree_access({
+    .path = root,
+    .sid = appcontainer.sid(),
+    .directory_access = FILE_GENERIC_READ | FILE_GENERIC_EXECUTE,
+    .file_access = FILE_GENERIC_READ,
+    .lease = &lease,
+  });
+  require_condition(grant.status == execution_detail::restricted_acl_grant_status::ok,
+    "ACL restore retry probe should grant the leased access");
+  const auto inherited_file = root / "inherited-after-grant.txt";
+  { std::ofstream(inherited_file, std::ios::binary) << "inherited"; }
+  require_condition(path_acl_contains_sid(inherited_file, appcontainer.sid()),
+    "files created during a lease should inherit its temporary ACE");
+
+  test_unique_handle exclusive_file(CreateFileW(root.wstring().c_str(),
+    GENERIC_READ,
+    0,
+    nullptr,
+    OPEN_EXISTING,
+    FILE_FLAG_BACKUP_SEMANTICS,
+    nullptr));
+  require_condition(exclusive_file.valid(), "ACL restore retry probe should lock its target file");
+
+  const auto first_restore = lease.restore();
+  require_condition(
+    first_restore.status == execution_detail::restricted_acl_grant_status::revoke_failed,
+    std::string("a sharing violation must be reported as an ACL restore failure: ") +
+      execution_detail::to_string(first_restore.status) +
+      " error=" + std::to_string(first_restore.win32_error) + " detail=" + first_restore.detail);
+  require_condition(path_acl_contains_sid(inherited_file, appcontainer.sid()),
+    "a failed restore must retain observable recovery work");
+
+  exclusive_file.reset();
+  const auto second_restore = lease.restore();
+  require_condition(second_restore.status == execution_detail::restricted_acl_grant_status::ok,
+    "ACL restore must be retryable after the transient failure clears");
+  require_condition(!path_acl_contains_sid(inherited_file, appcontainer.sid()),
+    "a successful retry must restore the original file DACL");
+}
+
+void test_restricted_windows_path_lock_blocks_ancestor_and_leaf_replacement() {
+  const auto root = make_probe_run_directory("restricted-path-lock");
+  probe_directory_cleanup cleanup(root);
+  const auto ancestor = root / "ancestor";
+  const auto renamed_ancestor = root / "renamed-ancestor";
+  const auto leaf = ancestor / "leaf.txt";
+  const auto renamed_leaf = ancestor / "renamed-leaf.txt";
+  std::filesystem::create_directories(ancestor);
+  { std::ofstream(leaf, std::ios::binary) << "locked"; }
+
+  execution_detail::restricted_windows_locked_path locked;
+  const auto lock_result = execution_detail::lock_restricted_windows_path(
+    leaf, GENERIC_READ, execution_detail::restricted_windows_path_kind::file, true, locked);
+  require_condition(static_cast<bool>(lock_result),
+    "the Windows safe-path module should lock a normal file and all of its ancestors");
+  require_condition(!MoveFileExW(ancestor.wstring().c_str(), renamed_ancestor.wstring().c_str(), 0),
+    "a locked ancestor directory must not be replaceable during a leaf operation");
+  require_condition(!MoveFileExW(leaf.wstring().c_str(), renamed_leaf.wstring().c_str(), 0),
+    "a locked leaf must not be replaceable while its identity is security-sensitive");
+
+  locked.reset();
+  require_win32(MoveFileExW(leaf.wstring().c_str(), renamed_leaf.wstring().c_str(), 0) != FALSE,
+    "MoveFileExW(unlocked leaf)");
+  require_win32(
+    MoveFileExW(ancestor.wstring().c_str(), renamed_ancestor.wstring().c_str(), 0) != FALSE,
+    "MoveFileExW(unlocked ancestor)");
 }
 
 void test_restricted_process_request_workspace_reports_empty_root() {
@@ -2320,8 +2515,8 @@ void test_restricted_process_execution_plan_returns_execution_result() {
     "restricted execution plan should return exit code zero");
   require_condition(result.stdout_text.find("run_result_ok") != std::string::npos,
     "restricted execution result should include stdout");
-  require_condition(result.metadata.at("backend_stage") == "internal_execution_plan",
-    "restricted execution result should identify internal stage");
+  require_condition(result.metadata.at("backend_stage") == "native_sandbox_plan",
+    "restricted execution result should identify the native sandbox-plan stage");
   require_condition(result.metadata.at("restricted_plan_status") == "ok",
     "restricted execution result should report plan success");
   require_condition(result.metadata.at("restricted_launch_status") == "ok",
@@ -2384,6 +2579,43 @@ void test_restricted_process_execution_plan_carries_resource_limits() {
     "restricted execution plan should carry memory limit");
   require_condition(launch_request.max_cpu_time == std::chrono::milliseconds(1500),
     "restricted execution plan should carry CPU time limit");
+}
+
+void test_restricted_process_native_plan_rejects_invalid_request_inputs_before_launch() {
+  const auto workspace_root = make_probe_run_directory("restricted-invalid-request");
+  probe_directory_cleanup cleanup(workspace_root);
+
+  execution::restricted_process_backend_config config;
+  config.python_interpreter = std::filesystem::path(WUWE_EXECUTION_TEST_PYTHON);
+  config.fallback_workdir = workspace_root;
+  auto created = execution::create_restricted_process_backend(
+    execution::restricted_process_sandbox_policy(config), config);
+  require_condition(static_cast<bool>(created),
+    std::string("restricted invalid-input backend creation failed: ") + created.message);
+
+  execution::execution_request colliding_environment;
+  colliding_environment.code = "print('must_not_launch')\n";
+  colliding_environment.env = {
+    { "PATH", "first" },
+    { "Path", "second" },
+  };
+  const auto environment_result = created.backend->run(colliding_environment, {});
+  require_condition(
+    environment_result.termination_reason == execution::execution_termination_reason::policy_denied,
+    "native plan should reject Windows environment name collisions as policy input");
+  require_condition(
+    environment_result.metadata.at("restricted_plan_status") == "invalid_environment",
+    "native plan should report a stable invalid-environment status");
+
+  execution::execution_request negative_limits;
+  negative_limits.code = "print('must_not_launch')\n";
+  negative_limits.limits.timeout = std::chrono::milliseconds(-1);
+  const auto limits_result = created.backend->run(negative_limits, {});
+  require_condition(
+    limits_result.termination_reason == execution::execution_termination_reason::policy_denied,
+    "native plan should reject negative request limits as policy input");
+  require_condition(limits_result.metadata.at("restricted_plan_status") == "invalid_limits",
+    "native plan should report a stable invalid-limits status");
 }
 
 void test_restricted_process_execution_plan_reports_timeout_result() {
@@ -2487,6 +2719,48 @@ void test_restricted_process_execution_plan_rejects_junction_root_escape() {
     "restricted execution plan should report junction reparse rejection");
   require_condition(!plan_result.plan.has_value(),
     "restricted execution plan should not return a plan after junction rejection");
+}
+
+void test_restricted_process_execution_plan_rejects_hard_link_alias_escape() {
+  const auto run_root = make_probe_run_directory("restricted-plan-hard-link");
+  probe_directory_cleanup cleanup(run_root);
+  const auto workspace_root = run_root / "workspace";
+  const auto readable_root = run_root / "readable";
+  const auto readable_file = readable_root / "shared.txt";
+  const auto outside_alias = run_root / "outside-alias.txt";
+  std::filesystem::create_directories(workspace_root);
+  std::filesystem::create_directories(readable_root);
+  { std::ofstream(readable_file, std::ios::binary) << "hard-link-probe"; }
+  require_win32(
+    CreateHardLinkW(outside_alias.wstring().c_str(), readable_file.wstring().c_str(), nullptr) !=
+      FALSE,
+    "CreateHardLinkW(restricted escape probe)");
+
+  execution::restricted_process_backend_config config;
+  config.python_interpreter = std::filesystem::path(WUWE_EXECUTION_TEST_PYTHON);
+  config.fallback_workdir = workspace_root;
+  config.readable_roots.push_back(readable_root);
+
+  execution::execution_request request;
+  request.code = "print('should_not_launch')\n";
+  request.limits.timeout = std::chrono::milliseconds(5000);
+  const auto plan_result = execution_detail::prepare_restricted_execution_plan(config, request);
+
+  require_condition(
+    plan_result.status == execution_detail::restricted_execution_plan_status::acl_grant_failed,
+    "restricted execution plan should fail closed on files with external hard-link aliases");
+  require_condition(plan_result.detail.find("hard_link_not_allowed") != std::string::npos,
+    "restricted execution plan should report hard-link rejection");
+  require_condition(!plan_result.plan.has_value(),
+    "restricted execution plan should not return a plan after hard-link rejection");
+  require_condition(
+    plan_result.acl_cleanup.has_value() &&
+      plan_result.acl_cleanup->status == execution_detail::restricted_acl_grant_status::ok,
+    "a failed plan must explicitly restore any ACL work completed before the blocker");
+  require_condition(plan_result.profile_cleanup.has_value() &&
+                      plan_result.profile_cleanup->status ==
+                        execution_detail::restricted_appcontainer_profile_cleanup_status::ok,
+    "a failed plan must explicitly delete its AppContainer profile");
 }
 
 void test_restricted_process_backend_candidate_runs_python() {
@@ -2762,6 +3036,213 @@ void test_restricted_process_backend_candidate_enforces_configured_roots() {
     "restricted candidate should deny writes outside configured roots");
 }
 
+void test_restricted_process_native_plan_enforces_policy_precedence_and_cleans_acl() {
+  const auto run_root = make_probe_run_directory("restricted-native-policy");
+  probe_directory_cleanup cleanup(run_root);
+  const auto workspace_root = run_root / "workspace";
+  const auto readable_root = run_root / "readable";
+  const auto writable_root = run_root / "writable";
+  const auto protected_root = writable_root / "protected";
+  const auto denied_root = writable_root / "denied";
+  const auto readable_file = readable_root / "readable.txt";
+  const auto writable_file = writable_root / "writable.txt";
+  const auto writable_created_file = writable_root / "created.txt";
+  const auto protected_file = protected_root / "protected.txt";
+  const auto denied_file = denied_root / "denied.txt";
+
+  std::filesystem::create_directories(workspace_root);
+  std::filesystem::create_directories(readable_root);
+  std::filesystem::create_directories(protected_root);
+  std::filesystem::create_directories(denied_root);
+  { std::ofstream(readable_file, std::ios::binary) << "readable"; }
+  { std::ofstream(writable_file, std::ios::binary) << "writable"; }
+  { std::ofstream(protected_file, std::ios::binary) << "protected"; }
+  { std::ofstream(denied_file, std::ios::binary) << "denied"; }
+
+  auto all_application_packages = well_known_sid(WinBuiltinAnyPackageSid);
+  grant_tree_access_to_sid(
+    protected_root, all_application_packages.data(), FILE_ALL_ACCESS, FILE_ALL_ACCESS);
+  grant_tree_access_to_sid(
+    denied_root, all_application_packages.data(), FILE_ALL_ACCESS, FILE_ALL_ACCESS);
+
+  execution::restricted_process_backend_config config;
+  config.python_interpreter = std::filesystem::path(WUWE_EXECUTION_TEST_PYTHON);
+  config.fallback_workdir = workspace_root;
+
+  auto policy = execution::restricted_process_sandbox_policy(config);
+  policy.name = "windows-native-policy";
+  policy.filesystem.readable_roots = { readable_root };
+  policy.filesystem.writable_roots = { writable_root };
+  policy.filesystem.protected_read_only_paths = { protected_root };
+  policy.filesystem.denied_paths = { denied_root };
+  policy.resources.max_process_count = 2;
+  policy.resources.max_memory_bytes = 96ULL * 1024ULL * 1024ULL;
+  policy.resources.max_cpu_time = std::chrono::milliseconds(1500);
+
+  auto created = execution::create_restricted_process_backend(policy, config);
+  require_condition(static_cast<bool>(created),
+    std::string("native restricted backend creation failed: ") + created.message);
+  require_win32(SetEnvironmentVariableW(L"WUWE_PARENT_SECRET", L"must-not-leak") != FALSE,
+    "SetEnvironmentVariableW(native environment probe)");
+
+  execution::execution_request request;
+  request.limits.timeout = std::chrono::milliseconds(10000);
+  request.limits.max_process_count = 8;
+  request.limits.max_memory_bytes = 256ULL * 1024ULL * 1024ULL;
+  request.limits.max_cpu_time = std::chrono::milliseconds(5000);
+  request.code = "def can_read(path):\n"
+                 "    try:\n"
+                 "        with open(path, 'r', encoding='utf-8') as f: f.read()\n"
+                 "        return True\n"
+                 "    except OSError: return False\n"
+                 "def can_rename(source, target):\n"
+                 "    try:\n"
+                 "        import os\n"
+                 "        os.replace(source, target)\n"
+                 "        return True\n"
+                 "    except OSError: return False\n"
+                 "def can_write(path):\n"
+                 "    try:\n"
+                 "        with open(path, 'w', encoding='utf-8') as f: f.write('changed')\n"
+                 "        return True\n"
+                 "    except OSError: return False\n"
+                 "print('readable_read=' + str(can_read('" +
+                 escape_python_string(readable_file.string()) +
+                 "')))\n"
+                 "print('readable_write_denied=' + str(not can_write('" +
+                 escape_python_string(readable_file.string()) +
+                 "')))\n"
+                 "print('writable_write=' + str(can_write('" +
+                 escape_python_string(writable_file.string()) +
+                 "')))\n"
+                 "print('writable_create=' + str(can_write('" +
+                 escape_python_string(writable_created_file.string()) +
+                 "')))\n"
+                 "print('protected_read=' + str(can_read('" +
+                 escape_python_string(protected_file.string()) +
+                 "')))\n"
+                 "print('protected_write_denied=' + str(not can_write('" +
+                 escape_python_string(protected_file.string()) +
+                 "')))\n"
+                 "print('denied_read=' + str(not can_read('" +
+                 escape_python_string(denied_file.string()) +
+                 "')))\n"
+                 "print('denied_write=' + str(not can_write('" +
+                 escape_python_string(denied_file.string()) +
+                 "')))\n"
+                 "print('protected_rename_denied=' + str(not can_rename('" +
+                 escape_python_string(protected_file.string()) + "', '" +
+                 escape_python_string((protected_root / "renamed.txt").string()) +
+                 "')))\n"
+                 "print('denied_rename_denied=' + str(not can_rename('" +
+                 escape_python_string(denied_file.string()) + "', '" +
+                 escape_python_string((writable_root / "escaped-denied.txt").string()) +
+                 "')))\n"
+                 "import os\n"
+                 "print('parent_hidden=' + str('WUWE_PARENT_SECRET' not in os.environ))\n";
+
+  const auto result = created.backend->run(request, {});
+  SetEnvironmentVariableW(L"WUWE_PARENT_SECRET", nullptr);
+  require_condition(result.termination_reason == execution::execution_termination_reason::exited &&
+                      result.exit_code.value_or(1) == 0,
+    std::string("native sandbox policy execution failed: ") + result.error_message + " " +
+      result.stderr_text);
+  for (const auto* expected : {
+         "readable_read=True",
+         "readable_write_denied=True",
+         "writable_write=True",
+         "writable_create=True",
+         "protected_read=True",
+         "protected_write_denied=True",
+         "denied_read=True",
+         "denied_write=True",
+         "protected_rename_denied=True",
+         "denied_rename_denied=True",
+         "parent_hidden=True",
+       }) {
+    require_condition(result.stdout_text.find(expected) != std::string::npos,
+      std::string("native policy precedence probe missing: ") + expected +
+        " output=" + result.stdout_text);
+  }
+  require_condition(result.metadata.at("backend_stage") == "native_sandbox_plan" &&
+                      result.metadata.at("sandbox_policy_name") == "windows-native-policy",
+    "native execution must report its compiled policy identity");
+  require_condition(
+    result.metadata.at("max_process_count") == "2" &&
+      result.metadata.at("max_memory_bytes") == std::to_string(96ULL * 1024ULL * 1024ULL) &&
+      result.metadata.at("max_cpu_time_ms") == "1500",
+    "native plan resource limits must cap weaker request limits");
+  require_condition(result.metadata.at("acl_lease_restore_status") == "ok",
+    "native execution must restore its temporary ACL grants");
+  require_condition(result.metadata.at("appcontainer_profile_cleanup_status") == "ok",
+    "native execution must explicitly clean up its AppContainer profile");
+
+  auto denied_workdir_request = request;
+  denied_workdir_request.workdir = denied_root;
+  denied_workdir_request.code = "print('must_not_run')\n";
+  const auto denied_workdir = created.backend->run(denied_workdir_request, {});
+  require_condition(
+    denied_workdir.termination_reason == execution::execution_termination_reason::policy_denied &&
+      denied_workdir.metadata.at("restricted_plan_status") == "working_directory_denied",
+    "native plan must reject a working directory outside its effective read policy");
+  require_condition(denied_workdir.metadata.at("appcontainer_profile_cleanup_status") == "ok",
+    "a denied plan must still report successful AppContainer profile cleanup");
+
+  const auto profile_name_text = result.metadata.at("appcontainer_profile");
+  const std::wstring profile_name(profile_name_text.begin(), profile_name_text.end());
+  PSID raw_sid = nullptr;
+  require_condition(
+    SUCCEEDED(DeriveAppContainerSidFromAppContainerName(profile_name.c_str(), &raw_sid)) &&
+      raw_sid != nullptr,
+    "native ACL cleanup probe should derive the execution AppContainer SID");
+  struct sid_cleanup {
+    PSID sid;
+    ~sid_cleanup() {
+      if (sid != nullptr) {
+        FreeSid(sid);
+      }
+    }
+  } cleanup_sid { raw_sid };
+  for (const auto& path : { readable_root, writable_root, protected_root, denied_root }) {
+    require_condition(!path_acl_contains_sid(path, raw_sid),
+      "native execution must not leave AppContainer ACEs on host paths");
+  }
+  require_condition(!path_acl_contains_sid(writable_created_file, raw_sid),
+    "native execution must remove inherited AppContainer ACEs from newly created files");
+}
+
+void test_restricted_process_native_plan_can_inherit_parent_environment_explicitly() {
+  const auto workspace_root = make_probe_run_directory("restricted-native-inherit-env");
+  probe_directory_cleanup cleanup(workspace_root);
+
+  execution::restricted_process_backend_config config;
+  config.python_interpreter = std::filesystem::path(WUWE_EXECUTION_TEST_PYTHON);
+  config.fallback_workdir = workspace_root;
+
+  auto policy = execution::restricted_process_sandbox_policy(config);
+  policy.name = "windows-native-inherit-env";
+  policy.environment.inherit_parent = true;
+  policy.required_enforcement.environment_allowlist = false;
+  auto created = execution::create_restricted_process_backend(policy, config);
+  require_condition(static_cast<bool>(created),
+    std::string("parent-environment native backend creation failed: ") + created.message);
+
+  require_win32(SetEnvironmentVariableW(L"WUWE_PARENT_VISIBLE", L"inherited-ok") != FALSE,
+    "SetEnvironmentVariableW(parent inheritance probe)");
+  execution::execution_request request;
+  request.code = "import os\nprint(os.environ.get('WUWE_PARENT_VISIBLE', 'missing'))\n";
+  request.limits.timeout = std::chrono::milliseconds(10000);
+  const auto result = created.backend->run(request, {});
+  SetEnvironmentVariableW(L"WUWE_PARENT_VISIBLE", nullptr);
+
+  require_condition(result.termination_reason == execution::execution_termination_reason::exited &&
+                      result.exit_code.value_or(1) == 0 &&
+                      result.stdout_text.find("inherited-ok") != std::string::npos,
+    "parent environment inheritance must occur only when the compiled policy requests it");
+  require_condition(result.metadata.at("environment_allowlist_enforcement") == "not_applicable",
+    "an inherited environment plan must not claim allowlist enforcement");
+}
+
 void test_restricted_process_backend_candidate_audits_result_metadata() {
   const auto workspace_root = make_probe_run_directory("restricted-candidate-audit");
   probe_directory_cleanup cleanup(workspace_root);
@@ -2800,8 +3281,8 @@ void test_restricted_process_backend_candidate_audits_result_metadata() {
     "restricted candidate audit should include plan status");
   require_condition(finished.attributes.at("result_restricted_launch_status") == "ok",
     "restricted candidate audit should include launch status");
-  require_condition(finished.attributes.at("result_backend_stage") == "internal_execution_plan",
-    "restricted candidate audit should include internal backend stage");
+  require_condition(finished.attributes.at("result_backend_stage") == "native_sandbox_plan",
+    "restricted candidate audit should include native sandbox-plan stage");
   require_condition(finished.attributes.at("process_count_limit_enforcement") == "enforced",
     "restricted candidate audit should use configured candidate enforcement");
   require_condition(finished.attributes.at("file_read_deny_enforcement") == "enforced",
@@ -2932,7 +3413,8 @@ void test_windows_appcontainer_runs_minimal_python_runtime() {
   const auto unexpected_stderr = unexpected_python_stderr(capture.stderr_text, python_exe);
 
   if (capture.exit_code != 0 || !unexpected_stderr.empty()) {
-    std::cerr << "AppContainer Python runtime probe exit_code=" << capture.exit_code << "\n";
+    std::cerr << "AppContainer Python runtime probe exit_code="
+              << (capture.exit_code ? std::to_string(*capture.exit_code) : "none") << "\n";
     std::cerr << "stdout:\n" << capture.stdout_text << "\n";
     std::cerr << "stderr:\n" << unexpected_stderr << "\n";
   }
@@ -3026,7 +3508,9 @@ void test_windows_appcontainer_runs_minimal_python_runtime() {
     unexpected_python_stderr(process_limit_capture.stderr_text, python_exe);
   if (process_limit_capture.exit_code != 0 || !process_limit_unexpected_stderr.empty()) {
     std::cerr << "AppContainer Python process-limit probe exit_code="
-              << process_limit_capture.exit_code << "\n";
+              << (process_limit_capture.exit_code ? std::to_string(*process_limit_capture.exit_code)
+                                                  : "none")
+              << "\n";
     std::cerr << "stdout:\n" << process_limit_capture.stdout_text << "\n";
     std::cerr << "stderr:\n" << process_limit_unexpected_stderr << "\n";
   }
@@ -3542,10 +4026,15 @@ int main(int argc, char** argv) {
     test_windows_appcontainer_probe_launches_child_with_stdio_and_job();
     test_restricted_process_runtime_staging_reports_missing_python();
     test_restricted_process_runtime_staging_resolves_python3_alias();
+    test_restricted_process_runtime_staging_rejects_reparse_source_tree();
     test_restricted_process_appcontainer_profile_reports_empty_name();
+    test_restricted_process_appcontainer_profile_cleanup_is_explicit_and_idempotent();
     test_restricted_process_appcontainer_launch_reports_invalid_sid();
+    test_restricted_process_appcontainer_launch_failure_has_no_exit_code();
     test_restricted_process_acl_reports_invalid_sid();
     test_restricted_process_acl_grants_tree_access();
+    test_restricted_process_acl_restore_retries_without_losing_state();
+    test_restricted_windows_path_lock_blocks_ancestor_and_leaf_replacement();
     test_restricted_process_request_workspace_reports_empty_root();
     test_restricted_process_request_workspace_rejects_escape_filename();
     test_restricted_process_request_workspace_writes_and_cleans_script();
@@ -3553,14 +4042,18 @@ int main(int argc, char** argv) {
     test_restricted_process_execution_plan_runs_python();
     test_restricted_process_execution_plan_returns_execution_result();
     test_restricted_process_execution_plan_carries_resource_limits();
+    test_restricted_process_native_plan_rejects_invalid_request_inputs_before_launch();
     test_restricted_process_execution_plan_reports_timeout_result();
     test_restricted_process_execution_plan_rejects_reparse_root_escape();
     test_restricted_process_execution_plan_rejects_junction_root_escape();
+    test_restricted_process_execution_plan_rejects_hard_link_alias_escape();
     test_restricted_process_backend_candidate_runs_python();
     test_restricted_process_backend_runs_python_when_explicitly_enabled();
     test_restricted_process_backend_audits_public_metadata();
     test_restricted_process_backend_candidate_times_out();
     test_restricted_process_backend_candidate_enforces_configured_roots();
+    test_restricted_process_native_plan_enforces_policy_precedence_and_cleans_acl();
+    test_restricted_process_native_plan_can_inherit_parent_environment_explicitly();
     test_restricted_process_backend_candidate_audits_result_metadata();
     test_windows_appcontainer_runs_minimal_python_runtime();
 #endif

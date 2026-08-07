@@ -28,6 +28,7 @@ struct execution_backend_requirements {
   bool require_filesystem_read_deny { false };
   bool require_filesystem_write_deny { false };
   bool require_network_deny { false };
+  bool require_network_filter { false };
 };
 
 struct execution_backend_registry_options {

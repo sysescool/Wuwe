@@ -28,6 +28,7 @@ sandbox::sandbox_enforcement_contract planned_strong_process_contract() {
     .filesystem_read_deny = sandbox::enforcement_level::planned,
     .filesystem_write_deny = sandbox::enforcement_level::planned,
     .network_deny = sandbox::enforcement_level::planned,
+    .network_filter = sandbox::enforcement_level::planned,
   };
 }
 
@@ -47,6 +48,7 @@ sandbox::sandbox_enforcement_contract planned_wasm_contract() {
     .filesystem_read_deny = sandbox::enforcement_level::planned,
     .filesystem_write_deny = sandbox::enforcement_level::planned,
     .network_deny = sandbox::enforcement_level::planned,
+    .network_filter = sandbox::enforcement_level::planned,
   };
 }
 
@@ -68,6 +70,7 @@ sandbox::sandbox_backend_info planned_backend_descriptor(std::string name,
       sandbox::sandbox_feature::filesystem_read_restriction,
       sandbox::sandbox_feature::filesystem_write_restriction,
       sandbox::sandbox_feature::network_restriction,
+      sandbox::sandbox_feature::network_filtering,
     },
     .enforcement = std::move(enforcement),
   };
@@ -85,6 +88,7 @@ sandbox::sandbox_backend_info planned_wasm_descriptor() {
     sandbox::sandbox_feature::filesystem_read_restriction,
     sandbox::sandbox_feature::filesystem_write_restriction,
     sandbox::sandbox_feature::network_restriction,
+    sandbox::sandbox_feature::network_filtering,
   };
   return info;
 }
@@ -116,7 +120,8 @@ bool satisfies_requirements(
            is_enforced(enforcement.filesystem_read_deny)) &&
          (!requirements.require_filesystem_write_deny ||
            is_enforced(enforcement.filesystem_write_deny)) &&
-         (!requirements.require_network_deny || is_enforced(enforcement.network_deny));
+         (!requirements.require_network_deny || is_enforced(enforcement.network_deny)) &&
+         (!requirements.require_network_filter || is_enforced(enforcement.network_filter));
 }
 
 std::string join_blockers(const std::vector<std::string>& blockers) {

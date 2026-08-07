@@ -6,6 +6,25 @@
 
 namespace wuwe::agent::sandbox {
 
+enum class sandbox_platform {
+  unknown,
+  host_windows,
+  host_linux,
+  host_macos,
+};
+
+[[nodiscard]] constexpr sandbox_platform current_sandbox_platform() noexcept {
+#if defined(_WIN32)
+  return sandbox_platform::host_windows;
+#elif defined(__APPLE__)
+  return sandbox_platform::host_macos;
+#elif defined(__linux__)
+  return sandbox_platform::host_linux;
+#else
+  return sandbox_platform::unknown;
+#endif
+}
+
 enum class isolation_level {
   none,
   controlled_process,
@@ -24,6 +43,7 @@ enum class sandbox_feature {
   filesystem_read_restriction,
   filesystem_write_restriction,
   network_restriction,
+  network_filtering,
 };
 
 enum class enforcement_level {
@@ -49,6 +69,7 @@ struct sandbox_enforcement_contract {
   enforcement_level filesystem_read_deny { enforcement_level::not_enforced };
   enforcement_level filesystem_write_deny { enforcement_level::not_enforced };
   enforcement_level network_deny { enforcement_level::not_enforced };
+  enforcement_level network_filter { enforcement_level::not_enforced };
 };
 
 struct sandbox_backend_info {
@@ -76,6 +97,20 @@ struct sandbox_backend_info {
   return "unknown";
 }
 
+[[nodiscard]] inline std::string to_string(sandbox_platform platform) {
+  switch (platform) {
+    case sandbox_platform::unknown:
+      return "unknown";
+    case sandbox_platform::host_windows:
+      return "windows";
+    case sandbox_platform::host_linux:
+      return "linux";
+    case sandbox_platform::host_macos:
+      return "macos";
+  }
+  return "unknown";
+}
+
 [[nodiscard]] inline std::string to_string(sandbox_feature feature) {
   switch (feature) {
     case sandbox_feature::environment_allowlist:
@@ -96,6 +131,8 @@ struct sandbox_backend_info {
       return "filesystem_write_restriction";
     case sandbox_feature::network_restriction:
       return "network_restriction";
+    case sandbox_feature::network_filtering:
+      return "network_filtering";
   }
   return "unknown";
 }

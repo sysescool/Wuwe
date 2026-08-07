@@ -2,11 +2,16 @@
 #define WUWE_AGENT_EXECUTION_RESTRICTED_PROCESS_REQUEST_WORKSPACE_HPP
 
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <system_error>
 
 namespace wuwe::agent::execution::detail {
+
+#ifdef _WIN32
+class restricted_windows_locked_path;
+#endif
 
 enum class restricted_request_workspace_status {
   ok,
@@ -15,6 +20,7 @@ enum class restricted_request_workspace_status {
   invalid_script_filename,
   create_root_failed,
   create_request_directory_failed,
+  reparse_point_not_allowed,
   write_script_failed,
 };
 
@@ -55,6 +61,8 @@ public:
     cleanup_on_destroy_ = false;
   }
 
+  void close_security_locks() noexcept;
+
 private:
   friend struct restricted_request_workspace_result;
   friend restricted_request_workspace_result create_restricted_request_workspace(
@@ -65,6 +73,10 @@ private:
   std::filesystem::path root_;
   std::filesystem::path script_path_;
   bool cleanup_on_destroy_ { true };
+#ifdef _WIN32
+  std::unique_ptr<restricted_windows_locked_path> root_lock_;
+  std::unique_ptr<restricted_windows_locked_path> script_lock_;
+#endif
 };
 
 struct restricted_request_workspace_result {
