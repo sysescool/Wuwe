@@ -27,8 +27,13 @@ Version 1.0.0 is verified on:
 | --- | --- | --- |
 | Windows x64 / Visual Studio 2022 | `wuwe-1.0.0-windows-x64.zip` | Certified release profile |
 | Ubuntu 24.04 Linux x64 | `wuwe-1.0.0-linux-x64.tar.gz` | Certified release profile |
+| macOS 14+ Apple Silicon / AppleClang | `wuwe-1.0.0-macos-arm64.tar.gz` | Certified source and package profile |
 
-The codebase is kept portable, but macOS is not part of the 1.0.0 certification matrix. The default `controlled_process` backend is cross-platform; the opt-in `restricted_process` backend is available only on Windows in this release.
+The default `controlled_process` backend is supported on all three platforms. The opt-in
+`restricted_process` backend uses AppContainer on Windows and a compiled deny-default Seatbelt
+profile launched through macOS's SIP-protected system sandbox utility. Linux reports that stronger
+capability as unavailable rather than silently
+weakening its policy.
 
 Wuwe 1.x follows semantic versioning for its documented public C++ source API.
 Consumers should rebuild when upgrading the SDK; cross-release C++ ABI compatibility
@@ -84,7 +89,17 @@ cmake --build --preset linux-vcpkg-release
 ctest --preset linux-vcpkg-release
 ```
 
-The official Windows profile uses Schannel and SQLite. The Linux profile uses OpenSSL and SQLite. Dependencies are restored from the pinned vcpkg manifest into the build tree.
+macOS Apple Silicon:
+
+```bash
+export VCPKG_ROOT=/path/to/vcpkg
+cmake --preset macos-arm64-vcpkg
+cmake --build --preset macos-arm64-vcpkg-release
+ctest --preset macos-arm64-vcpkg-release
+```
+
+The official Windows profile uses Schannel and SQLite. Linux and macOS use OpenSSL and SQLite.
+Dependencies are restored from the pinned vcpkg manifest into the build tree.
 
 Hardening builds are opt-in and must use a separate build directory. Enable
 `WUWE_ENABLE_ADDRESS_SANITIZER` for AddressSanitizer (plus UndefinedBehaviorSanitizer

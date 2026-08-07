@@ -88,17 +88,23 @@ compiled policy pass native capability checks. It stages a minimal Python runtim
 AppContainer, applies Job Object lifecycle and resource limits, enforces ordered filesystem rules,
 and denies network according to its reported enforcement contract.
 
-On non-Windows platforms it is not available in 1.0.0. The default registry publishes the descriptor but does not register the factory, so `controlled_process` remains the default selection.
+On macOS, explicit registration compiles the same portable policy into a private, versioned
+Seatbelt plan. The launcher uses the SIP-protected `/usr/bin/sandbox-exec` system utility with a
+deny-default profile, canonical path validation, denied networking,
+an environment allowlist, bounded stdio, a per-process CPU safeguard, and a dedicated process
+group. Python source is passed directly with `-c`; no attacker-replaceable script pathname is opened
+after policy compilation. Unrelated parent file descriptors are closed before `execve`, and the
+profile does not grant a global `mach-lookup` wildcard. Linux remains unavailable.
 
 `restricted_process_sandbox_policy()` maps the existing backend configuration to the portable
 `sandbox_policy` contract. `make_restricted_process_sandbox_backend()` compiles it into a private,
-versioned Windows plan. `create_restricted_process_backend(compiled.plan)` returns a typed creation
+versioned Windows or macOS plan. `create_restricted_process_backend(compiled.plan)` returns a typed creation
 result and rejects null, generic, foreign, or stale plans. The compatibility
 `make_restricted_process_backend(config)` API goes through the same compiler; it is not a separate
 configuration-only launch path.
 
 Policy CPU, memory, and process limits cap the values in each execution request. Requested working
-directories must already be readable under the compiled policy. Parent environment inheritance is
+directories must already be writable under the compiled policy. Parent environment inheritance is
 performed only when the policy explicitly requests it; otherwise only explicit UTF-8 variables and
 the minimal Windows bootstrap environment are supplied.
 
@@ -111,7 +117,12 @@ restored with bounded retries afterward, and process-wide serialized to prevent 
 executions from corrupting one another's DACL snapshots. Profile deletion is explicit and reported
 as `appcontainer_profile_cleanup_status`. Full filesystem reads,
 unrestricted/filtered networking, and local binding currently fail compilation because this backend
-cannot preserve those semantics exactly. Linux and macOS platform launchers remain unavailable.
+cannot preserve those semantics exactly. Linux remains unavailable; macOS rejects filtered
+networking. macOS applies `RLIMIT_CPU` to each process as defense in depth, but does not advertise
+that as an aggregate execution CPU limit. Per-process-tree count, aggregate CPU, and a complete memory
+ceiling remain explicitly unavailable until a separately governed helper can provide stronger process
+governance. (`RLIMIT_AS` and `RLIMIT_DATA` are rejected by the supported macOS runtime and are not
+advertised as enforcement.)
 
 Container and WebAssembly backends are not implemented.
 
@@ -119,4 +130,4 @@ Container and WebAssembly backends are not implemented.
 
 `execution_backend_registry` describes backends and selects one only when its `sandbox_enforcement_contract` satisfies the requested requirements. Inspect `sandbox_backend_info` instead of assuming that a backend name implies a particular control.
 
-The package smoke test verifies the default controlled backend, explicit restricted-backend registration behavior, and installed-package execution APIs on Windows and Linux.
+The package smoke test verifies the default controlled backend, explicit restricted-backend registration behavior, and installed-package execution APIs on Windows, macOS, and Linux.

@@ -168,3 +168,88 @@ jobs:
         run: |
           test -f "dist/wuwe-${WUWE_VERSION}-linux-x64.tar.gz"
           tar -tzf "dist/wuwe-${WUWE_VERSION}-linux-x64.tar.gz" >/dev/null
+
+  macos:
+    name: Release profile on ${{ matrix.os }} Apple Silicon
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-14
+          - macos-15
+          - macos-26
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned vcpkg
+        uses: actions/checkout@v5
+        with:
+          repository: microsoft/vcpkg
+          ref: eb35a05cc21c69ec1399f7532b7dd61d271ac0d1
+          path: vcpkg
+
+      - name: Bootstrap vcpkg
+        run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Read package version
+        run: echo "WUWE_VERSION=$(tr -d '\r\n' < VERSION)" >> "$GITHUB_ENV"
+
+      - name: Configure OpenSSL and SQLite release profile
+        run: cmake --preset macos-arm64-vcpkg -DWUWE_ENABLE_STRICT_WARNINGS=ON
+
+      - name: Build
+        run: cmake --build --preset macos-arm64-vcpkg-release
+
+      - name: Test
+        run: ctest --preset macos-arm64-vcpkg-release
+
+      - name: Install SDK
+        if: matrix.os == 'macos-15'
+        run: cmake --install build-macos-arm64-vcpkg --prefix install-macos
+
+      - name: Verify bundled macOS runtime
+        if: matrix.os == 'macos-15'
+        run: |
+          test -x install-macos/runtime/jre/Contents/Home/bin/java
+          test -f install-macos/runtime/tika/tika-server-standard.jar
+          codesign --verify --deep --strict install-macos/runtime/jre
+          install-macos/runtime/jre/Contents/Home/bin/java -version
+
+      - name: Configure installed-package consumer
+        if: matrix.os == 'macos-15'
+        run: >-
+          cmake -S tests/package_smoke -B build-package-smoke
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install-macos
+          -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
+          -DVCPKG_TARGET_TRIPLET=arm64-osx
+          -DVCPKG_INSTALLED_DIR=${{ github.workspace }}/build-macos-arm64-vcpkg/vcpkg_installed
+
+      - name: Build and run installed-package consumer
+        if: matrix.os == 'macos-15'
+        run: |
+          cmake --build build-package-smoke --parallel 2
+          env -i PATH=/usr/bin:/bin ./build-package-smoke/wuwe_package_smoke
+
+      - name: Build macOS package
+        if: matrix.os == 'macos-15'
+        run: >-
+          bash ./tools/package-wuwe.sh
+          --build-dir build-macos-arm64-vcpkg
+          --configuration Release
+          --skip-build
+
+      - name: Inspect macOS package
+        if: matrix.os == 'macos-15'
+        run: |
+          test -f "dist/wuwe-${WUWE_VERSION}-macos-arm64.tar.gz"
+          tar -tzf "dist/wuwe-${WUWE_VERSION}-macos-arm64.tar.gz" >/dev/null
+          package_extract="$(mktemp -d)"
+          tar -xzf "dist/wuwe-${WUWE_VERSION}-macos-arm64.tar.gz" -C "$package_extract"
+          codesign --verify --deep --strict "$package_extract/runtime/jre"
+          "$package_extract/runtime/jre/Contents/Home/bin/java" -version

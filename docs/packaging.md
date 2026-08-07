@@ -35,7 +35,18 @@ ctest --preset linux-vcpkg-release
 bash ./tools/package-wuwe.sh --build-dir build-linux-vcpkg --configuration Release
 ```
 
-Windows produces a `.zip`; Linux produces a `.tar.gz`. Build each archive on its target operating system so native binaries, permissions, symbolic links, and the bundled JRE remain correct.
+macOS arm64:
+
+```bash
+cmake --preset macos-arm64-vcpkg
+cmake --build --preset macos-arm64-vcpkg-release
+ctest --preset macos-arm64-vcpkg-release
+bash ./tools/package-wuwe.sh --build-dir build-macos-arm64-vcpkg --configuration Release
+```
+
+Windows produces a `.zip`; Linux and macOS produce a `.tar.gz`. Build each archive on its target
+operating system so native binaries, permissions, symbolic links, and the bundled JRE remain
+correct. All certified packages contain the matching pinned Temurin 21 runtime.
 
 ## Archive contents
 
@@ -50,6 +61,10 @@ Windows produces a `.zip`; Linux produces a `.tar.gz`. Build each archive on its
 - `runtime/jre` with the platform-specific Temurin 21 runtime
 
 The packaging scripts use the pinned assets under `third_party/runtime/` and verify their checksums. They do not download Tika or Java while packaging.
+The expected archive digest is also pinned independently in the build configuration, so changing an
+archive and its adjacent checksum file together does not bypass verification. macOS installs apply
+and verify an ad-hoc signature over the extracted JRE; official notarized distribution remains a
+release-channel responsibility rather than a source-build prerequisite.
 
 ## Install without creating an archive
 
@@ -71,7 +86,7 @@ cmake -S . -B build-core -DWUWE_INSTALL_TIKA_RUNTIME=OFF -DWUWE_INSTALL_BUNDLED_
 cmake --install build-core --config Release --prefix install-core
 ```
 
-For the Windows archive script, `-ExcludeTikaRuntime` and `-ExcludeBundledJre` remove the corresponding runtime. The Linux archive script provides `--without-tika` and `--without-jre`. Both scripts record the decision in `manifest.json`. A package can include Tika without a JRE when the deployment supplies Java through `PATH`, or omit Tika entirely when document parsing is not needed or an external endpoint is managed by the host.
+For the Windows archive script, `-ExcludeTikaRuntime` and `-ExcludeBundledJre` remove the corresponding runtime. The Linux/macOS archive script provides `--without-tika` and `--without-jre`. Both scripts record the decision in `manifest.json`. A package can include Tika without a JRE when the deployment supplies Java through `PATH`, or omit Tika entirely when document parsing is not needed or an external endpoint is managed by the host.
 
 ## Default document runtime
 
@@ -80,7 +95,7 @@ auto loader =
   wuwe::agent::knowledge::knowledge_document_loader::make_default();
 ```
 
-The default loader registers local parsers, starts the bundled Tika server when the runtime is discoverable, and keeps that process alive for the loader lifetime. It uses `runtime/jre/bin/java.exe` on Windows and `runtime/jre/bin/java` on Linux.
+The default loader registers local parsers, starts the bundled Tika server when the runtime is discoverable, and keeps that process alive for the loader lifetime. It uses `runtime/jre/bin/java.exe` on Windows, `runtime/jre/bin/java` on Linux, and `runtime/jre/Contents/Home/bin/java` on macOS.
 
 ## What is not bundled
 

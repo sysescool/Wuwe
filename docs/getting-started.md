@@ -7,7 +7,7 @@ description: Configure, build, test, and consume Wuwe 1.0.0.
 
 # Getting started
 
-The release presets build Wuwe with C++20, restore pinned dependencies through vcpkg, and enable SQLite. Windows uses Schannel; Linux uses OpenSSL.
+The release presets build Wuwe with C++20, restore pinned dependencies through vcpkg, and enable SQLite. Windows uses Schannel; Linux and macOS use OpenSSL.
 
 ## Requirements
 
@@ -41,6 +41,20 @@ ctest --preset linux-vcpkg-release
 ```
 
 The certified Linux profile targets Ubuntu 24.04 x64.
+
+## macOS Apple Silicon
+
+Install Apple Command Line Tools, CMake, and vcpkg, then run:
+
+```bash
+export VCPKG_ROOT=/path/to/vcpkg
+cmake --preset macos-arm64-vcpkg
+cmake --build --preset macos-arm64-vcpkg-release
+ctest --preset macos-arm64-vcpkg-release
+```
+
+The profile targets `arm64-osx`. The package includes Tika and a pinned Temurin 21 ARM64 runtime,
+so document parsing does not depend on a host Java installation.
 
 ## Minimal client
 

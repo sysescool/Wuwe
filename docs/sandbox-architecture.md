@@ -9,7 +9,8 @@ description: Define portable sandbox policy, compile it against explicit backend
 Wuwe separates portable security intent from platform-specific enforcement. A host describes the sandbox it requires with `sandbox_policy`; a platform backend compiles that policy into an immutable, backend-bound `sandbox_plan`. Compilation succeeds only when the backend reports every required control as `enforced`.
 
 Phase one established the portable contract. Phase two connects the Windows restricted-process
-launcher to a native, versioned plan produced by that contract. Linux and macOS remain unavailable
+launcher to a native, versioned plan produced by that contract. macOS compiles the same contract to
+a deny-default Seatbelt plan executed by the SIP-protected system sandbox utility; Linux remains unavailable
 until their native backends implement the same compiler and execution boundary.
 
 ## Layers
@@ -119,9 +120,9 @@ The existing `restricted_process_backend_config` remains source-compatible. `res
 
 The compatibility factory still accepts `restricted_process_backend_config`, but it now compiles the
 compatibility policy and creates the same native plan used by the explicit API. There is no separate
-configuration-only launch path. On Linux and macOS, the adapter fails closed with
-`restricted_process_unsupported_platform`; it does not manufacture a logical plan for an unavailable
-backend.
+configuration-only launch path. On macOS it creates the same native Seatbelt plan as the explicit
+API. On Linux it fails closed with `restricted_process_unsupported_platform`; it does not
+manufacture a logical plan for an unavailable backend.
 
 ## Windows native plan
 
@@ -174,7 +175,11 @@ Later phases implement the same contract with different mechanisms:
 - Windows: native plan execution is implemented for restricted reads, ordered read/write/deny rules,
   AppContainer network denial, environment policy, Job Object lifecycle, and resource limits;
 - Linux: Bubblewrap, seccomp, Landlock compatibility paths, and resource-control integration;
-- macOS: Seatbelt profiles, process-group lifecycle, and platform resource controls;
+- macOS: implemented Seatbelt filesystem/network isolation, process-group lifecycle, and
+  a per-process `RLIMIT_CPU` safeguard; source execution has no temporary-script path lookup,
+  unrelated descriptors are closed before `execve`, and the
+  Seatbelt profile has no global Mach-service wildcard. A complete
+  virtual-memory ceiling and per-tree process-count limit remain explicitly unavailable;
 - all platforms: a separately enforced network broker for filtered outbound access.
 
 Platform mechanisms may differ, but enforcement reporting and failure semantics must remain identical.

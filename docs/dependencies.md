@@ -11,12 +11,12 @@ Wuwe separates C++ build dependencies from runtime sidecars and external service
 
 ## Official release profiles
 
-| Capability | Windows x64 | Linux x64 |
-| --- | --- | --- |
-| Default HTTP backend | cpr/libcurl | cpr/libcurl |
-| TLS | Schannel | OpenSSL |
-| SQLite | Required | Required |
-| Document parsing | Tika and Temurin 21 JRE in the default package; independently optional | Tika and Temurin 21 JRE in the default package; independently optional |
+| Capability | Windows x64 | Linux x64 | macOS 14+ arm64 |
+| --- | --- | --- | --- |
+| Default HTTP backend | cpr/libcurl | cpr/libcurl | cpr/libcurl |
+| TLS | Schannel | OpenSSL | OpenSSL |
+| SQLite | Required | Required | Required |
+| Document parsing | Tika and bundled Temurin 21 | Tika and bundled Temurin 21 | Tika and bundled Temurin 21 |
 
 The configure step uses `vcpkg.json` and its pinned `builtin-baseline` to restore missing manifest dependencies into the selected build tree. It does not install them globally.
 
@@ -27,7 +27,8 @@ The configure step uses `vcpkg.json` and its pinned `builtin-baseline` to restor
 | CMake and a C++20 compiler | Building Wuwe and consumers | Build environment |
 | cpr/libcurl | Default HTTP transport | Fetched at the revision pinned in `src/CMakeLists.txt` for official builds; source consumers may provide an existing `cpr::cpr` target |
 | cpp-httplib | Alternate HTTP client and MCP HTTP listener | Checked-in header |
-| OpenSSL | Linux TLS and the optional Windows OpenSSL profile | vcpkg or another compatible development package |
+| OpenSSL | Linux/macOS TLS and the optional Windows OpenSSL profile | vcpkg or another compatible development package |
+| Python 3 | Controlled Python execution and the macOS restricted-process backend | Host installation; configure `python_interpreter` explicitly when it is not on `PATH` |
 | SQLite3 | Durable memory and knowledge storage | vcpkg in official profiles; compatible package for SDK consumers |
 | nlohmann/json | JSON representation and codecs | Checked-in headers |
 | Apache Tika Server | PDF and Office parsing | Default bundled sidecar; may be omitted or externally managed |
@@ -44,7 +45,7 @@ Set `WUWE_TLS_BACKEND` at configure time:
 | `openssl` | Requires OpenSSL and links it explicitly |
 | `auto` | Uses OpenSSL when found, otherwise the native backend |
 
-The official presets use deterministic choices: `native` on Windows and `openssl` on Linux. The Windows OpenSSL variant is available as `windows-vcpkg-openssl`.
+The official presets use deterministic choices: `native` on Windows and `openssl` on Linux/macOS. The Windows OpenSSL variant is available as `windows-vcpkg-openssl`.
 
 ```powershell
 cmake --preset windows-vcpkg-openssl

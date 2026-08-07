@@ -55,6 +55,31 @@
         "WUWE_TLS_BACKEND": "openssl",
         "WUWE_SQLITE_MODE": "on"
       }
+    },
+    {
+      "name": "macos-arm64-vcpkg",
+      "displayName": "macOS Apple Silicon vcpkg (OpenSSL + SQLite)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-macos-arm64-vcpkg",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "14.0",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "arm64-osx",
+        "VCPKG_MANIFEST_MODE": "ON",
+        "VCPKG_MANIFEST_INSTALL": "ON",
+        "VCPKG_MANIFEST_DIR": "${sourceDir}",
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/build-macos-arm64-vcpkg/vcpkg_installed",
+        "VCPKG_MANIFEST_FEATURES": "openssl",
+        "WUWE_TLS_BACKEND": "openssl",
+        "WUWE_SQLITE_MODE": "on"
+      }
     }
   ],
   "buildPresets": [
@@ -95,6 +120,16 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
+      },
+      "jobs": 2
+    },
+    {
+      "name": "macos-arm64-vcpkg-release",
+      "configurePreset": "macos-arm64-vcpkg",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
       },
       "jobs": 2
     }
@@ -146,6 +181,21 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "macos-arm64-vcpkg-release",
+      "configurePreset": "macos-arm64-vcpkg",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
       },
       "output": {
         "outputOnFailure": true

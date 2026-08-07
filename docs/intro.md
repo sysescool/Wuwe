@@ -52,13 +52,14 @@ Its modules are independently usable. A host can start with one provider client 
 
 ## Release boundary
 
-Version 1.0.0 is verified on Windows x64 with Visual Studio 2022 and Ubuntu 24.04 Linux x64. macOS portability is an engineering goal, but macOS is not part of the 1.0.0 certification matrix.
+Version 1.0.0 is verified on Windows x64 with Visual Studio 2022, Ubuntu 24.04 Linux x64, and
+macOS Apple Silicon with AppleClang.
 
 The release is an SDK, not a hosted agent product. Applications retain ownership of user identity, secrets, UI, storage policy, approvals, and deployment topology.
 
 Optional capabilities stay explicit:
 
-- Windows uses Schannel by default; Linux release builds use OpenSSL.
+- Windows uses Schannel by default; Linux and macOS release builds use OpenSSL.
 - SQLite is required by the official release presets but remains configurable for custom builds.
 - Default packages bundle Tika and a platform-specific Java 21 runtime for document parsing; either runtime component can be omitted for core-only or host-managed deployments.
 - Qdrant and other remote indexes are external services configured by the host.
