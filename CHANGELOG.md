@@ -38,7 +38,13 @@ Wuwe 1.0.0 is the first stable public release. It replaces the unreleased
 - Offline learning/adaptation and controlled exploration workflows with
   explicit review, activation, rollback, and evidence boundaries.
 - Root-scoped filesystem tools, allowlisted process tools, controlled Python
-  execution, and an opt-in Windows restricted-process backend.
+  execution, an opt-in Windows restricted-process backend, and a versioned
+  platform-neutral sandbox policy/plan compilation API with fail-closed
+  enforcement reporting. The Windows backend consumes private versioned plans,
+  enforces policy resource caps and filesystem precedence, validates runtime and
+  filesystem capabilities, rejects reparse/hard-link escapes, and restores
+  temporary AppContainer ACL leases after execution. The compatibility factory
+  uses the same native compiler and launch path.
 - Installable Windows and Linux SDK packages, generated version headers,
   package manifests, bundled Tika/Temurin runtime options, and CMake consumer
   smoke tests.

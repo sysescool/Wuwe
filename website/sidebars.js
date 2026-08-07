@@ -36,7 +36,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Controlled execution',
-      items: ['execution-runtime'],
+      items: ['execution-runtime', 'sandbox-architecture'],
     },
     {
       type: 'category',

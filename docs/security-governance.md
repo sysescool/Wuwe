@@ -103,8 +103,26 @@ loaded as inert verified bytes and are never executed by the Skills module. See
 
 `sandbox_backend_info` reports backend availability, isolation level, features, and a field-by-field `sandbox_enforcement_contract`. Enforcement levels distinguish controls that are enforced, partial, not enforced, not applicable, or planned.
 
+Portable sandbox intent now lives in `sandbox_policy`. A backend must compile it into a
+`sandbox_plan`; invalid policies, unavailable platforms, isolation mismatches, and missing
+field-level enforcement return typed failures and structured blockers before launch. Filtered
+network access is reported independently from complete network denial, so a deny-only backend
+cannot overstate its capability.
+
 Treat this contract as capability reporting, not as a guarantee inferred from a backend name. The default `controlled_process` backend bounds subprocess operation but is not a strong sandbox. The Windows-only restricted backend provides stronger controls when explicitly enabled and available.
+
+The Windows restricted backend now executes only a private, versioned native plan produced by its
+compiler. Its filesystem implementation rejects reparse-point traversal and files with external hard
+links, locks every ancestor handle during security-sensitive path operations, applies precedence with
+protected DACLs, overrides broad application-package grants on explicit protected/denied paths,
+withholds ACL-owner and parent-delete authority from writable roots, and retries restoration without
+discarding pending recovery state. Native plans explicitly disclose intrinsic Windows AppContainer
+filesystem defaults and reject policies that forbid them. Policy resource limits are
+enforced as upper bounds rather than reported as unsupported metadata. Unsupported network modes
+are rejected before launch instead of being approximated.
 
 Container and WebAssembly appear as isolation categories in the public contract but are not implemented backends in version 1.0.0.
 
-See [Controlled execution](execution-runtime.md) for policy fields, backend selection, and the verified platform boundary.
+See [Sandbox architecture](sandbox-architecture.md) for the portable policy and plan contract, and
+[Controlled execution](execution-runtime.md) for execution authorization, backend selection, and
+the currently verified platform boundary.

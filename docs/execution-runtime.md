@@ -8,6 +8,11 @@ description: Run bounded Python subprocesses under explicit policy, approval, an
 
 The execution module exposes Python snippet execution as a policy-bound runtime and optional model tool. It separates authorization from backend enforcement and reports what each backend actually enforces.
 
+The platform-neutral sandbox policy and compilation boundary is documented in
+[Sandbox architecture](sandbox-architecture.md). Execution policy decides whether a request is
+authorized; sandbox compilation independently verifies that the selected host backend can enforce
+the required isolation before a launch plan exists.
+
 ## Request and runtime
 
 ```cpp
@@ -78,9 +83,35 @@ options.enable_restricted_process_backend = true;
 auto registry = execution::make_execution_backend_registry(options);
 ```
 
-On Windows, an explicitly registered restricted backend is available when its configuration passes availability checks. It stages a minimal Python runtime, uses restricted process controls, limits inherited environment, applies filesystem boundaries, and denies network according to its reported enforcement contract.
+On Windows, an explicitly registered restricted backend is available when its configuration and
+compiled policy pass native capability checks. It stages a minimal Python runtime, launches it in an
+AppContainer, applies Job Object lifecycle and resource limits, enforces ordered filesystem rules,
+and denies network according to its reported enforcement contract.
 
 On non-Windows platforms it is not available in 1.0.0. The default registry publishes the descriptor but does not register the factory, so `controlled_process` remains the default selection.
+
+`restricted_process_sandbox_policy()` maps the existing backend configuration to the portable
+`sandbox_policy` contract. `make_restricted_process_sandbox_backend()` compiles it into a private,
+versioned Windows plan. `create_restricted_process_backend(compiled.plan)` returns a typed creation
+result and rejects null, generic, foreign, or stale plans. The compatibility
+`make_restricted_process_backend(config)` API goes through the same compiler; it is not a separate
+configuration-only launch path.
+
+Policy CPU, memory, and process limits cap the values in each execution request. Requested working
+directories must already be readable under the compiled policy. Parent environment inheritance is
+performed only when the policy explicitly requests it; otherwise only explicit UTF-8 variables and
+the minimal Windows bootstrap environment are supplied.
+
+Windows policy roots must exist on a persistent-ACL filesystem and must not traverse reparse points.
+Windows AppContainer/application-package resource grants are reported as intrinsic platform defaults;
+policies with `filesystem.include_platform_defaults=false` fail closed with
+`filesystem_platform_defaults_required`. Explicit protected and denied paths remain authoritative,
+including over broad `ALL APPLICATION PACKAGES` grants. ACL grants are leased for one execution,
+restored with bounded retries afterward, and process-wide serialized to prevent overlapping
+executions from corrupting one another's DACL snapshots. Profile deletion is explicit and reported
+as `appcontainer_profile_cleanup_status`. Full filesystem reads,
+unrestricted/filtered networking, and local binding currently fail compilation because this backend
+cannot preserve those semantics exactly. Linux and macOS platform launchers remain unavailable.
 
 Container and WebAssembly backends are not implemented.
 
