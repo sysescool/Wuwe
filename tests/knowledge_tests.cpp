@@ -854,7 +854,12 @@ void test_url_loader_live_integration_when_configured() {
 void test_tika_runtime_discovers_packaged_sidecar() {
   const auto root = unique_temp_path("");
   const auto tika_dir = root / "runtime" / "tika";
-  const auto jre_bin = root / "runtime" / "jre" / "bin";
+  const auto jre_root = root / "runtime" / "jre";
+#ifdef __APPLE__
+  const auto jre_bin = jre_root / "Contents" / "Home" / "bin";
+#else
+  const auto jre_bin = jre_root / "bin";
+#endif
   std::filesystem::create_directories(tika_dir);
   std::filesystem::create_directories(jre_bin);
   {
@@ -880,6 +885,9 @@ void test_tika_runtime_discovers_packaged_sidecar() {
 #ifdef _WIN32
   require(discovery.config.java_path == jre_bin / "java.exe",
     "tika runtime should prefer bundled package JRE on Windows");
+#elif defined(__APPLE__)
+  require(discovery.config.java_path == jre_bin / "java",
+    "tika runtime should prefer bundled app-layout JRE on macOS");
 #else
   require(discovery.config.java_path == jre_bin / "java",
     "tika runtime should prefer bundled package JRE on Unix-like systems");

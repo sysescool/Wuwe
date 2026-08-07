@@ -3,7 +3,7 @@
 set -euo pipefail
 
 configuration="Release"
-build_dir="build-linux-vcpkg"
+build_dir=""
 artifacts_dir="artifacts"
 dist_dir="dist"
 skip_build=false
@@ -78,20 +78,43 @@ if [[ "$configuration" != "Release" && "$configuration" != "Debug" ]]; then
   echo "--configuration must be Release or Debug" >&2
   exit 2
 fi
-if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "x86_64" ]]; then
-  echo "This package entry point supports Linux x64 hosts only." >&2
-  exit 1
-fi
+host_os="$(uname -s)"
+host_arch="$(uname -m)"
+case "$host_os:$host_arch" in
+  Linux:x86_64)
+    platform="linux-x64"
+    default_build_dir="build-linux-vcpkg"
+    jre_archive_name="temurin-21-jre-linux-x64.tar.gz"
+    ;;
+  Darwin:arm64)
+    platform="macos-arm64"
+    default_build_dir="build-macos-arm64-vcpkg"
+    jre_archive_name="temurin-21-jre-macos-aarch64.tar.gz"
+    ;;
+  *)
+    echo "This package entry point supports Linux x64 and macOS arm64 hosts only." >&2
+    exit 1
+    ;;
+esac
+build_dir="${build_dir:-$default_build_dir}"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 version="$(tr -d '\r\n' < "$repo_root/VERSION")"
 
+file_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{ print $1 }'
+  else
+    shasum -a 256 "$1" | awk '{ print $1 }'
+  fi
+}
+
 resolve_repo_path() {
   local value="$1"
   if [[ "$value" = /* ]]; then
-    realpath -m "$value"
+    perl -MCwd=abs_path -e 'print abs_path($ARGV[0])' "$value"
   else
-    realpath -m "$repo_root/$value"
+    perl -MCwd=abs_path -e 'print abs_path($ARGV[0])' "$repo_root/$value"
   fi
 }
 
@@ -99,7 +122,7 @@ build_path="$(resolve_repo_path "$build_dir")"
 artifacts_path="$(resolve_repo_path "$artifacts_dir")"
 dist_path="$(resolve_repo_path "$dist_dir")"
 package_root="$artifacts_path/wuwe"
-archive_path="$dist_path/wuwe-$version-linux-x64.tar.gz"
+archive_path="$dist_path/wuwe-$version-$platform.tar.gz"
 cache_path="$build_path/CMakeCache.txt"
 
 case "$package_root" in
@@ -124,7 +147,7 @@ cache_value() {
 }
 
 cmake_bool_json() {
-  case "${1^^}" in
+  case "$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')" in
     1|ON|TRUE|YES|Y) printf 'true' ;;
     *) printf 'false' ;;
   esac
@@ -170,9 +193,13 @@ cp -a "$repo_root/vcpkg.json" "$package_root/"
 cp -a "$repo_root/docs" "$package_root/docs"
 cp -a "$repo_root/examples" "$package_root/examples"
 
-java_path="$package_root/runtime/jre/bin/java"
+if [[ "$platform" == "macos-arm64" ]]; then
+  java_path="$package_root/runtime/jre/Contents/Home/bin/java"
+else
+  java_path="$package_root/runtime/jre/bin/java"
+fi
 tika_path="$package_root/runtime/tika/tika-server-standard.jar"
-jre_archive="$repo_root/third_party/runtime/jre/temurin-21-jre-linux-x64.tar.gz"
+jre_archive="$repo_root/third_party/runtime/jre/$jre_archive_name"
 jre_checksum_path="$jre_archive.sha256"
 
 if [[ "$include_tika" != true ]]; then
@@ -183,7 +210,7 @@ if [[ "$include_jre" != true ]]; then
 fi
 
 if [[ "$include_jre" == true && ! -x "$java_path" ]]; then
-  echo "Installed Linux JRE is missing or not executable: $java_path" >&2
+  echo "Installed $platform JRE is missing or not executable: $java_path" >&2
   exit 1
 fi
 if [[ "$include_tika" == true && ! -f "$tika_path" ]]; then
@@ -191,16 +218,16 @@ if [[ "$include_tika" == true && ! -f "$tika_path" ]]; then
   exit 1
 fi
 if [[ "$include_jre" == true && ! -f "$jre_checksum_path" ]]; then
-  echo "Linux JRE checksum is missing: $jre_checksum_path" >&2
+  echo "$platform JRE checksum is missing: $jre_checksum_path" >&2
   exit 1
 fi
 
 actual_jre_sha=""
 if [[ "$include_jre" == true ]]; then
   expected_jre_sha="$(awk 'NR == 1 { print tolower($1) }' "$jre_checksum_path")"
-  actual_jre_sha="$(sha256sum "$jre_archive" | awk '{ print $1 }')"
+  actual_jre_sha="$(file_sha256 "$jre_archive")"
   if [[ "$expected_jre_sha" != "$actual_jre_sha" ]]; then
-    echo "Linux JRE SHA-256 mismatch: expected $expected_jre_sha, found $actual_jre_sha" >&2
+    echo "$platform JRE SHA-256 mismatch: expected $expected_jre_sha, found $actual_jre_sha" >&2
     exit 1
   fi
 fi
@@ -241,13 +268,13 @@ jre_manifest_path=""
 jre_manifest_source=""
 jre_manifest_archive=""
 if [[ "$include_tika" == true ]]; then
-  tika_sha="$(sha256sum "$tika_path" | awk '{ print $1 }')"
+  tika_sha="$(file_sha256 "$tika_path")"
   tika_manifest_path="runtime/tika/tika-server-standard.jar"
 fi
 if [[ "$include_jre" == true ]]; then
   jre_manifest_path="runtime/jre"
   jre_manifest_source="archive"
-  jre_manifest_archive="third_party/runtime/jre/temurin-21-jre-linux-x64.tar.gz"
+  jre_manifest_archive="third_party/runtime/jre/$jre_archive_name"
 fi
 generated_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
@@ -256,7 +283,7 @@ cat > "$package_root/manifest.json" <<EOF
   "name": "wuwe",
   "version": "$version",
   "configuration": "$configuration",
-  "platform": "linux-x64",
+  "platform": "$platform",
   "generated_at_utc": "$generated_at",
   "layout": {
     "include": "C++ headers",
@@ -309,13 +336,12 @@ cat > "$package_root/manifest.json" <<EOF
 EOF
 
 checksum_path="$package_root/checksums.sha256"
-(
-  cd "$package_root"
-  find . \( -type f -o -type l \) ! -path './checksums.sha256' -print0 |
-    sort -z |
-    xargs -0 sha256sum |
-    sed 's#  \./#  #'
-) > "$checksum_path"
+: > "$checksum_path"
+while IFS= read -r relative_path; do
+  printf '%s  %s\n' "$(file_sha256 "$package_root/$relative_path")" "$relative_path" \
+    >> "$checksum_path"
+done < <(cd "$package_root" && find . -type f ! -path './checksums.sha256' -print | \
+  LC_ALL=C sort | sed 's#^\./##')
 
 rm -f -- "$archive_path"
 tar -czf "$archive_path" -C "$package_root" .

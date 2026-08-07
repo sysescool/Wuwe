@@ -1,6 +1,7 @@
 #include <atomic>
 #include <barrier>
 #include <chrono>
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -16,6 +17,7 @@
 #ifdef _WIN32
 #include <process.h>
 #else
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 
@@ -567,6 +569,20 @@ void process_execution_is_structured_and_bounded() {
             process_tools::process_termination_reason::timed_out,
     "timeout terminates the process tree");
 
+#ifndef _WIN32
+  const auto inherited_candidate = ::open("/dev/null", O_RDONLY);
+  require(inherited_candidate >= 0, "descriptor-leak fixture opens");
+  process_tools::process_request descriptor_request {
+    .executable = current_executable,
+    .arguments = { "--process-probe", "fd-closed", std::to_string(inherited_candidate) },
+  };
+  const auto descriptor_result =
+    process_tools::make_local_process_backend()->run(descriptor_request, {});
+  ::close(inherited_candidate);
+  require(descriptor_result.exit_code == 0 && descriptor_result.stdout_text == "closed",
+    "POSIX launch closes unrelated parent file descriptors before exec");
+#endif
+
   std::stop_source cancelled;
   cancelled.request_stop();
   require(
@@ -703,6 +719,14 @@ int process_probe(int argc, char** argv) {
   }
   if (mode == "exit" && argc >= 4)
     return std::stoi(argv[3]);
+#ifndef _WIN32
+  if (mode == "fd-closed" && argc >= 4) {
+    errno = 0;
+    const auto flags = ::fcntl(std::stoi(argv[3]), F_GETFD);
+    std::cout << (flags < 0 && errno == EBADF ? "closed" : "open");
+    return 0;
+  }
+#endif
   return 3;
 }
 

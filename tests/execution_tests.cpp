@@ -1648,7 +1648,7 @@ void test_backend_registry_explicitly_enables_restricted_process() {
   auto registry = execution::make_execution_backend_registry(options);
   const auto restricted = registry.describe("restricted_process");
   assert(restricted.has_value());
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
   assert(restricted->available);
   assert(restricted->enforcement.filesystem_read_deny == sandbox::enforcement_level::enforced);
   assert(registry.create("restricted_process") != nullptr);
@@ -1674,9 +1674,17 @@ void test_planned_backend_descriptors_are_not_executable() {
   assert(config.use_job_object);
   assert(!config.inherit_parent_environment);
   assert(config.cleanup_runtime_staging);
+#ifdef _WIN32
   assert(config.python_interpreter == "python");
+#else
+  assert(config.python_interpreter == "python3");
+#endif
+#ifdef _WIN32
   assert(config.runtime_staging ==
          execution::restricted_process_runtime_staging::copy_minimal_python_runtime);
+#else
+  assert(config.runtime_staging == execution::restricted_process_runtime_staging::use_host_python);
+#endif
   assert(
     std::string(execution::to_string(config.runtime_staging)) == "copy_minimal_python_runtime");
   const auto restricted = registry.describe("restricted_process");
@@ -1693,7 +1701,7 @@ void test_planned_backend_descriptors_are_not_executable() {
 void test_restricted_process_configured_contract_is_candidate_only() {
   execution::restricted_process_backend_config config;
   auto contract = execution::restricted_process_backend_configured_contract(config);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
   assert(contract.shell_execution == sandbox::enforcement_level::enforced);
   assert(contract.timeout == sandbox::enforcement_level::enforced);
   assert(contract.cancellation == sandbox::enforcement_level::enforced);
@@ -1702,9 +1710,15 @@ void test_restricted_process_configured_contract_is_candidate_only() {
   assert(contract.environment_allowlist == sandbox::enforcement_level::enforced);
   assert(contract.working_directory == sandbox::enforcement_level::enforced);
   assert(contract.process_tree_cleanup == sandbox::enforcement_level::enforced);
+#ifdef _WIN32
   assert(contract.process_count_limit == sandbox::enforcement_level::enforced);
   assert(contract.cpu_time_limit == sandbox::enforcement_level::enforced);
   assert(contract.memory_limit == sandbox::enforcement_level::enforced);
+#else
+  assert(contract.process_count_limit == sandbox::enforcement_level::not_enforced);
+  assert(contract.cpu_time_limit == sandbox::enforcement_level::not_enforced);
+  assert(contract.memory_limit == sandbox::enforcement_level::not_enforced);
+#endif
   assert(contract.filesystem_read_deny == sandbox::enforcement_level::enforced);
   assert(contract.filesystem_write_deny == sandbox::enforcement_level::enforced);
   assert(contract.network_deny == sandbox::enforcement_level::enforced);
@@ -1729,7 +1743,11 @@ void test_restricted_process_configured_contract_is_candidate_only() {
   assert(registered_availability.blockers.empty());
   assert(execution::make_restricted_process_backend(config) != nullptr);
 
+#ifdef _WIN32
   config.use_job_object = false;
+#else
+  config.use_process_group = false;
+#endif
   contract = execution::restricted_process_backend_configured_contract(config);
   assert(contract.process_tree_cleanup == sandbox::enforcement_level::not_enforced);
   assert(contract.process_count_limit == sandbox::enforcement_level::not_enforced);

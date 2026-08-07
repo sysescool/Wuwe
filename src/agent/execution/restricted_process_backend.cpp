@@ -5,16 +5,24 @@
 #ifdef _WIN32
 #include "restricted_process_execution_plan_win32.hpp"
 #include "restricted_process_sandbox_plan_win32.hpp"
+#elif defined(__APPLE__)
+#include "restricted_process_execution_plan_macos.hpp"
+#include "restricted_process_sandbox_plan_macos.hpp"
 #endif
 
 namespace wuwe::agent::execution {
 namespace {
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 class restricted_process_backend final : public execution_backend {
 public:
+#ifdef _WIN32
   explicit restricted_process_backend(
     std::shared_ptr<const detail::windows_restricted_process_sandbox_plan> plan)
+#else
+  explicit restricted_process_backend(
+    std::shared_ptr<const detail::macos_restricted_process_sandbox_plan> plan)
+#endif
       : plan_(std::move(plan)) {
   }
 
@@ -28,11 +36,19 @@ public:
 
   [[nodiscard]] execution_result run(
     const execution_request& request, std::stop_token stop_token) override {
+#ifdef _WIN32
     return detail::run_restricted_execution_plan(plan_, request, stop_token);
+#else
+    return detail::run_macos_restricted_execution_plan(plan_, request, stop_token);
+#endif
   }
 
 private:
+#ifdef _WIN32
   std::shared_ptr<const detail::windows_restricted_process_sandbox_plan> plan_;
+#else
+  std::shared_ptr<const detail::macos_restricted_process_sandbox_plan> plan_;
+#endif
 };
 #endif
 
@@ -45,7 +61,7 @@ public:
   [[nodiscard]] sandbox::sandbox_backend_info info() const override {
     auto descriptor = restricted_process_backend_descriptor();
     descriptor.enforcement = restricted_process_backend_configured_contract(config_);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     descriptor.available = true;
     descriptor.unavailable_reason.clear();
 #else
@@ -63,6 +79,8 @@ public:
     const sandbox::sandbox_policy& policy) const override {
 #ifdef _WIN32
     return detail::compile_windows_restricted_process_sandbox_policy(policy, info(), config_);
+#elif defined(__APPLE__)
+    return detail::compile_macos_restricted_process_sandbox_policy(policy, info(), config_);
 #else
     return sandbox::compile_sandbox_policy(policy, info(), platform());
 #endif
@@ -130,6 +148,26 @@ sandbox::sandbox_enforcement_contract restricted_process_backend_configured_cont
     .network_deny = config.deny_network ? sandbox::enforcement_level::enforced
                                         : sandbox::enforcement_level::not_enforced,
   };
+#elif defined(__APPLE__)
+  const auto process_group = config.use_process_group ? sandbox::enforcement_level::enforced
+                                                      : sandbox::enforcement_level::not_enforced;
+  return {
+    .shell_execution = sandbox::enforcement_level::enforced,
+    .timeout = sandbox::enforcement_level::enforced,
+    .cancellation = sandbox::enforcement_level::enforced,
+    .stdout_limit = sandbox::enforcement_level::enforced,
+    .stderr_limit = sandbox::enforcement_level::enforced,
+    .environment_allowlist = sandbox::enforcement_level::enforced,
+    .working_directory = sandbox::enforcement_level::enforced,
+    .process_tree_cleanup = process_group,
+    .process_count_limit = sandbox::enforcement_level::not_enforced,
+    .cpu_time_limit = sandbox::enforcement_level::not_enforced,
+    .memory_limit = sandbox::enforcement_level::not_enforced,
+    .filesystem_read_deny = sandbox::enforcement_level::enforced,
+    .filesystem_write_deny = sandbox::enforcement_level::enforced,
+    .network_deny = config.deny_network ? sandbox::enforcement_level::enforced
+                                        : sandbox::enforcement_level::not_enforced,
+  };
 #else
   (void)config;
   auto contract = restricted_process_backend_planned_contract();
@@ -171,6 +209,8 @@ const char* to_string(restricted_process_runtime_staging staging) noexcept {
   switch (staging) {
     case restricted_process_runtime_staging::copy_minimal_python_runtime:
       return "copy_minimal_python_runtime";
+    case restricted_process_runtime_staging::use_host_python:
+      return "use_host_python";
   }
   return "unknown";
 }
@@ -199,6 +239,9 @@ sandbox::sandbox_backend_info restricted_process_backend_descriptor() {
 #ifdef _WIN32
     .unavailable_reason =
       "restricted_process requires successful policy compilation and explicit registration",
+#elif defined(__APPLE__)
+    .unavailable_reason =
+      "restricted_process requires successful Seatbelt policy compilation and explicit registration",
 #else
     .unavailable_reason =
       "restricted_process is unavailable on this platform",
@@ -248,9 +291,19 @@ sandbox::sandbox_policy restricted_process_sandbox_policy(
       .environment_allowlist = !config.inherit_parent_environment,
       .working_directory = true,
       .process_tree_cleanup = true,
+#ifdef _WIN32
       .process_count_limit = true,
       .cpu_time_limit = true,
       .memory_limit = true,
+#elif defined(__APPLE__)
+      .process_count_limit = false,
+      .cpu_time_limit = false,
+      .memory_limit = false,
+#else
+      .process_count_limit = false,
+      .cpu_time_limit = false,
+      .memory_limit = false,
+#endif
       .filesystem_read_deny = true,
       .filesystem_write_deny = true,
       .network_deny = true,
@@ -296,6 +349,20 @@ restricted_process_backend_creation create_restricted_process_backend(
   return {
     .backend = std::make_unique<restricted_process_backend>(std::move(native)),
   };
+#elif defined(__APPLE__)
+  auto native = detail::as_macos_restricted_process_sandbox_plan(plan);
+  if (!native || native->platform() != sandbox::sandbox_platform::host_macos ||
+      native->backend_name() != "restricted_process") {
+    return { .error = restricted_process_backend_creation_error::incompatible_plan,
+      .message = "sandbox plan was not produced by the macOS Seatbelt compiler",
+      .blockers = { "foreign_sandbox_plan" } };
+  }
+  if (native->format_version() !=
+      detail::macos_restricted_process_sandbox_plan::current_format_version) {
+    return { .error = restricted_process_backend_creation_error::stale_plan,
+      .message = "sandbox plan format is stale", .blockers = { "stale_sandbox_plan" } };
+  }
+  return { .backend = std::make_unique<restricted_process_backend>(std::move(native)) };
 #else
   return {
     .error = restricted_process_backend_creation_error::incompatible_plan,

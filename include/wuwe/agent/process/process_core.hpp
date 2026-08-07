@@ -31,6 +31,7 @@ struct process_limits {
   std::size_t max_argument_count { 256 };
   std::size_t max_environment_bytes { 64 * 1024 };
   std::size_t max_environment_count { 256 };
+  std::chrono::milliseconds max_cpu_time { 0 };
 };
 
 struct process_request {

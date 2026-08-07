@@ -8,13 +8,15 @@ set(WUWE_PACKAGE_WITH_OPENSSL @WUWE_BUILT_WITH_OPENSSL@)
 set(WUWE_PACKAGE_WITH_HTTPLIB_HTTPS @WUWE_BUILT_WITH_HTTPLIB_HTTPS@)
 set(WUWE_PACKAGE_WITH_SQLITE @WUWE_BUILT_WITH_SQLITE@)
 set(WUWE_PACKAGE_SQLITE_DEPENDENCY "@WUWE_SQLITE_DEPENDENCY@")
+set(WUWE_PACKAGE_SQLITE_CMAKE_TARGET "@WUWE_SQLITE_CMAKE_TARGET@")
 
 if(WUWE_PACKAGE_WITH_OPENSSL AND NOT TARGET OpenSSL::SSL)
     find_dependency(OpenSSL REQUIRED)
 endif()
 
 if(WUWE_PACKAGE_WITH_SQLITE)
-    if(WUWE_PACKAGE_SQLITE_DEPENDENCY STREQUAL "cmake" AND NOT TARGET SQLite::SQLite3)
+    if(WUWE_PACKAGE_SQLITE_DEPENDENCY STREQUAL "cmake" AND
+       NOT TARGET "${WUWE_PACKAGE_SQLITE_CMAKE_TARGET}")
         find_dependency(SQLite3 REQUIRED)
     elseif(WUWE_PACKAGE_SQLITE_DEPENDENCY STREQUAL "unofficial" AND
            NOT TARGET unofficial::sqlite3::sqlite3)
@@ -25,11 +27,19 @@ endif()
 set(WUWE_DEPENDENCY_CMAKE_DIR "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/cmake")
 
 if(NOT TARGET CURL::libcurl_static AND NOT TARGET CURL::libcurl)
-    include("${WUWE_DEPENDENCY_CMAKE_DIR}/CURL/CURLConfig.cmake")
+    if(EXISTS "${WUWE_DEPENDENCY_CMAKE_DIR}/CURL/CURLConfig.cmake")
+        include("${WUWE_DEPENDENCY_CMAKE_DIR}/CURL/CURLConfig.cmake")
+    else()
+        find_dependency(CURL REQUIRED)
+    endif()
 endif()
 
 if(NOT TARGET cpr::cpr)
-    include("${WUWE_DEPENDENCY_CMAKE_DIR}/cpr/cprTargets.cmake")
+    if(EXISTS "${WUWE_DEPENDENCY_CMAKE_DIR}/cpr/cprTargets.cmake")
+        include("${WUWE_DEPENDENCY_CMAKE_DIR}/cpr/cprTargets.cmake")
+    else()
+        find_dependency(cpr CONFIG REQUIRED)
+    endif()
 endif()
 
 set_and_check(WUWE_LIB_DIR "@PACKAGE_LIB_INSTALL_DIR@")

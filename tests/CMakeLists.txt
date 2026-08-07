@@ -46,6 +46,20 @@ add_executable(sandbox_contract_tests
     sandbox_contract_tests.cpp
 )
 
+if(APPLE)
+    # DYLD_INSERT_LIBRARIES accepts a dylib, not a loadable bundle.  Keep this
+    # probe as a real shared library so the regression test exercises dyld's
+    # injection path instead of passing because dyld rejected the fixture.
+    add_library(macos_dyld_injection_probe SHARED macos_dyld_injection_probe.cpp)
+    set_target_properties(macos_dyld_injection_probe PROPERTIES
+        PREFIX ""
+        CXX_EXTENSIONS OFF)
+    target_compile_features(macos_dyld_injection_probe PRIVATE cxx_std_20)
+    target_compile_definitions(sandbox_contract_tests PRIVATE
+        WUWE_MACOS_DYLD_INJECTION_PROBE="$<TARGET_FILE:macos_dyld_injection_probe>")
+    add_dependencies(sandbox_contract_tests macos_dyld_injection_probe)
+endif()
+
 target_link_libraries(sandbox_contract_tests PRIVATE wuwe)
 wuwe_copy_runtime_dlls(sandbox_contract_tests)
 

@@ -173,6 +173,12 @@ void compilation_fails_closed_on_missing_enforcement() {
 
 void restricted_process_uses_the_portable_compiler_without_changing_availability() {
   execution::restricted_process_backend_config config;
+#ifdef __APPLE__
+#ifndef WUWE_MACOS_DYLD_INJECTION_PROBE
+#error "macOS sandbox tests require the DYLD injection probe"
+#endif
+  config.readable_roots.emplace_back(WUWE_MACOS_DYLD_INJECTION_PROBE);
+#endif
   const auto policy = execution::restricted_process_sandbox_policy(config);
   require(policy.name == "restricted_process" && !policy.environment.inherit_parent &&
             policy.network.mode == sandbox::sandbox_network_mode::denied &&
@@ -271,6 +277,137 @@ void restricted_process_uses_the_portable_compiler_without_changing_availability
                          weak_job.blockers.end(),
                          "process_tree_cleanup_not_enforced") != weak_job.blockers.end(),
     "disabling Windows job enforcement must remain an explicit availability blocker");
+#elif defined(__APPLE__)
+  std::string macos_compile_failure = "macOS Seatbelt compilation failed:";
+  for (const auto& blocker : compiled.blockers) macos_compile_failure += " " + blocker;
+  require(compiled && compiled.plan->backend_name() == "restricted_process" &&
+            compiled.plan->metadata().at("plan_format") ==
+              "macos_seatbelt_restricted_process" &&
+            compiled.plan->metadata().at("filesystem_platform_defaults") ==
+              "macos_runtime_read_only",
+    macos_compile_failure.c_str());
+  auto created = execution::create_restricted_process_backend(compiled.plan);
+  require(created && created.backend->info().available,
+    "macOS execution backend must accept its native Seatbelt plan");
+  execution::execution_request success_request;
+  success_request.code = "print('seatbelt-ok')";
+  const auto success = created.backend->run(success_request, {});
+  const auto success_failure = "macOS Seatbelt backend must execute a bounded Python request: reason=" +
+                               execution::to_string(success.termination_reason) + ", error=" +
+                               success.error_message + ", exit=" +
+                               (success.exit_code ? std::to_string(*success.exit_code) : "none") +
+                               ", stdout=" + success.stdout_text + ", stderr=" + success.stderr_text;
+  require(success.termination_reason == execution::execution_termination_reason::exited &&
+            success.exit_code == 0 && success.stdout_text == "seatbelt-ok\n" &&
+            success.metadata.at("sandbox_backend") == "macos_seatbelt" &&
+            success.metadata.at("sandbox_launcher") == "apple_sandbox_exec" &&
+            success.metadata.at("bootstrap_environment") == "empty" &&
+            compiled.plan->metadata().at("launcher") == "apple_sandbox_exec",
+    success_failure.c_str());
+
+  execution::execution_request isolation_request;
+  isolation_request.code = R"PY(
+import socket
+file_denied = write_denied = network_denied = False
+try:
+    open('/etc/passwd', 'rb').read(1)
+except OSError:
+    file_denied = True
+try:
+    open('/private/tmp/wuwe-seatbelt-write-denied', 'wb').write(b'x')
+except OSError:
+    write_denied = True
+try:
+    socket.socket().connect(('127.0.0.1', 9))
+except OSError:
+    network_denied = True
+print(file_denied, write_denied, network_denied)
+)PY";
+  const auto isolated = created.backend->run(isolation_request, {});
+  const auto isolation_failure = "macOS Seatbelt isolation failed: exit=" +
+                                 (isolated.exit_code ? std::to_string(*isolated.exit_code) : "none") +
+                                 ", stdout=" + isolated.stdout_text +
+                                 ", stderr=" + isolated.stderr_text;
+  require(isolated.exit_code == 0 && isolated.stdout_text == "True True True\n",
+    isolation_failure.c_str());
+
+  const auto injection_marker =
+    std::filesystem::temp_directory_path() / "wuwe-dyld-injection-escape-marker";
+  std::error_code marker_error;
+  std::filesystem::remove(injection_marker, marker_error);
+  execution::execution_request injection_request;
+  injection_request.code = "print('sandboxed-loader')";
+  injection_request.env = {
+    { "DYLD_INSERT_LIBRARIES", WUWE_MACOS_DYLD_INJECTION_PROBE },
+    { "WUWE_DYLD_MARKER", injection_marker.string() },
+  };
+  const auto injection_result = created.backend->run(injection_request, {});
+  const auto injection_failure = "DYLD isolation failed: exit=" +
+                                 (injection_result.exit_code
+                                     ? std::to_string(*injection_result.exit_code)
+                                     : "none") +
+                                 ", stdout=" + injection_result.stdout_text +
+                                 ", stderr=" + injection_result.stderr_text +
+                                 ", marker=" +
+                                 (std::filesystem::exists(injection_marker) ? "present" : "absent");
+  require(injection_result.exit_code == 0 &&
+            injection_result.stdout_text == "sandboxed-loader\n" &&
+            !std::filesystem::exists(injection_marker),
+    injection_failure.c_str());
+
+  execution::execution_request cpu_limited;
+  cpu_limited.code = "while True: pass";
+  cpu_limited.limits.timeout = std::chrono::seconds(5);
+  cpu_limited.limits.max_cpu_time = std::chrono::seconds(1);
+  const auto cpu_result = created.backend->run(cpu_limited, {});
+  require(cpu_result.exit_code && *cpu_result.exit_code != 0 &&
+            cpu_result.elapsed < std::chrono::seconds(5) &&
+            cpu_result.metadata.at("cpu_time_limit_enforcement") == "per_process_rlimit_only",
+    "macOS must apply its documented per-process CPU safeguard below the wall-clock timeout");
+
+  require(success.metadata.at("code_transport") == "argv_no_path_lookup",
+    "macOS source transport must not introduce a script-path TOCTOU window");
+
+  auto without_platform_defaults = policy;
+  without_platform_defaults.filesystem.include_platform_defaults = false;
+  const auto platform_defaults_compile = compiler->compile(without_platform_defaults);
+  require(!platform_defaults_compile &&
+            std::find(platform_defaults_compile.blockers.begin(),
+              platform_defaults_compile.blockers.end(),
+              "filesystem_platform_defaults_required") != platform_defaults_compile.blockers.end(),
+    "macOS must fail closed when required runtime defaults are forbidden");
+
+  auto filtered_network = policy;
+  filtered_network.network.mode = sandbox::sandbox_network_mode::filtered;
+  filtered_network.network.rules = { { .host_pattern = "example.com" } };
+  filtered_network.required_enforcement.network_filter = true;
+  const auto filtered = compiler->compile(filtered_network);
+  require(!filtered && std::find(filtered.blockers.begin(), filtered.blockers.end(),
+                         "network_filter_not_enforced") != filtered.blockers.end(),
+    "macOS must reject filtered networking instead of weakening it to deny-only");
+
+  auto missing_python_config = config;
+  missing_python_config.python_interpreter =
+    std::filesystem::temp_directory_path() / "wuwe-missing-python";
+  const auto missing_python =
+    execution::make_restricted_process_sandbox_backend(missing_python_config)
+      ->compile(execution::restricted_process_sandbox_policy(missing_python_config));
+  require(!missing_python && std::find(missing_python.blockers.begin(),
+                               missing_python.blockers.end(),
+                               "python_interpreter_unavailable") != missing_python.blockers.end(),
+    "macOS compilation must bind runtime prerequisites");
+
+  auto missing_launcher_config = config;
+  missing_launcher_config.seatbelt_executable =
+    std::filesystem::temp_directory_path() / "wuwe-untrusted-sandbox-launcher";
+  const auto missing_launcher =
+    execution::make_restricted_process_sandbox_backend(missing_launcher_config)
+      ->compile(execution::restricted_process_sandbox_policy(missing_launcher_config));
+  require(!missing_launcher && std::find(missing_launcher.blockers.begin(),
+                                  missing_launcher.blockers.end(),
+                                  "system_seatbelt_launcher_required") !=
+                                  missing_launcher.blockers.end(),
+    "macOS compilation must reject non-system Seatbelt launchers");
 #else
   require(!compiled && compiled.error == sandbox::sandbox_compile_error::backend_unavailable &&
             std::find(compiled.blockers.begin(),

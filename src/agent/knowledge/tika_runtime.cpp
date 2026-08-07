@@ -14,6 +14,12 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <csignal>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #else
 #include <csignal>
 #include <limits.h>
@@ -52,6 +58,14 @@ std::optional<std::filesystem::path> executable_directory() {
   }
   buffer.resize(size);
   return std::filesystem::path(buffer).parent_path();
+#elif defined(__APPLE__)
+  std::uint32_t size = 0;
+  _NSGetExecutablePath(nullptr, &size);
+  std::string buffer(size, '\0');
+  if (_NSGetExecutablePath(buffer.data(), &size) != 0) return std::nullopt;
+  std::error_code error;
+  auto executable = std::filesystem::canonical(buffer.c_str(), error);
+  return error ? std::nullopt : std::optional(executable.parent_path());
 #else
   std::string buffer(PATH_MAX, '\0');
   const auto size = readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
@@ -101,6 +115,8 @@ std::optional<std::filesystem::path> find_tika_jar(const std::filesystem::path& 
 std::filesystem::path default_java_path(const std::filesystem::path& runtime_dir) {
 #ifdef _WIN32
   const auto bundled = runtime_dir.parent_path() / "jre" / "bin" / "java.exe";
+#elif defined(__APPLE__)
+  const auto bundled = runtime_dir.parent_path() / "jre" / "Contents" / "Home" / "bin" / "java";
 #else
   const auto bundled = runtime_dir.parent_path() / "jre" / "bin" / "java";
 #endif

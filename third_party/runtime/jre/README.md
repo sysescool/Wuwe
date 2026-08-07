@@ -10,8 +10,9 @@ Current artifacts:
 | --- | --- | --- |
 | Windows x64 | `temurin-21-jre-windows-x64.zip` | `be26677aaa20b39a62edcaab4c8857a8b76673b0f45abc0b6143b142b62717e4` |
 | Linux x64 | `temurin-21-jre-linux-x64.tar.gz` | `e5038aae3ca9ff670bc696496b0728dbd23d280026bad30291cb919221ecfdcb` |
+| macOS arm64 | `temurin-21-jre-macos-aarch64.tar.gz` | `4b7a8cd23102c251c8b8be42a9a5f1263fb337cf1037f6f64b25f3070efe4b76` |
 
-Both archives use:
+The vendored Windows and Linux archives use:
 
 - Distribution: Eclipse Temurin
 - Java line: 21 LTS
@@ -20,6 +21,8 @@ Both archives use:
   `https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jre_x64_windows_hotspot_21.0.11_10.zip`
 - Linux source:
   `https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jre_x64_linux_hotspot_21.0.11_10.tar.gz`
+- macOS ARM64 source:
+  `https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jre_aarch64_mac_hotspot_21.0.11_10.tar.gz`
 
 JRE binaries are operating-system and architecture specific even though the
 Tika JAR is shared. Do not substitute one platform archive for another or

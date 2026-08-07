@@ -17,6 +17,8 @@ fi
 if [ "${JAVA_PATH:-}" = "" ]; then
   if [ -x "$SCRIPT_DIR/../jre/bin/java" ]; then
     JAVA_PATH="$SCRIPT_DIR/../jre/bin/java"
+  elif [ -x "$SCRIPT_DIR/../jre/Contents/Home/bin/java" ]; then
+    JAVA_PATH="$SCRIPT_DIR/../jre/Contents/Home/bin/java"
   else
     JAVA_PATH="java"
   fi

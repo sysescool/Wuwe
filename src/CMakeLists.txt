@@ -155,7 +155,9 @@ target_include_directories(${PROJECT_NAME}
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${WUWE_GENERATED_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party>
+)
+target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party>
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -224,7 +226,13 @@ endif()
 set(WUWE_SQLITE_DEPENDENCY "none")
 set(WUWE_SQLITE_AVAILABLE OFF)
 if(SQLite3_FOUND AND NOT WUWE_SQLITE_MODE_NORMALIZED STREQUAL "off")
-    target_link_libraries(${PROJECT_NAME} PUBLIC SQLite::SQLite3)
+    if(TARGET SQLite3::SQLite3)
+        target_link_libraries(${PROJECT_NAME} PUBLIC SQLite3::SQLite3)
+        set(WUWE_SQLITE_CMAKE_TARGET "SQLite3::SQLite3")
+    else()
+        target_link_libraries(${PROJECT_NAME} PUBLIC SQLite::SQLite3)
+        set(WUWE_SQLITE_CMAKE_TARGET "SQLite::SQLite3")
+    endif()
     target_compile_definitions(${PROJECT_NAME} PUBLIC WUWE_HAS_SQLITE=1)
     set(WUWE_SQLITE_DEPENDENCY "cmake")
     set(WUWE_SQLITE_AVAILABLE ON)
@@ -248,6 +256,8 @@ set(WUWE_BUILT_WITH_SQLITE ${WUWE_SQLITE_AVAILABLE} CACHE INTERNAL
     "Whether SQLite capabilities are compiled into Wuwe" FORCE)
 set(WUWE_SQLITE_DEPENDENCY "${WUWE_SQLITE_DEPENDENCY}" CACHE INTERNAL
     "SQLite package used by the installed Wuwe target" FORCE)
+set(WUWE_SQLITE_CMAKE_TARGET "${WUWE_SQLITE_CMAKE_TARGET}" CACHE INTERNAL
+    "SQLite CMake target used by the installed Wuwe target" FORCE)
 
 message(STATUS "Wuwe capability summary:")
 message(STATUS "  HTTP backend: ${WUWE_HTTP_BACKEND_NORMALIZED}")
@@ -300,15 +310,26 @@ set(WUWE_BUNDLED_TIKA_DIR
 
 set(WUWE_DEFAULT_BUNDLED_JRE_ARCHIVE "")
 set(WUWE_DEFAULT_BUNDLED_JAVA_RELATIVE_PATH "")
+set(WUWE_DEFAULT_BUNDLED_JRE_TRUSTED_SHA256 "")
 if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(WUWE_DEFAULT_BUNDLED_JRE_ARCHIVE
         "${PROJECT_SOURCE_DIR}/third_party/runtime/jre/temurin-21-jre-windows-x64.zip")
     set(WUWE_DEFAULT_BUNDLED_JAVA_RELATIVE_PATH "bin/java.exe")
+    set(WUWE_DEFAULT_BUNDLED_JRE_TRUSTED_SHA256
+        "be26677aaa20b39a62edcaab4c8857a8b76673b0f45abc0b6143b142b62717e4")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
        CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
     set(WUWE_DEFAULT_BUNDLED_JRE_ARCHIVE
         "${PROJECT_SOURCE_DIR}/third_party/runtime/jre/temurin-21-jre-linux-x64.tar.gz")
     set(WUWE_DEFAULT_BUNDLED_JAVA_RELATIVE_PATH "bin/java")
+    set(WUWE_DEFAULT_BUNDLED_JRE_TRUSTED_SHA256
+        "e5038aae3ca9ff670bc696496b0728dbd23d280026bad30291cb919221ecfdcb")
+elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+    set(WUWE_DEFAULT_BUNDLED_JRE_ARCHIVE
+        "${PROJECT_SOURCE_DIR}/third_party/runtime/jre/temurin-21-jre-macos-aarch64.tar.gz")
+    set(WUWE_DEFAULT_BUNDLED_JAVA_RELATIVE_PATH "Contents/Home/bin/java")
+    set(WUWE_DEFAULT_BUNDLED_JRE_TRUSTED_SHA256
+        "4b7a8cd23102c251c8b8be42a9a5f1263fb337cf1037f6f64b25f3070efe4b76")
 endif()
 
 set(WUWE_BUNDLED_JRE_ARCHIVE
@@ -320,6 +341,15 @@ set(WUWE_BUNDLED_JRE_SHA256_FILE
 set(WUWE_BUNDLED_JAVA_RELATIVE_PATH
     "${WUWE_DEFAULT_BUNDLED_JAVA_RELATIVE_PATH}"
     CACHE STRING "Java executable path relative to the bundled JRE root")
+set(WUWE_BUNDLED_JRE_TRUSTED_SHA256
+    "${WUWE_DEFAULT_BUNDLED_JRE_TRUSTED_SHA256}"
+    CACHE STRING "Trusted SHA-256 pinned independently of the bundled JRE sidecar")
+option(WUWE_ADHOC_SIGN_BUNDLED_JRE
+    "Apply and verify an ad-hoc signature on the installed macOS JRE"
+    ON)
+if(APPLE AND WUWE_INSTALL_BUNDLED_JRE AND WUWE_ADHOC_SIGN_BUNDLED_JRE)
+    find_program(WUWE_CODESIGN_EXECUTABLE codesign REQUIRED)
+endif()
 
 if(WUWE_INSTALL_TIKA_RUNTIME)
     if(NOT EXISTS "${WUWE_BUNDLED_TIKA_DIR}")
@@ -369,6 +399,19 @@ if(WUWE_INSTALL_BUNDLED_JRE)
             WUWE_BUNDLED_JRE_EXPECTED_SHA256)
         string(TOLOWER "${WUWE_BUNDLED_JRE_ACTUAL_SHA256}"
             WUWE_BUNDLED_JRE_ACTUAL_SHA256)
+        string(TOLOWER "${WUWE_BUNDLED_JRE_TRUSTED_SHA256}"
+            WUWE_BUNDLED_JRE_TRUSTED_SHA256)
+        string(LENGTH "${WUWE_BUNDLED_JRE_TRUSTED_SHA256}"
+            WUWE_BUNDLED_JRE_TRUSTED_SHA256_LENGTH)
+        if(NOT WUWE_BUNDLED_JRE_TRUSTED_SHA256_LENGTH EQUAL 64 OR
+           NOT WUWE_BUNDLED_JRE_TRUSTED_SHA256 MATCHES "^[0-9a-f]+$")
+            message(FATAL_ERROR "WUWE_BUNDLED_JRE_TRUSTED_SHA256 must contain 64 hex digits")
+        endif()
+        if(NOT "${WUWE_BUNDLED_JRE_EXPECTED_SHA256}" STREQUAL
+               "${WUWE_BUNDLED_JRE_TRUSTED_SHA256}")
+            message(FATAL_ERROR
+                "Bundled JRE sidecar does not match the independently pinned trusted SHA-256")
+        endif()
         if(NOT "${WUWE_BUNDLED_JRE_EXPECTED_SHA256}" STREQUAL
                "${WUWE_BUNDLED_JRE_ACTUAL_SHA256}")
             message(FATAL_ERROR
@@ -404,6 +447,26 @@ if(WUWE_INSTALL_BUNDLED_JRE)
             file(COPY \"\${_jre_root}/\" DESTINATION \"\${_destination}\")
             file(REMOVE_RECURSE \"\${_extract_root}\")
         ")
+        if(APPLE AND WUWE_ADHOC_SIGN_BUNDLED_JRE)
+            install(CODE "
+                set(_jre_destination \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/runtime/jre\")
+                execute_process(
+                    COMMAND [[${WUWE_CODESIGN_EXECUTABLE}]] --force --deep --sign -
+                            --timestamp=none \"\${_jre_destination}\"
+                    RESULT_VARIABLE _sign_result ERROR_VARIABLE _sign_error)
+                if(NOT _sign_result EQUAL 0)
+                    message(FATAL_ERROR \"Failed to ad-hoc sign bundled JRE: \${_sign_error}\")
+                endif()
+                execute_process(
+                    COMMAND [[${WUWE_CODESIGN_EXECUTABLE}]] --verify --deep --strict
+                            \"\${_jre_destination}\"
+                    RESULT_VARIABLE _verify_result ERROR_VARIABLE _verify_error)
+                if(NOT _verify_result EQUAL 0)
+                    message(FATAL_ERROR
+                        \"Bundled JRE signature verification failed: \${_verify_error}\")
+                endif()
+            ")
+        endif()
     else()
         message(STATUS
             "No platform-specific bundled JRE is configured; installed Tika will use java from PATH")

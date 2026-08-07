@@ -71,10 +71,14 @@ int main() {
   if (!restricted_config.deny_network || !restricted_config.use_job_object ||
       restricted_config.inherit_parent_environment || !restricted_config.cleanup_runtime_staging ||
       wuwe::agent::execution::to_string(restricted_config.runtime_staging) !=
+#ifdef _WIN32
         std::string("copy_minimal_python_runtime")) {
+#else
+        std::string("use_host_python")) {
+#endif
     return 1;
   }
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
   const auto expected_restricted_read_deny = wuwe::agent::sandbox::enforcement_level::enforced;
 #else
   const auto expected_restricted_read_deny = wuwe::agent::sandbox::enforcement_level::not_enforced;
@@ -85,7 +89,7 @@ int main() {
   if (restricted_availability.available) {
     return 1;
   }
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
   if (!registered_restricted_availability.available) {
     return 1;
   }
@@ -112,16 +116,31 @@ int main() {
   auto explicit_registry =
     wuwe::agent::execution::make_execution_backend_registry(registry_options);
   auto explicit_restricted = explicit_registry.describe("restricted_process");
+  auto explicit_restricted_backend = explicit_registry.create("restricted_process");
   if (!explicit_restricted.has_value()) {
     return 1;
   }
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
   if (!explicit_restricted->available ||
-      explicit_registry.create("restricted_process") == nullptr) {
+      explicit_restricted_backend == nullptr) {
     return 1;
   }
 #else
   if (explicit_restricted->available || explicit_registry.create("restricted_process") != nullptr) {
+    return 1;
+  }
+#endif
+#ifdef __APPLE__
+  wuwe::agent::execution::execution_request restricted_request;
+  restricted_request.code =
+    "try:\n open('/etc/passwd', 'rb').read(1)\n print('escaped')\nexcept OSError:\n "
+    "print('isolated')";
+  const auto restricted_result = explicit_restricted_backend->run(restricted_request, {});
+  const auto bootstrap_environment =
+    restricted_result.metadata.find("bootstrap_environment");
+  if (restricted_result.exit_code != 0 || restricted_result.stdout_text != "isolated\n" ||
+      bootstrap_environment == restricted_result.metadata.end() ||
+      bootstrap_environment->second != "empty") {
     return 1;
   }
 #endif

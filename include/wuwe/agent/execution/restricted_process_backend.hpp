@@ -15,20 +15,33 @@ namespace wuwe::agent::execution {
 
 enum class restricted_process_runtime_staging {
   copy_minimal_python_runtime,
+  use_host_python,
 };
 
 struct restricted_process_backend_config {
+#ifdef _WIN32
   std::filesystem::path python_interpreter { "python" };
+#else
+  std::filesystem::path python_interpreter { "python3" };
+#endif
   std::filesystem::path fallback_workdir;
   std::filesystem::path runtime_staging_root;
   std::vector<std::filesystem::path> readable_roots;
   std::vector<std::filesystem::path> writable_roots;
   std::map<std::string, std::string> base_environment;
+#ifdef _WIN32
   restricted_process_runtime_staging runtime_staging {
     restricted_process_runtime_staging::copy_minimal_python_runtime
   };
+#else
+  restricted_process_runtime_staging runtime_staging {
+    restricted_process_runtime_staging::use_host_python
+  };
+#endif
   bool deny_network { true };
   bool use_job_object { true };
+  bool use_process_group { true };
+  std::filesystem::path seatbelt_executable { "/usr/bin/sandbox-exec" };
   bool inherit_parent_environment { false };
   bool cleanup_runtime_staging { true };
   std::chrono::milliseconds python_startup_timeout { 3000 };
