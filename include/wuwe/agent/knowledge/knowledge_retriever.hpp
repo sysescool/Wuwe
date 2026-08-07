@@ -1,9 +1,11 @@
 #ifndef WUWE_AGENT_KNOWLEDGE_RETRIEVER_HPP
 #define WUWE_AGENT_KNOWLEDGE_RETRIEVER_HPP
 
-#include <chrono>
+#include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <future>
 #include <map>
@@ -17,8 +19,8 @@
 #include <utility>
 #include <vector>
 
-#include <wuwe/agent/knowledge/knowledge_index.hpp>
 #include <wuwe/agent/knowledge/knowledge_cache.hpp>
+#include <wuwe/agent/knowledge/knowledge_index.hpp>
 #include <wuwe/agent/knowledge/knowledge_observability.hpp>
 #include <wuwe/agent/knowledge/knowledge_query_rewriter.hpp>
 #include <wuwe/agent/knowledge/knowledge_reranker.hpp>
@@ -76,18 +78,15 @@ struct knowledge_retrieval_report {
   knowledge_retrieval_trace trace;
 };
 
-class knowledge_retriever {
+class knowledge_retriever : public std::enable_shared_from_this<knowledge_retriever> {
 public:
-  knowledge_retriever(
-    std::shared_ptr<knowledge_store> store,
+  knowledge_retriever(std::shared_ptr<knowledge_store> store,
     std::shared_ptr<knowledge_index> index,
     std::shared_ptr<::wuwe::agent::memory::embedding_model> embedding_model,
     knowledge_splitter splitter = knowledge_splitter(),
     knowledge_indexing_policy indexing_policy = {})
-      : store_(std::move(store)),
-        index_(std::move(index)),
-        embedding_model_(std::move(embedding_model)),
-        splitter_(std::move(splitter)),
+      : store_(std::move(store)), index_(std::move(index)),
+        embedding_model_(std::move(embedding_model)), splitter_(std::move(splitter)),
         indexing_policy_(std::move(indexing_policy)) {
     if (!store_) {
       throw std::invalid_argument("knowledge_retriever requires a knowledge_store");
@@ -105,10 +104,21 @@ public:
     if (document.id.empty()) {
       document.id = "doc-" + std::to_string(++next_document_id_);
     }
+    if (!document.metadata.contains("wuwe.content.trust")) {
+      core::set_content_provenance(document.metadata,
+        {
+          .trust = core::content_trust_level::retrieved_untrusted,
+          .source = core::content_source_kind::knowledge,
+          .source_id = document.id,
+          .source_uri = document.source_uri,
+        });
+    }
     const auto document_id = document.id;
-    publish_event(trace_id, "knowledge.ingest.start", {
-      { "document_id", document_id },
-    });
+    publish_event(trace_id,
+      "knowledge.ingest.start",
+      {
+        { "document_id", document_id },
+      });
 
     try {
       auto chunks = splitter_.split(document);
@@ -132,18 +142,22 @@ public:
       if (!chunks.empty()) {
         index_->upsert_batch(chunks, embeddings);
       }
-      publish_event(trace_id, "knowledge.ingest.complete", {
-        { "document_id", document_id },
-        { "chunks", std::to_string(chunks.size()) },
-      });
+      publish_event(trace_id,
+        "knowledge.ingest.complete",
+        {
+          { "document_id", document_id },
+          { "chunks", std::to_string(chunks.size()) },
+        });
       clear_retrieval_cache();
       return chunks;
     }
     catch (const std::exception& ex) {
-      publish_event(trace_id, "knowledge.ingest.failed", {
-        { "document_id", document_id },
-        { "error", ex.what() },
-      });
+      publish_event(trace_id,
+        "knowledge.ingest.failed",
+        {
+          { "document_id", document_id },
+          { "error", ex.what() },
+        });
       throw;
     }
   }
@@ -158,6 +172,9 @@ public:
       catch (const std::exception& ex) {
         result.errors.push_back(document.id + ": " + ex.what());
       }
+      catch (...) {
+        result.errors.push_back(document.id + ": unknown exception during knowledge ingest");
+      }
     }
     return result;
   }
@@ -166,6 +183,14 @@ public:
     std::vector<knowledge_document> documents,
     knowledge_task_progress_callback progress_callback = {},
     knowledge_task_policy task_policy = {}) {
+    if (task_policy.retry_backoff.count() < 0) {
+      throw std::invalid_argument("knowledge task retry backoff must not be negative");
+    }
+    auto lifetime = weak_from_this().lock();
+    if (!lifetime) {
+      throw std::invalid_argument(
+        "knowledge_retriever asynchronous operations require shared ownership");
+    }
     auto promise = std::make_shared<std::promise<knowledge_ingest_result>>();
     auto task = std::make_shared<knowledge_task<knowledge_ingest_result>>(promise->get_future());
 
@@ -176,91 +201,144 @@ public:
       .message = "ingest pending",
     });
 
-    std::thread(
-      [this, task, promise, documents = std::move(documents),
-        progress_callback = std::move(progress_callback),
-        task_policy]() mutable {
-        knowledge_ingest_result result;
-        auto publish = [&](knowledge_task_progress progress) {
-          progress.errors = result.errors;
-          task->update_progress(progress);
-          if (progress_callback) {
+    std::thread worker([this,
+                         lifetime = std::move(lifetime),
+                         task,
+                         promise,
+                         documents = std::move(documents),
+                         progress_callback = std::move(progress_callback),
+                         task_policy]() mutable {
+      knowledge_ingest_result result;
+      auto publish = [&](knowledge_task_progress progress) {
+        progress.errors = result.errors;
+        task->update_progress(progress);
+        if (progress_callback) {
+          try {
             progress_callback(progress);
           }
-        };
-
-        try {
-          publish({
-            .state = knowledge_task_state::running,
-            .completed = 0,
-            .total = documents.size(),
-            .message = "ingest running",
-          });
-
-          for (std::size_t index = 0; index < documents.size(); ++index) {
-            if (task->cancel_requested()) {
-              publish({
-                .state = knowledge_task_state::canceled,
-                .completed = index,
-                .total = documents.size(),
-                .message = "ingest canceled",
-              });
-              promise->set_value(std::move(result));
-              return;
-            }
-
-            bool ingested = false;
-            for (std::size_t attempt = 0; attempt <= task_policy.max_retries; ++attempt) {
-              try {
-                ingest(documents[index]);
-                ++result.ingested;
-                ingested = true;
-                break;
-              }
-              catch (const std::exception& ex) {
-                if (attempt == task_policy.max_retries) {
-                  result.errors.push_back(documents[index].id + ": " + ex.what());
-                }
-                else {
-                  std::this_thread::sleep_for(task_policy.retry_backoff);
-                }
-              }
-            }
-
-            publish({
-              .state = knowledge_task_state::running,
-              .completed = index + 1,
-              .total = documents.size(),
-              .message = ingested ? "ingest running" : "ingest running with errors",
-            });
+          catch (const std::exception& ex) {
+            result.errors.push_back(std::string("ingest progress callback failed: ") + ex.what());
+            progress.errors = result.errors;
+            task->update_progress(progress);
           }
-
-          publish({
-            .state = knowledge_task_state::completed,
-            .completed = documents.size(),
-            .total = documents.size(),
-            .message = "ingest completed",
-          });
-          promise->set_value(std::move(result));
+          catch (...) {
+            result.errors.push_back("ingest progress callback failed with an unknown exception");
+            progress.errors = result.errors;
+            task->update_progress(progress);
+          }
         }
-        catch (const std::exception& ex) {
-          result.errors.push_back(std::string("ingest task failed: ") + ex.what());
+      };
+
+      auto fail = [&](std::string message, std::exception_ptr cause) noexcept {
+        try {
+          result.errors.push_back(std::move(message));
           publish({
             .state = knowledge_task_state::failed,
             .completed = result.ingested,
             .total = documents.size(),
-            .message = ex.what(),
+            .message = result.errors.back(),
           });
           promise->set_value(std::move(result));
         }
-      }).detach();
+        catch (...) {
+          try {
+            promise->set_exception(cause ? cause : std::current_exception());
+          }
+          catch (...) {
+            // Never allow bookkeeping failure to escape a detached worker.
+          }
+        }
+      };
+
+      try {
+        publish({
+          .state = knowledge_task_state::running,
+          .completed = 0,
+          .total = documents.size(),
+          .message = "ingest running",
+        });
+
+        for (std::size_t index = 0; index < documents.size(); ++index) {
+          if (task->cancel_requested()) {
+            publish({
+              .state = knowledge_task_state::canceled,
+              .completed = index,
+              .total = documents.size(),
+              .message = "ingest canceled",
+            });
+            promise->set_value(std::move(result));
+            return;
+          }
+
+          bool ingested = false;
+          for (std::size_t attempt = 0;; ++attempt) {
+            try {
+              ingest(documents[index]);
+              ++result.ingested;
+              ingested = true;
+              break;
+            }
+            catch (const std::exception& ex) {
+              if (attempt >= task_policy.max_retries) {
+                result.errors.push_back(documents[index].id + ": " + ex.what());
+                break;
+              }
+              if (task->wait_for_cancel(task_policy.retry_backoff)) {
+                publish({
+                  .state = knowledge_task_state::canceled,
+                  .completed = index,
+                  .total = documents.size(),
+                  .message = "ingest canceled during retry backoff",
+                });
+                promise->set_value(std::move(result));
+                return;
+              }
+            }
+            catch (...) {
+              result.errors.push_back(
+                documents[index].id + ": unknown exception during knowledge ingest");
+              break;
+            }
+          }
+
+          publish({
+            .state = knowledge_task_state::running,
+            .completed = index + 1,
+            .total = documents.size(),
+            .message = ingested ? "ingest running" : "ingest running with errors",
+          });
+        }
+
+        publish({
+          .state = knowledge_task_state::completed,
+          .completed = documents.size(),
+          .total = documents.size(),
+          .message = "ingest completed",
+        });
+        promise->set_value(std::move(result));
+      }
+      catch (const std::exception& ex) {
+        const auto cause = std::current_exception();
+        fail(std::string("ingest task failed: ") + ex.what(), cause);
+      }
+      catch (...) {
+        const auto cause = std::current_exception();
+        fail("ingest task failed with an unknown exception", cause);
+      }
+    });
+    try {
+      worker.detach();
+    }
+    catch (...) {
+      if (worker.joinable())
+        worker.join();
+    }
 
     return task;
   }
 
   knowledge_ingest_result ingest_incremental(
-    const std::vector<knowledge_document>& documents,
-    bool erase_stale = false) {
+    const std::vector<knowledge_document>& documents, bool erase_stale = false) {
     knowledge_ingest_result result;
 
     std::map<std::string, knowledge_document> existing;
@@ -288,6 +366,9 @@ public:
       }
       catch (const std::exception& ex) {
         result.errors.push_back(document.id + ": " + ex.what());
+      }
+      catch (...) {
+        result.errors.push_back(document.id + ": unknown exception during knowledge ingest");
       }
     }
 
@@ -319,18 +400,20 @@ public:
     }
 
     const auto trace_id = next_trace_id();
-    publish_event(trace_id, "knowledge.retrieve.start", {
-      { "query", query.text },
-      { "limit", std::to_string(query.limit) },
-      { "candidate_limit", std::to_string(query.candidate_limit) },
-    });
+    publish_event(trace_id,
+      "knowledge.retrieve.start",
+      {
+        { "query", query.text },
+        { "limit", std::to_string(query.limit) },
+        { "candidate_limit", std::to_string(query.candidate_limit) },
+      });
 
     const auto total_start = clock::now();
     report.trace.trace_id = trace_id;
     report.trace.query_text = query.text;
     report.trace.requested_limit = query.limit;
     report.trace.candidate_limit = query.candidate_limit;
-      report.trace.used_reranker = static_cast<bool>(reranker_);
+    report.trace.used_reranker = static_cast<bool>(reranker_);
 
     try {
       const auto cache_key = knowledge_query_cache_key(query);
@@ -341,10 +424,12 @@ public:
           report.trace.final_count = cached_results.size();
           report.trace.total_ms = elapsed_ms(total_start);
           report.results = std::move(cached_results);
-          publish_event(trace_id, "knowledge.retrieve.cache_hit", {
-            { "final_count", std::to_string(report.trace.final_count) },
-            { "total_ms", std::to_string(report.trace.total_ms) },
-          });
+          publish_event(trace_id,
+            "knowledge.retrieve.cache_hit",
+            {
+              { "final_count", std::to_string(report.trace.final_count) },
+              { "total_ms", std::to_string(report.trace.total_ms) },
+            });
           return report;
         }
       }
@@ -383,9 +468,8 @@ public:
 
       const auto access_filter_start = clock::now();
       if (access_filter_) {
-        std::erase_if(results, [&](const knowledge_result& result) {
-          return !access_filter_(result.chunk);
-        });
+        std::erase_if(
+          results, [&](const knowledge_result& result) { return !access_filter_(result.chunk); });
       }
       report.trace.access_filter_ms = elapsed_ms(access_filter_start);
       report.trace.after_access_filter_count = results.size();
@@ -405,23 +489,26 @@ public:
       if (retrieval_cache_) {
         retrieval_cache_->put(cache_key, report.results);
       }
-      publish_event(trace_id, "knowledge.retrieve.complete", {
-        { "first_stage_count", std::to_string(report.trace.first_stage_count) },
-        { "after_access_filter_count",
-          std::to_string(report.trace.after_access_filter_count) },
-        { "final_count", std::to_string(report.trace.final_count) },
-        { "rewritten_query_count", std::to_string(report.trace.rewritten_query_count) },
-        { "total_ms", std::to_string(report.trace.total_ms) },
-      });
+      publish_event(trace_id,
+        "knowledge.retrieve.complete",
+        {
+          { "first_stage_count", std::to_string(report.trace.first_stage_count) },
+          { "after_access_filter_count", std::to_string(report.trace.after_access_filter_count) },
+          { "final_count", std::to_string(report.trace.final_count) },
+          { "rewritten_query_count", std::to_string(report.trace.rewritten_query_count) },
+          { "total_ms", std::to_string(report.trace.total_ms) },
+        });
       return report;
     }
     catch (const std::exception& ex) {
       report.trace.total_ms = elapsed_ms(total_start);
-      publish_event(trace_id, "knowledge.retrieve.failed", {
-        { "query", query.text },
-        { "error", ex.what() },
-        { "total_ms", std::to_string(report.trace.total_ms) },
-      });
+      publish_event(trace_id,
+        "knowledge.retrieve.failed",
+        {
+          { "query", query.text },
+          { "error", ex.what() },
+          { "total_ms", std::to_string(report.trace.total_ms) },
+        });
       throw;
     }
   }
@@ -496,32 +583,46 @@ public:
         catch (const std::exception& ex) {
           result.errors.push_back(chunk.id + ": " + ex.what());
         }
+        catch (...) {
+          result.errors.push_back(chunk.id + ": unknown exception during knowledge rebuild");
+        }
       }
-      publish_event(trace_id, "knowledge.rebuild.complete", {
-        { "scanned", std::to_string(result.scanned) },
-        { "rebuilt", std::to_string(result.rebuilt) },
-        { "skipped", std::to_string(result.skipped) },
-        { "errors", std::to_string(result.errors.size()) },
-      });
+      publish_event(trace_id,
+        "knowledge.rebuild.complete",
+        {
+          { "scanned", std::to_string(result.scanned) },
+          { "rebuilt", std::to_string(result.rebuilt) },
+          { "skipped", std::to_string(result.skipped) },
+          { "errors", std::to_string(result.errors.size()) },
+        });
       clear_retrieval_cache();
       return result;
     }
     catch (const std::exception& ex) {
-      publish_event(trace_id, "knowledge.rebuild.failed", {
-        { "scanned", std::to_string(result.scanned) },
-        { "rebuilt", std::to_string(result.rebuilt) },
-        { "skipped", std::to_string(result.skipped) },
-        { "errors", std::to_string(result.errors.size()) },
-        { "error", ex.what() },
-      });
+      publish_event(trace_id,
+        "knowledge.rebuild.failed",
+        {
+          { "scanned", std::to_string(result.scanned) },
+          { "rebuilt", std::to_string(result.rebuilt) },
+          { "skipped", std::to_string(result.skipped) },
+          { "errors", std::to_string(result.errors.size()) },
+          { "error", ex.what() },
+        });
       throw;
     }
   }
 
   std::shared_ptr<knowledge_task<knowledge_rebuild_result>> rebuild_index_detailed_async(
-    knowledge_query query = {},
-    knowledge_task_progress_callback progress_callback = {},
+    knowledge_query query = {}, knowledge_task_progress_callback progress_callback = {},
     knowledge_task_policy task_policy = {}) {
+    if (task_policy.retry_backoff.count() < 0) {
+      throw std::invalid_argument("knowledge task retry backoff must not be negative");
+    }
+    auto lifetime = weak_from_this().lock();
+    if (!lifetime) {
+      throw std::invalid_argument(
+        "knowledge_retriever asynchronous operations require shared ownership");
+    }
     auto promise = std::make_shared<std::promise<knowledge_rebuild_result>>();
     auto task = std::make_shared<knowledge_task<knowledge_rebuild_result>>(promise->get_future());
 
@@ -530,133 +631,200 @@ public:
       .message = "rebuild pending",
     });
 
-    std::thread(
-      [this, task, promise, query = std::move(query),
-        progress_callback = std::move(progress_callback),
-        task_policy]() mutable {
-        knowledge_rebuild_result result;
-        auto publish = [&](knowledge_task_progress progress) {
-          progress.errors = result.errors;
-          task->update_progress(progress);
-          if (progress_callback) {
+    std::thread worker([this,
+                         lifetime = std::move(lifetime),
+                         task,
+                         promise,
+                         query = std::move(query),
+                         progress_callback = std::move(progress_callback),
+                         task_policy]() mutable {
+      knowledge_rebuild_result result;
+      auto publish = [&](knowledge_task_progress progress) {
+        progress.errors = result.errors;
+        task->update_progress(progress);
+        if (progress_callback) {
+          try {
             progress_callback(progress);
           }
-        };
-        const auto trace_id = next_trace_id();
+          catch (const std::exception& ex) {
+            result.errors.push_back(std::string("rebuild progress callback failed: ") + ex.what());
+            progress.errors = result.errors;
+            task->update_progress(progress);
+          }
+          catch (...) {
+            result.errors.push_back("rebuild progress callback failed with an unknown exception");
+            progress.errors = result.errors;
+            task->update_progress(progress);
+          }
+        }
+      };
+      const auto trace_id = next_trace_id();
 
+      auto fail = [&](std::string message, std::exception_ptr cause) noexcept {
         try {
-          publish_event(trace_id, "knowledge.rebuild.start", {
+          result.errors.push_back(std::move(message));
+          publish_event(trace_id,
+            "knowledge.rebuild.failed",
+            {
+              { "async", "true" },
+              { "scanned", std::to_string(result.scanned) },
+              { "rebuilt", std::to_string(result.rebuilt) },
+              { "skipped", std::to_string(result.skipped) },
+              { "errors", std::to_string(result.errors.size()) },
+              { "error", result.errors.back() },
+            });
+          publish({
+            .state = knowledge_task_state::failed,
+            .completed = result.rebuilt + result.skipped,
+            .total = result.scanned,
+            .message = result.errors.back(),
+          });
+          promise->set_value(std::move(result));
+        }
+        catch (...) {
+          try {
+            promise->set_exception(cause ? cause : std::current_exception());
+          }
+          catch (...) {
+            // Never allow bookkeeping failure to escape a detached worker.
+          }
+        }
+      };
+
+      try {
+        publish_event(trace_id,
+          "knowledge.rebuild.start",
+          {
             { "async", "true" },
           });
 
-          query.limit = 0;
-          auto chunks = store_->list_chunks(query);
-          result.scanned = chunks.size();
+        query.limit = 0;
+        auto chunks = store_->list_chunks(query);
+        result.scanned = chunks.size();
 
-          publish({
-            .state = knowledge_task_state::running,
-            .completed = 0,
-            .total = chunks.size(),
-            .message = "rebuild running",
-          });
+        publish({
+          .state = knowledge_task_state::running,
+          .completed = 0,
+          .total = chunks.size(),
+          .message = "rebuild running",
+        });
 
-          index_->clear();
-          for (std::size_t index = 0; index < chunks.size(); ++index) {
-            if (task->cancel_requested()) {
-              publish_event(trace_id, "knowledge.rebuild.canceled", {
+        index_->clear();
+        for (std::size_t index = 0; index < chunks.size(); ++index) {
+          if (task->cancel_requested()) {
+            publish_event(trace_id,
+              "knowledge.rebuild.canceled",
+              {
                 { "scanned", std::to_string(result.scanned) },
                 { "rebuilt", std::to_string(result.rebuilt) },
                 { "skipped", std::to_string(result.skipped) },
                 { "completed", std::to_string(index) },
               });
-              publish({
-                .state = knowledge_task_state::canceled,
-                .completed = index,
-                .total = chunks.size(),
-                .message = "rebuild canceled",
-              });
-              clear_retrieval_cache();
-              promise->set_value(std::move(result));
-              return;
-            }
+            publish({
+              .state = knowledge_task_state::canceled,
+              .completed = index,
+              .total = chunks.size(),
+              .message = "rebuild canceled",
+            });
+            clear_retrieval_cache();
+            promise->set_value(std::move(result));
+            return;
+          }
 
-            const auto& chunk = chunks[index];
-            if (chunk.content.empty()) {
-              ++result.skipped;
-            }
-            else {
-              for (std::size_t attempt = 0; attempt <= task_policy.max_retries; ++attempt) {
-                try {
-                  auto indexed_chunk = chunk;
-                  auto embedding = embedding_model_->embed(chunk.content);
-                  apply_indexing_metadata(indexed_chunk, embedding);
-                  index_->upsert(indexed_chunk, embedding);
-                  ++result.rebuilt;
+          const auto& chunk = chunks[index];
+          if (chunk.content.empty()) {
+            ++result.skipped;
+          }
+          else {
+            for (std::size_t attempt = 0;; ++attempt) {
+              try {
+                auto indexed_chunk = chunk;
+                auto embedding = embedding_model_->embed(chunk.content);
+                apply_indexing_metadata(indexed_chunk, embedding);
+                index_->upsert(indexed_chunk, embedding);
+                ++result.rebuilt;
+                break;
+              }
+              catch (const std::exception& ex) {
+                if (attempt >= task_policy.max_retries) {
+                  result.errors.push_back(chunk.id + ": " + ex.what());
                   break;
                 }
-                catch (const std::exception& ex) {
-                  if (attempt == task_policy.max_retries) {
-                    result.errors.push_back(chunk.id + ": " + ex.what());
-                  }
-                  else {
-                    std::this_thread::sleep_for(task_policy.retry_backoff);
-                  }
+                if (task->wait_for_cancel(task_policy.retry_backoff)) {
+                  publish_event(trace_id,
+                    "knowledge.rebuild.canceled",
+                    {
+                      { "scanned", std::to_string(result.scanned) },
+                      { "rebuilt", std::to_string(result.rebuilt) },
+                      { "skipped", std::to_string(result.skipped) },
+                      { "completed", std::to_string(index) },
+                    });
+                  publish({
+                    .state = knowledge_task_state::canceled,
+                    .completed = index,
+                    .total = chunks.size(),
+                    .message = "rebuild canceled during retry backoff",
+                  });
+                  clear_retrieval_cache();
+                  promise->set_value(std::move(result));
+                  return;
                 }
               }
+              catch (...) {
+                result.errors.push_back(chunk.id + ": unknown exception during knowledge rebuild");
+                break;
+              }
             }
-
-            publish({
-              .state = knowledge_task_state::running,
-              .completed = index + 1,
-              .total = chunks.size(),
-              .message = "rebuild running",
-            });
           }
 
           publish({
-            .state = knowledge_task_state::completed,
-            .completed = chunks.size(),
+            .state = knowledge_task_state::running,
+            .completed = index + 1,
             .total = chunks.size(),
-            .message = "rebuild completed",
+            .message = "rebuild running",
           });
-          publish_event(trace_id, "knowledge.rebuild.complete", {
+        }
+
+        publish({
+          .state = knowledge_task_state::completed,
+          .completed = chunks.size(),
+          .total = chunks.size(),
+          .message = "rebuild completed",
+        });
+        publish_event(trace_id,
+          "knowledge.rebuild.complete",
+          {
             { "async", "true" },
             { "scanned", std::to_string(result.scanned) },
             { "rebuilt", std::to_string(result.rebuilt) },
             { "skipped", std::to_string(result.skipped) },
             { "errors", std::to_string(result.errors.size()) },
           });
-          clear_retrieval_cache();
-          promise->set_value(std::move(result));
-        }
-        catch (const std::exception& ex) {
-          result.errors.push_back(std::string("rebuild task failed: ") + ex.what());
-          publish_event(trace_id, "knowledge.rebuild.failed", {
-            { "async", "true" },
-            { "scanned", std::to_string(result.scanned) },
-            { "rebuilt", std::to_string(result.rebuilt) },
-            { "skipped", std::to_string(result.skipped) },
-            { "errors", std::to_string(result.errors.size()) },
-            { "error", ex.what() },
-          });
-          publish({
-            .state = knowledge_task_state::failed,
-            .completed = result.rebuilt + result.skipped,
-            .total = result.scanned,
-            .message = ex.what(),
-          });
-          promise->set_value(std::move(result));
-        }
-      }).detach();
+        clear_retrieval_cache();
+        promise->set_value(std::move(result));
+      }
+      catch (const std::exception& ex) {
+        const auto cause = std::current_exception();
+        fail(std::string("rebuild task failed: ") + ex.what(), cause);
+      }
+      catch (...) {
+        const auto cause = std::current_exception();
+        fail("rebuild task failed with an unknown exception", cause);
+      }
+    });
+    try {
+      worker.detach();
+    }
+    catch (...) {
+      if (worker.joinable())
+        worker.join();
+    }
 
     return task;
   }
 
-  std::vector<knowledge_result> expand_with_neighbors(
-    std::vector<knowledge_result> results,
-    std::size_t before,
-    std::size_t after,
-    knowledge_access_scope access = {}) const {
+  std::vector<knowledge_result> expand_with_neighbors(std::vector<knowledge_result> results,
+    std::size_t before, std::size_t after, knowledge_access_scope access = {}) const {
     if ((before == 0 && after == 0) || results.empty()) {
       return results;
     }
@@ -681,10 +849,11 @@ public:
         }
       }
 
-      std::sort(siblings.begin(), siblings.end(), [](const knowledge_chunk& lhs,
-                                                      const knowledge_chunk& rhs) {
-        return lhs.start_offset < rhs.start_offset;
-      });
+      std::sort(siblings.begin(),
+        siblings.end(),
+        [](const knowledge_chunk& lhs, const knowledge_chunk& rhs) {
+          return lhs.start_offset < rhs.start_offset;
+        });
 
       auto it = std::find_if(siblings.begin(), siblings.end(), [&](const knowledge_chunk& chunk) {
         return chunk.id == result.chunk.id;
@@ -707,16 +876,17 @@ public:
       }
     }
 
-    std::sort(expanded.begin(), expanded.end(), [](const knowledge_result& lhs,
-                                                   const knowledge_result& rhs) {
-      if (lhs.score != rhs.score) {
-        return lhs.score > rhs.score;
-      }
-      if (lhs.chunk.document_id != rhs.chunk.document_id) {
-        return lhs.chunk.document_id < rhs.chunk.document_id;
-      }
-      return lhs.chunk.start_offset < rhs.chunk.start_offset;
-    });
+    std::sort(expanded.begin(),
+      expanded.end(),
+      [](const knowledge_result& lhs, const knowledge_result& rhs) {
+        if (lhs.score != rhs.score) {
+          return lhs.score > rhs.score;
+        }
+        if (lhs.chunk.document_id != rhs.chunk.document_id) {
+          return lhs.chunk.document_id < rhs.chunk.document_id;
+        }
+        return lhs.chunk.start_offset < rhs.chunk.start_offset;
+      });
     return expanded;
   }
 
@@ -752,26 +922,21 @@ private:
 
   static double elapsed_ms(clock::time_point start) {
     return static_cast<double>(
-      std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - start).count()) /
-      1000.0;
+             std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - start).count()) /
+           1000.0;
   }
 
-  static bool same_content_hash(
-    const knowledge_document& lhs,
-    const knowledge_document& rhs) {
+  static bool same_content_hash(const knowledge_document& lhs, const knowledge_document& rhs) {
     const auto lhs_hash = lhs.metadata.find("content_hash");
     const auto rhs_hash = rhs.metadata.find("content_hash");
     return lhs_hash != lhs.metadata.end() && rhs_hash != rhs.metadata.end() &&
            lhs_hash->second == rhs_hash->second;
   }
 
-  static void append_unique(
-    std::vector<knowledge_result>& results,
-    std::unordered_set<std::string>& seen,
-    knowledge_result result) {
+  static void append_unique(std::vector<knowledge_result>& results,
+    std::unordered_set<std::string>& seen, knowledge_result result) {
     const auto key = result.chunk.id.empty()
-                       ? result.chunk.document_id + ":" +
-                           std::to_string(result.chunk.start_offset)
+                       ? result.chunk.document_id + ":" + std::to_string(result.chunk.start_offset)
                        : result.chunk.id;
     if (seen.insert(key).second) {
       results.push_back(std::move(result));
@@ -779,18 +944,15 @@ private:
   }
 
   static void merge_results(
-    std::vector<knowledge_result>& target,
-    std::vector<knowledge_result> incoming) {
+    std::vector<knowledge_result>& target, std::vector<knowledge_result> incoming) {
     for (auto& result : incoming) {
-      const auto key = result.chunk.id.empty()
-                         ? result.chunk.document_id + ":" +
-                             std::to_string(result.chunk.start_offset)
-                         : result.chunk.id;
+      const auto key = result.chunk.id.empty() ? result.chunk.document_id + ":" +
+                                                   std::to_string(result.chunk.start_offset)
+                                               : result.chunk.id;
       auto existing = std::find_if(target.begin(), target.end(), [&](const knowledge_result& item) {
-        const auto existing_key = item.chunk.id.empty()
-                                    ? item.chunk.document_id + ":" +
-                                        std::to_string(item.chunk.start_offset)
-                                    : item.chunk.id;
+        const auto existing_key = item.chunk.id.empty() ? item.chunk.document_id + ":" +
+                                                            std::to_string(item.chunk.start_offset)
+                                                        : item.chunk.id;
         return existing_key == key;
       });
       if (existing == target.end()) {
@@ -801,56 +963,51 @@ private:
         *existing = std::move(result);
       }
     }
-    std::sort(target.begin(), target.end(), [](const knowledge_result& lhs,
-                                               const knowledge_result& rhs) {
-      if (lhs.score != rhs.score) {
-        return lhs.score > rhs.score;
-      }
-      if (lhs.chunk.document_id != rhs.chunk.document_id) {
-        return lhs.chunk.document_id < rhs.chunk.document_id;
-      }
-      return lhs.chunk.start_offset < rhs.chunk.start_offset;
-    });
+    std::sort(
+      target.begin(), target.end(), [](const knowledge_result& lhs, const knowledge_result& rhs) {
+        if (lhs.score != rhs.score) {
+          return lhs.score > rhs.score;
+        }
+        if (lhs.chunk.document_id != rhs.chunk.document_id) {
+          return lhs.chunk.document_id < rhs.chunk.document_id;
+        }
+        return lhs.chunk.start_offset < rhs.chunk.start_offset;
+      });
   }
 
   static bool looks_like_broad_knowledge_query(std::string_view query) {
     const auto text = text_detail::lowercase_ascii(query);
-    return text.find("main") != std::string::npos ||
-           text.find("overview") != std::string::npos ||
+    return text.find("main") != std::string::npos || text.find("overview") != std::string::npos ||
            text.find("summary") != std::string::npos ||
-           text.find("summarize") != std::string::npos ||
-           text.find("list") != std::string::npos ||
+           text.find("summarize") != std::string::npos || text.find("list") != std::string::npos ||
            text.find("what are") != std::string::npos ||
            text.find("what is") != std::string::npos ||
-           text.find("describe") != std::string::npos ||
-           text.find("cover") != std::string::npos ||
+           text.find("describe") != std::string::npos || text.find("cover") != std::string::npos ||
            text.find("pattern") != std::string::npos;
   }
 
   static void apply_document_summary_boost(
-    std::string_view query_text,
-    std::vector<knowledge_result>& results) {
+    std::string_view query_text, std::vector<knowledge_result>& results) {
     if (!looks_like_broad_knowledge_query(query_text)) {
       return;
     }
 
     for (auto& result : results) {
       const auto chunking = result.chunk.metadata.find("chunking");
-      if (chunking != result.chunk.metadata.end() &&
-          chunking->second == "document_summary") {
+      if (chunking != result.chunk.metadata.end() && chunking->second == "document_summary") {
         result.score += 1.0;
       }
     }
-    std::sort(results.begin(), results.end(), [](const knowledge_result& lhs,
-                                                 const knowledge_result& rhs) {
-      if (lhs.score != rhs.score) {
-        return lhs.score > rhs.score;
-      }
-      if (lhs.chunk.document_id != rhs.chunk.document_id) {
-        return lhs.chunk.document_id < rhs.chunk.document_id;
-      }
-      return lhs.chunk.start_offset < rhs.chunk.start_offset;
-    });
+    std::sort(
+      results.begin(), results.end(), [](const knowledge_result& lhs, const knowledge_result& rhs) {
+        if (lhs.score != rhs.score) {
+          return lhs.score > rhs.score;
+        }
+        if (lhs.chunk.document_id != rhs.chunk.document_id) {
+          return lhs.chunk.document_id < rhs.chunk.document_id;
+        }
+        return lhs.chunk.start_offset < rhs.chunk.start_offset;
+      });
   }
 
   static std::string next_trace_id() {
@@ -858,9 +1015,7 @@ private:
     return "knowledge-trace-" + std::to_string(++next_id);
   }
 
-  void publish_event(
-    const std::string& trace_id,
-    std::string name,
+  void publish_event(const std::string& trace_id, std::string name,
     std::map<std::string, std::string> attributes) const {
     std::shared_ptr<knowledge_event_sink> sink;
     {
@@ -883,15 +1038,12 @@ private:
     }
   }
 
-  void apply_indexing_metadata(
-    knowledge_chunk& chunk,
-    const std::vector<float>& embedding) const {
+  void apply_indexing_metadata(knowledge_chunk& chunk, const std::vector<float>& embedding) const {
     if (indexing_policy_.expected_embedding_dimension != 0 &&
         embedding.size() != indexing_policy_.expected_embedding_dimension) {
-      throw std::runtime_error(
-        "knowledge embedding dimension mismatch: expected " +
-        std::to_string(indexing_policy_.expected_embedding_dimension) +
-        ", got " + std::to_string(embedding.size()));
+      throw std::runtime_error("knowledge embedding dimension mismatch: expected " +
+                               std::to_string(indexing_policy_.expected_embedding_dimension) +
+                               ", got " + std::to_string(embedding.size()));
     }
     if (!indexing_policy_.embedding_provider.empty()) {
       chunk.metadata["embedding_provider"] = indexing_policy_.embedding_provider;
@@ -903,8 +1055,7 @@ private:
       chunk.metadata["embedding_version"] = indexing_policy_.embedding_version;
     }
     chunk.metadata["embedding_dimension"] = std::to_string(embedding.size());
-    chunk.metadata["index_schema_version"] =
-      std::to_string(indexing_policy_.index_schema_version);
+    chunk.metadata["index_schema_version"] = std::to_string(indexing_policy_.index_schema_version);
   }
 
   std::vector<std::vector<float>> embed_texts_in_batches(
@@ -913,10 +1064,9 @@ private:
       return {};
     }
 
-    const auto batch_size =
-      indexing_policy_.embedding_batch_size == 0
-        ? texts.size()
-        : indexing_policy_.embedding_batch_size;
+    const auto batch_size = indexing_policy_.embedding_batch_size == 0
+                              ? texts.size()
+                              : indexing_policy_.embedding_batch_size;
 
     std::vector<std::vector<float>> embeddings;
     embeddings.reserve(texts.size());
@@ -950,7 +1100,7 @@ private:
   std::function<bool(const knowledge_chunk&)> access_filter_;
   knowledge_splitter splitter_;
   knowledge_indexing_policy indexing_policy_;
-  std::size_t next_document_id_ {};
+  std::atomic<std::size_t> next_document_id_ { 0 };
 };
 
 } // namespace wuwe::agent::knowledge

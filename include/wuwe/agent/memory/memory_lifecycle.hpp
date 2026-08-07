@@ -61,24 +61,24 @@ enum class memory_audit_action {
 
 inline std::string to_string(memory_audit_action action) {
   switch (action) {
-  case memory_audit_action::remember:
-    return "remember";
-  case memory_audit_action::update:
-    return "update";
-  case memory_audit_action::erase:
-    return "erase";
-  case memory_audit_action::clear:
-    return "clear";
-  case memory_audit_action::compact_expired:
-    return "compact_expired";
-  case memory_audit_action::rebuild_index:
-    return "rebuild_index";
-  case memory_audit_action::reconcile_index:
-    return "reconcile_index";
-  case memory_audit_action::summarize_conversation:
-    return "summarize_conversation";
-  case memory_audit_action::reject:
-    return "reject";
+    case memory_audit_action::remember:
+      return "remember";
+    case memory_audit_action::update:
+      return "update";
+    case memory_audit_action::erase:
+      return "erase";
+    case memory_audit_action::clear:
+      return "clear";
+    case memory_audit_action::compact_expired:
+      return "compact_expired";
+    case memory_audit_action::rebuild_index:
+      return "rebuild_index";
+    case memory_audit_action::reconcile_index:
+      return "reconcile_index";
+    case memory_audit_action::summarize_conversation:
+      return "summarize_conversation";
+    case memory_audit_action::reject:
+      return "reject";
   }
   return "unknown";
 }

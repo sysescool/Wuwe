@@ -1,8 +1,8 @@
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
-#include <cctype>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -34,10 +34,11 @@ namespace memory = wuwe::agent::memory;
 
 constexpr std::string_view kGuidelinesUrl =
   "https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines";
-constexpr std::string_view kQuestion =
-  "What do the C++ Core Guidelines recommend when code needs dynamic allocation with new and delete?";
+constexpr std::string_view kQuestion = "What do the C++ Core Guidelines recommend when code needs "
+                                       "dynamic allocation with new and delete?";
 constexpr std::string_view kRetrievalHints =
-  "dynamic allocation new delete explicit resource handle manager object R.11 R.12 smart pointer unique_ptr make_unique vector RAII";
+  "dynamic allocation new delete explicit resource handle manager object R.11 R.12 smart pointer "
+  "unique_ptr make_unique vector RAII";
 
 struct text {
   static bool contains(std::string_view haystack, std::string_view needle) {
@@ -91,8 +92,7 @@ public:
 class citation_guard {
 public:
   static bool answer_uses_context_citations(
-    std::string_view answer,
-    std::string_view context_block) {
+    std::string_view answer, std::string_view context_block) {
     const auto max_context_citation = max_citation_number(context_block);
     if (max_context_citation == 0) {
       return false;
@@ -176,14 +176,16 @@ private:
   }
 
   template<std::size_t Size>
-  static bool contains_all(const std::string& text_value, const std::array<std::string_view, Size>& terms) {
+  static bool contains_all(
+    const std::string& text_value, const std::array<std::string_view, Size>& terms) {
     return std::all_of(terms.begin(), terms.end(), [&](std::string_view term) {
       return text::contains(text_value, term);
     });
   }
 
   template<std::size_t Size>
-  static bool contains_any(const std::string& text_value, const std::array<std::string_view, Size>& terms) {
+  static bool contains_any(
+    const std::string& text_value, const std::array<std::string_view, Size>& terms) {
     return std::any_of(terms.begin(), terms.end(), [&](std::string_view term) {
       return text::contains(text_value, term);
     });
@@ -197,10 +199,8 @@ struct demo_environment {
   static demo_environment load() {
     demo_environment environment;
     environment.api_key = env_reader::get("OPENROUTER_API_KEY", env_reader::get("OPENAI_API_KEY"));
-    environment.base_url =
-      env_reader::get(
-        "OPENAI_BASE_URL",
-        env_reader::get("OPENROUTER_BASE_URL", "https://openrouter.ai/api"));
+    environment.base_url = env_reader::get(
+      "OPENAI_BASE_URL", env_reader::get("OPENROUTER_BASE_URL", "https://openrouter.ai/api"));
     return environment;
   }
 };
@@ -291,15 +291,27 @@ private:
   }
 
   static constexpr std::string_view keywords_[] {
-    "new", "delete", "allocation", "dynamic", "resource", "handle", "manager", "object",
-    "smart", "unique_ptr", "make_unique", "vector", "raii", "r.11", "r.12",
+    "new",
+    "delete",
+    "allocation",
+    "dynamic",
+    "resource",
+    "handle",
+    "manager",
+    "object",
+    "smart",
+    "unique_ptr",
+    "make_unique",
+    "vector",
+    "raii",
+    "r.11",
+    "r.12",
   };
 };
 
 class guideline_rule_reranker final : public knowledge::knowledge_reranker {
 public:
-  std::vector<knowledge::knowledge_result> rerank(
-    const knowledge::knowledge_query& query,
+  std::vector<knowledge::knowledge_result> rerank(const knowledge::knowledge_query& query,
     std::vector<knowledge::knowledge_result> candidates) const override {
     for (auto& candidate : candidates) {
       candidate.score = score(query, candidate);
@@ -328,8 +340,7 @@ private:
   }
 
   static double score(
-    const knowledge::knowledge_query& query,
-    const knowledge::knowledge_result& candidate) {
+    const knowledge::knowledge_query& query, const knowledge::knowledge_result& candidate) {
     const auto section = text::lower(section_of(candidate.chunk));
     const auto content = text::lower(candidate.chunk.content);
     const auto query_text = text::lower(query.text);
@@ -393,10 +404,8 @@ struct answer_attempt {
 class url_rag_demo {
 public:
   explicit url_rag_demo(demo_environment environment)
-      : environment_(std::move(environment)),
-        model_plan_(environment_.base_url),
-        llm_client_(make_llm_client()),
-        retriever_(make_retriever()),
+      : environment_(std::move(environment)), model_plan_(environment_.base_url),
+        llm_client_(make_llm_client()), retriever_(make_retriever()),
         service_(retriever_, knowledge::knowledge_document_loader::make_default(), llm_client_) {
   }
 
@@ -454,10 +463,9 @@ private:
   }
 
   knowledge::knowledge_upload_report upload_document() {
-    return service_.upload_document(
-      std::string(kGuidelinesUrl),
+    return service_.upload_document(std::string(kGuidelinesUrl),
       {
-        .metadata = { { "collection", "cpp-core-guidelines" } },
+        .metadata = { { "collection", "cpp-core-guidelines" }, { "visibility", "public" } },
       });
   }
 
@@ -497,15 +505,13 @@ private:
       if (candidate.answer) {
         if (guideline_demo_spec::answer_is_relevant(candidate.answer.content) &&
             citation_guard::answer_uses_context_citations(
-              candidate.answer.content,
-              candidate.context_block)) {
+              candidate.answer.content, candidate.context_block)) {
           attempt.model = model;
           attempt.report = std::move(candidate);
           return attempt;
         }
-        attempt.errors.push_back(
-          model + ": answer did not pass quality gate | " +
-          text::preview(candidate.answer.content, 240));
+        attempt.errors.push_back(model + ": answer did not pass quality gate | " +
+                                 text::preview(candidate.answer.content, 240));
         continue;
       }
 
@@ -556,8 +562,7 @@ private:
   }
 
   static void print_retrieval(
-    const knowledge::knowledge_upload_report& upload,
-    const retrieval_snapshot& retrieval) {
+    const knowledge::knowledge_upload_report& upload, const retrieval_snapshot& retrieval) {
     const auto& results = retrieval.report.results;
     wuwe::println("Question:\n{}\n", kQuestion);
     wuwe::println("Loaded documents={} ingested={} skipped={} retrieved={}",
@@ -575,17 +580,21 @@ private:
         section == results[index].chunk.metadata.end() ? "(none)" : section->second);
     }
     wuwe::println("");
-    wuwe::println("Cited context sent to the LLM:\n{}\n", text::preview(retrieval.context_block, 5000));
-    wuwe::println("[PASS] Retrieval quality gate found R.11, R.12, and resource-manager evidence.\n");
+    wuwe::println(
+      "Cited context sent to the LLM:\n{}\n", text::preview(retrieval.context_block, 5000));
+    wuwe::println(
+      "[PASS] Retrieval quality gate found R.11, R.12, and resource-manager evidence.\n");
   }
 
   void print_answer(const answer_attempt& answer) const {
-    const auto tool_result = knowledge::knowledge_tool_provider(*retriever_, {
-      .max_search_results = 3,
-    }).invoke(
-      "search_knowledge",
-      std::string("{\"content\":") + nlohmann::json(guideline_demo_spec::retrieval_query()).dump() +
-        ",\"limit\":3}");
+    const auto tool_result =
+      knowledge::knowledge_tool_provider(*retriever_,
+        {
+          .max_search_results = 3,
+        })
+        .invoke("search_knowledge",
+          std::string("{\"content\":") +
+            nlohmann::json(guideline_demo_spec::retrieval_query()).dump() + ",\"limit\":3}");
 
     wuwe::println("answered_model={}\n", answer.model);
     wuwe::println("Generated LLM answer:\n{}\n", answer.report->answer.content);

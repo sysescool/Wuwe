@@ -12,10 +12,10 @@
 #include <utility>
 #include <vector>
 
-#include <wuwe/agent/knowledge/knowledge_record.hpp>
 #include <wuwe/agent/knowledge/knowledge_hash.hpp>
 #include <wuwe/agent/knowledge/knowledge_html.hpp>
 #include <wuwe/agent/knowledge/knowledge_path.hpp>
+#include <wuwe/agent/knowledge/knowledge_record.hpp>
 #include <wuwe/agent/knowledge/knowledge_text.hpp>
 
 namespace wuwe::agent::knowledge {
@@ -32,8 +32,7 @@ struct file_knowledge_loader_options {
 class file_knowledge_loader {
 public:
   knowledge_document load(
-    const std::filesystem::path& path,
-    file_knowledge_loader_options options = {}) const {
+    const std::filesystem::path& path, file_knowledge_loader_options options = {}) const {
     std::ifstream input(path, std::ios::binary);
     if (!input) {
       throw std::runtime_error("failed to open knowledge file: " + path.string());
@@ -119,9 +118,8 @@ private:
   }
 
   static bool is_ignorable_rtf_destination(std::string_view word) {
-    return word == "fonttbl" || word == "colortbl" || word == "stylesheet" ||
-           word == "info" || word == "pict" || word == "object" ||
-           word == "datastore" || word == "themedata";
+    return word == "fonttbl" || word == "colortbl" || word == "stylesheet" || word == "info" ||
+           word == "pict" || word == "object" || word == "datastore" || word == "themedata";
   }
 
   static std::string rtf_to_text(const std::string& rtf) {
@@ -217,7 +215,8 @@ private:
       }
       const auto word = std::string_view(rtf).substr(word_start, index - word_start);
 
-      if (index < rtf.size() && (rtf[index] == '-' || std::isdigit(static_cast<unsigned char>(rtf[index])))) {
+      if (index < rtf.size() &&
+          (rtf[index] == '-' || std::isdigit(static_cast<unsigned char>(rtf[index])))) {
         ++index;
         while (index < rtf.size() && std::isdigit(static_cast<unsigned char>(rtf[index]))) {
           ++index;

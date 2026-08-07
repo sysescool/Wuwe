@@ -112,8 +112,7 @@ inline std::string normalize_eval_text(std::string_view text) {
 }
 
 inline knowledge_eval_result evaluate_knowledge_retrieval(
-  const knowledge_retriever& retriever,
-  const std::vector<knowledge_eval_case>& cases) {
+  const knowledge_retriever& retriever, const std::vector<knowledge_eval_case>& cases) {
   knowledge_eval_result result;
   result.total = cases.size();
   result.cases.reserve(cases.size());
@@ -138,10 +137,9 @@ inline knowledge_eval_result evaluate_knowledge_retrieval(
       case_result.returned_document_ids.push_back(document_id);
       joined_content += retrieved[index].chunk.content;
       joined_content.push_back('\n');
-      if (!case_result.hit &&
-          std::find(item.expected_document_ids.begin(),
-            item.expected_document_ids.end(),
-            document_id) != item.expected_document_ids.end()) {
+      if (!case_result.hit && std::find(item.expected_document_ids.begin(),
+                                item.expected_document_ids.end(),
+                                document_id) != item.expected_document_ids.end()) {
         case_result.hit = true;
         case_result.reciprocal_rank = 1.0 / static_cast<double>(index + 1);
       }
@@ -167,10 +165,8 @@ inline knowledge_eval_result evaluate_knowledge_retrieval(
 
   if (result.total != 0) {
     result.recall_at_k = static_cast<double>(result.hits) / static_cast<double>(result.total);
-    result.term_recall =
-      static_cast<double>(result.term_hits) / static_cast<double>(result.total);
-    result.mean_reciprocal_rank =
-      reciprocal_rank_sum / static_cast<double>(result.total);
+    result.term_recall = static_cast<double>(result.term_hits) / static_cast<double>(result.total);
+    result.mean_reciprocal_rank = reciprocal_rank_sum / static_cast<double>(result.total);
   }
   return result;
 }

@@ -23,15 +23,13 @@ struct plan_reflection_options {
   bool reflect_failed_steps { false };
   bool reflect_blocked_steps { false };
   std::function<agent::reflection::reflection_request(
-    const plan_step&,
-    const plan&,
-    const planning_observation&)> request_builder;
+    const plan_step&, const plan&, const planning_observation&)>
+    request_builder;
 };
 
 class plan_reflection_scope {
 public:
-  explicit plan_reflection_scope(const plan_reflection_options& options)
-      : options_(options) {
+  explicit plan_reflection_scope(const plan_reflection_options& options) : options_(options) {
   }
 
   bool contains(plan_step_status status) const {
@@ -86,12 +84,9 @@ public:
   }
 
   agent::reflection::reflection_request build(
-    const plan_step& step,
-    const plan& value,
-    const planning_observation& observation) const {
-    auto request = options_.request_builder
-                     ? options_.request_builder(step, value, observation)
-                     : default_request(step, value);
+    const plan_step& step, const plan& value, const planning_observation& observation) const {
+    auto request = options_.request_builder ? options_.request_builder(step, value, observation)
+                                            : default_request(step, value);
     if (request.rubric.criteria.empty() && !options_.rubric.criteria.empty()) {
       request.rubric = options_.rubric;
     }
@@ -103,8 +98,7 @@ public:
 
 private:
   agent::reflection::reflection_request default_request(
-    const plan_step& step,
-    const plan& value) const {
+    const plan_step& step, const plan& value) const {
     std::ostringstream task;
     task << "Reflect the result of planning step '" << step.id << "' for goal: " << value.goal;
 
@@ -128,8 +122,10 @@ private:
       { "id", step.id },
       { "title", step.title },
       { "description", step.description },
-      { "assigned_tool", step.assigned_tool ? nlohmann::json(*step.assigned_tool) : nlohmann::json(nullptr) },
-      { "assigned_agent", step.assigned_agent ? nlohmann::json(*step.assigned_agent) : nlohmann::json(nullptr) },
+      { "assigned_tool",
+        step.assigned_tool ? nlohmann::json(*step.assigned_tool) : nlohmann::json(nullptr) },
+      { "assigned_agent",
+        step.assigned_agent ? nlohmann::json(*step.assigned_agent) : nlohmann::json(nullptr) },
       { "input", step.input },
       { "input_json", step.input_json.is_null() ? nlohmann::json(nullptr) : step.input_json },
     };
@@ -156,23 +152,23 @@ public:
     plan_reflection_metadata::write(step, result);
 
     switch (result.recommended_action) {
-    case reflection_action::pass:
-      return;
-    case reflection_action::revise:
-      revise(step, result);
-      return;
-    case reflection_action::retry:
-      fail(step, "reflection requested retry");
-      return;
-    case reflection_action::replan:
-      fail(step, "reflection requested replanning");
-      return;
-    case reflection_action::block:
-      block(step, "reflection blocked step result");
-      return;
-    case reflection_action::escalate:
-      block(step, "reflection escalated step result");
-      return;
+      case reflection_action::pass:
+        return;
+      case reflection_action::revise:
+        revise(step, result);
+        return;
+      case reflection_action::retry:
+        fail(step, "reflection requested retry");
+        return;
+      case reflection_action::replan:
+        fail(step, "reflection requested replanning");
+        return;
+      case reflection_action::block:
+        block(step, "reflection blocked step result");
+        return;
+      case reflection_action::escalate:
+        block(step, "reflection escalated step result");
+        return;
     }
   }
 
@@ -215,9 +211,7 @@ public:
     }
 
     auto request = plan_reflection_request_factory(options_).build(
-      step,
-      value,
-      observation_from(step, value.id));
+      step, value, observation_from(step, value.id));
     const auto run = options_.runner->run(std::move(request));
     plan_reflection_action_applier::apply(step, run.result);
     return run.result;

@@ -58,8 +58,7 @@ int main() {
     .timeout = 30000,
   });
 
-  auto reflector = std::make_shared<reflection::llm_reflector>(
-    client,
+  auto reflector = std::make_shared<reflection::llm_reflector>(client,
     reflection::llm_reflector_options {
       .model = model,
       .temperature = 0.0,
@@ -111,10 +110,8 @@ int main() {
     wuwe::println("action: {}", reflection::to_string(run.result.recommended_action));
 
     for (const auto& issue : run.result.issues) {
-      wuwe::println("issue: [{}] {} - {}",
-        reflection::to_string(issue.severity),
-        issue.code,
-        issue.message);
+      wuwe::println(
+        "issue: [{}] {} - {}", reflection::to_string(issue.severity), issue.code, issue.message);
       if (!issue.evidence.empty()) {
         wuwe::println("evidence: {}", issue.evidence);
       }

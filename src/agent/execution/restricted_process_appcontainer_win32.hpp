@@ -21,6 +21,7 @@ enum class restricted_appcontainer_profile_status {
   delete_existing_failed,
   sid_string_failed,
   storage_path_failed,
+  cleanup_failed,
 };
 
 struct restricted_appcontainer_profile_request {
@@ -30,18 +31,30 @@ struct restricted_appcontainer_profile_request {
   bool replace_existing { true };
 };
 
+enum class restricted_appcontainer_profile_cleanup_status {
+  ok,
+  delete_failed,
+};
+
+struct restricted_appcontainer_profile_cleanup_result {
+  restricted_appcontainer_profile_cleanup_status status {
+    restricted_appcontainer_profile_cleanup_status::ok
+  };
+  HRESULT hresult { S_OK };
+  DWORD win32_error { ERROR_SUCCESS };
+  std::string detail;
+};
+
 class restricted_appcontainer_profile {
 public:
   restricted_appcontainer_profile() = default;
   ~restricted_appcontainer_profile();
 
   restricted_appcontainer_profile(const restricted_appcontainer_profile&) = delete;
-  restricted_appcontainer_profile& operator=(
-    const restricted_appcontainer_profile&) = delete;
+  restricted_appcontainer_profile& operator=(const restricted_appcontainer_profile&) = delete;
 
   restricted_appcontainer_profile(restricted_appcontainer_profile&& other) noexcept;
-  restricted_appcontainer_profile& operator=(
-    restricted_appcontainer_profile&& other) noexcept;
+  restricted_appcontainer_profile& operator=(restricted_appcontainer_profile&& other) noexcept;
 
   [[nodiscard]] PSID sid() const noexcept {
     return sid_;
@@ -54,6 +67,8 @@ public:
   [[nodiscard]] const std::wstring& name() const noexcept {
     return name_;
   }
+
+  [[nodiscard]] restricted_appcontainer_profile_cleanup_result cleanup() noexcept;
 
 private:
   friend struct restricted_appcontainer_profile_result;
@@ -68,20 +83,18 @@ private:
 };
 
 struct restricted_appcontainer_profile_result {
-  restricted_appcontainer_profile_status status {
-    restricted_appcontainer_profile_status::ok
-  };
+  restricted_appcontainer_profile_status status { restricted_appcontainer_profile_status::ok };
   std::optional<restricted_appcontainer_profile> profile;
   HRESULT hresult { S_OK };
   DWORD win32_error { ERROR_SUCCESS };
   std::string detail;
 };
 
-[[nodiscard]] const char* to_string(
-  restricted_appcontainer_profile_status status) noexcept;
+[[nodiscard]] const char* to_string(restricted_appcontainer_profile_status status) noexcept;
 
-[[nodiscard]] restricted_appcontainer_profile_result
-create_restricted_appcontainer_profile(
+[[nodiscard]] const char* to_string(restricted_appcontainer_profile_cleanup_status status) noexcept;
+
+[[nodiscard]] restricted_appcontainer_profile_result create_restricted_appcontainer_profile(
   const restricted_appcontainer_profile_request& request);
 
 } // namespace wuwe::agent::execution::detail

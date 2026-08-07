@@ -26,10 +26,8 @@ http_response default_http_client::send(const http_request& request) {
   return client.send(request);
 }
 
-http_response default_http_client::send_stream(
-  const http_request& request,
-  const http_stream_chunk_callback& on_chunk,
-  std::stop_token stop_token) {
+http_response default_http_client::send_stream(const http_request& request,
+  const http_stream_chunk_callback& on_chunk, std::stop_token stop_token) {
   selected_default_http_client client;
   return client.send_stream(request, on_chunk, stop_token);
 }

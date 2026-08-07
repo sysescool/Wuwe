@@ -3,8 +3,8 @@
 #include <wuwe/net/transport_error.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -35,9 +35,8 @@ std::string normalize_http_method(std::string method) {
 }
 
 bool is_supported_method(const std::string& method) {
-  return method == "GET" || method == "POST" || method == "PUT" ||
-         method == "PATCH" || method == "DELETE" || method == "HEAD" ||
-         method == "OPTIONS";
+  return method == "GET" || method == "POST" || method == "PUT" || method == "PATCH" ||
+         method == "DELETE" || method == "HEAD" || method == "OPTIONS";
 }
 
 std::optional<parsed_url> parse_url(const std::string& url) {
@@ -162,8 +161,7 @@ void configure_client(httplib::Client& client, const http_request& request) {
     client.set_write_timeout(std::chrono::milliseconds(request.timeout));
   }
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-  client.enable_server_certificate_verification(
-    request.tls.verify_peer && request.tls.verify_host);
+  client.enable_server_certificate_verification(request.tls.verify_peer && request.tls.verify_host);
   if (!request.tls.ca_file.empty() || !request.tls.ca_directory.empty()) {
     client.set_ca_cert_path(request.tls.ca_file, request.tls.ca_directory);
   }
@@ -233,9 +231,9 @@ transport_error map_httplib_error(httplib::Error error) {
 http_response make_http_response(const httplib::Result& result, std::string body = {}) {
   if (!result) {
     auto transport_error = make_error_code(map_httplib_error(result.error()));
-    return { .error_code = transport_error,
-      .transport_error = transport_error,
-      .body = std::move(body) };
+    return {
+      .error_code = transport_error, .transport_error = transport_error, .body = std::move(body)
+    };
   }
 
   http_response response;
@@ -292,10 +290,8 @@ http_response httplib_http_client::send(const http_request& request) {
   return make_http_response(send_request(client, request));
 }
 
-http_response httplib_http_client::send_stream(
-  const http_request& request,
-  const http_stream_chunk_callback& on_chunk,
-  std::stop_token stop_token) {
+http_response httplib_http_client::send_stream(const http_request& request,
+  const http_stream_chunk_callback& on_chunk, std::stop_token stop_token) {
   if (stop_token.stop_requested()) {
     return { .error_code = std::make_error_code(std::errc::operation_canceled) };
   }

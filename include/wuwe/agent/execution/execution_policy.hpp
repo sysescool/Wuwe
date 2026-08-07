@@ -13,9 +13,7 @@
 namespace wuwe::agent::execution {
 
 struct execution_policy {
-  std::vector<execution_language> allowed_languages {
-    execution_language::python
-  };
+  std::vector<execution_language> allowed_languages { execution_language::python };
   std::filesystem::path default_workdir;
   std::vector<std::filesystem::path> readable_roots;
   std::vector<std::filesystem::path> writable_roots;
@@ -36,9 +34,7 @@ struct execution_policy_evaluation {
 };
 
 [[nodiscard]] execution_policy_evaluation evaluate_execution_policy(
-  execution_request request,
-  const execution_policy& policy,
-  std::string execution_id = {});
+  execution_request request, const execution_policy& policy, std::string execution_id = {});
 
 } // namespace wuwe::agent::execution
 

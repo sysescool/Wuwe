@@ -8,21 +8,36 @@
 #include <string_view>
 #include <utility>
 
-#include <wuwe/agent/knowledge/knowledge_retriever.hpp>
+#include <wuwe/agent/core/content.hpp>
+#include <wuwe/agent/core/execution_context.hpp>
 #include <wuwe/agent/knowledge/knowledge_result_processor.hpp>
+#include <wuwe/agent/knowledge/knowledge_retriever.hpp>
 #include <wuwe/agent/llm/llm_types.h>
 
 namespace wuwe::agent::knowledge {
+
+[[nodiscard]] inline knowledge_access_scope knowledge_access_from_execution_context(
+  knowledge_access_scope base, const core::agent_execution_context& context) {
+  if (context.tenant_id.empty() && context.user_id.empty()) {
+    return base;
+  }
+  base.tenant_id = context.tenant_id;
+  base.user_id = context.user_id;
+  return base;
+}
 
 struct knowledge_policy {
   std::size_t max_context_chars { 8000 };
   std::size_t max_results { 6 };
   std::size_t candidate_results {};
   bool include_citations { true };
-  bool inject_as_system_message { true };
+  bool inject_as_system_message { false };
+  bool allow_untrusted_system_message { false };
   std::size_t surrounding_chunks_before {};
   std::size_t surrounding_chunks_after {};
-  knowledge_access_scope access;
+  knowledge_access_scope access {
+    .mode = knowledge_acl_mode::deny_if_unlabeled,
+  };
   knowledge_result_processing_policy result_processing {};
   std::string injection_header { "Relevant knowledge:" };
 };
@@ -30,20 +45,25 @@ struct knowledge_policy {
 class knowledge_context {
 public:
   explicit knowledge_context(
-    std::shared_ptr<knowledge_retriever> retriever,
-    knowledge_policy policy = {})
+    std::shared_ptr<knowledge_retriever> retriever, knowledge_policy policy = {})
       : retriever_(std::move(retriever)), policy_(std::move(policy)) {
     if (!retriever_) {
       throw std::invalid_argument("knowledge_context requires a knowledge_retriever");
     }
   }
 
-  std::string build_context_block(std::string_view query_text) const {
+  std::string build_context_block(
+    std::string_view query_text, core::content_trust_level* block_trust = nullptr) const {
+    return build_context_block(query_text, policy_.access, block_trust);
+  }
+
+  std::string build_context_block(std::string_view query_text, const knowledge_access_scope& access,
+    core::content_trust_level* block_trust = nullptr) const {
     knowledge_query query;
     query.text = std::string(query_text);
     query.limit = policy_.max_results;
     query.candidate_limit = policy_.candidate_results;
-    query.access = policy_.access;
+    query.access = access;
 
     std::ostringstream output;
     output << policy_.injection_header;
@@ -51,14 +71,14 @@ public:
     std::size_t remaining = policy_.max_context_chars;
     std::size_t citation = 0;
     bool wrote_any = false;
+    auto selected_trust = core::content_trust_level::system_trusted;
 
     knowledge_result_processor processor(policy_.result_processing);
     auto results = retriever_->retrieve(query);
-    results = retriever_->expand_with_neighbors(
-      std::move(results),
+    results = retriever_->expand_with_neighbors(std::move(results),
       policy_.surrounding_chunks_before,
       policy_.surrounding_chunks_after,
-      policy_.access);
+      access);
 
     for (const auto& result : processor.process(std::move(results))) {
       std::string content = normalize(result.chunk.content);
@@ -123,6 +143,9 @@ public:
       output << rendered;
       remaining -= (std::min)(remaining, rendered.size());
       wrote_any = true;
+      selected_trust = core::least_trusted(selected_trust,
+        core::content_trust_from_metadata(
+          result.chunk.metadata, core::content_trust_level::retrieved_untrusted));
       if (remaining == 0) {
         break;
       }
@@ -131,22 +154,50 @@ public:
     if (!wrote_any) {
       return {};
     }
+    if (block_trust) {
+      *block_trust = selected_trust;
+    }
     return output.str();
   }
 
   llm_request augment(llm_request request, std::string_view query_text) const {
-    const auto block = build_context_block(query_text);
+    return augment(std::move(request), query_text, policy_.access);
+  }
+
+  llm_request augment(llm_request request, std::string_view query_text,
+    const core::agent_execution_context& context) const {
+    return augment(std::move(request),
+      query_text,
+      knowledge_access_from_execution_context(policy_.access, context));
+  }
+
+  llm_request augment(
+    llm_request request, std::string_view query_text, const knowledge_access_scope& access) const {
+    auto trust = core::content_trust_level::system_trusted;
+    auto block = build_context_block(query_text, access, &trust);
     if (block.empty()) {
       return request;
     }
 
+    const bool system_message =
+      policy_.inject_as_system_message &&
+      (policy_.allow_untrusted_system_message || core::trusted_for_system_message(trust));
+    if (!system_message) {
+      block = core::render_context_boundary("knowledge", trust, std::move(block));
+    }
+
     chat_message knowledge_message {
-      .role = policy_.inject_as_system_message ? "system" : "user",
+      .role = system_message ? "system" : "user",
       .content = block,
+      .context_source = llm_context_source::knowledge,
     };
 
-    if (!policy_.inject_as_system_message) {
-      request.messages.insert(request.messages.begin(), std::move(knowledge_message));
+    if (!system_message) {
+      auto insert_at = request.messages.begin();
+      while (insert_at != request.messages.end() && insert_at->role == "system") {
+        ++insert_at;
+      }
+      request.messages.insert(insert_at, std::move(knowledge_message));
       return request;
     }
 

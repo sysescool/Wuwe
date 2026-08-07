@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include <wuwe/agent/core/storage.hpp>
 #include <wuwe/agent/knowledge/knowledge_record.hpp>
 
 namespace wuwe::agent::knowledge {
@@ -13,11 +14,14 @@ class knowledge_index {
 public:
   virtual ~knowledge_index() = default;
 
+  [[nodiscard]] virtual core::storage_capabilities capabilities() const noexcept {
+    return {};
+  }
+
   virtual void upsert(const knowledge_chunk& chunk, const std::vector<float>& embedding) = 0;
 
   virtual void upsert_batch(
-    const std::vector<knowledge_chunk>& chunks,
-    const std::vector<std::vector<float>>& embeddings) {
+    const std::vector<knowledge_chunk>& chunks, const std::vector<std::vector<float>>& embeddings) {
     if (chunks.size() != embeddings.size()) {
       throw std::invalid_argument("knowledge_index upsert_batch size mismatch");
     }
@@ -28,8 +32,7 @@ public:
   }
 
   virtual std::vector<knowledge_result> search(
-    const knowledge_query& query,
-    const std::vector<float>& embedding) const = 0;
+    const knowledge_query& query, const std::vector<float>& embedding) const = 0;
 
   virtual bool erase_document(const std::string& document_id) = 0;
 

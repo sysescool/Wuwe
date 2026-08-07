@@ -6,8 +6,8 @@
 #include <string_view>
 #include <vector>
 
-#include <wuwe/agent/knowledge/file_knowledge_loader.hpp>
 #include <wuwe/agent/knowledge/file_knowledge_index.hpp>
+#include <wuwe/agent/knowledge/file_knowledge_loader.hpp>
 #include <wuwe/agent/knowledge/file_knowledge_store.hpp>
 #include <wuwe/agent/knowledge/knowledge_context.hpp>
 #include <wuwe/agent/knowledge/knowledge_tools.hpp>
@@ -19,10 +19,8 @@ public:
   std::vector<float> embed(std::string_view text) const override {
     const std::string value(text);
     if (value.find("retrieval") != std::string::npos ||
-        value.find("Retrieval") != std::string::npos ||
-        value.find("RAG") != std::string::npos ||
-        value.find("cite") != std::string::npos ||
-        value.find("Citations") != std::string::npos) {
+        value.find("Retrieval") != std::string::npos || value.find("RAG") != std::string::npos ||
+        value.find("cite") != std::string::npos || value.find("Citations") != std::string::npos) {
       return { 1.0F, 0.0F, 0.0F };
     }
     return { 0.0F, 1.0F, 0.0F };
@@ -80,12 +78,13 @@ int main() {
       }));
 
     knowledge::file_knowledge_loader loader;
-    retriever->ingest(loader.load(markdown_path, {
-      .id = "knowledge-retrieval-guide",
-      .title = "Knowledge Retrieval Guide",
-      .source_uri = "docs/knowledge-retrieval.md",
-      .metadata = { { "topic", "rag" } },
-    }));
+    retriever->ingest(loader.load(markdown_path,
+      {
+        .id = "knowledge-retrieval-guide",
+        .title = "Knowledge Retrieval Guide",
+        .source_uri = "docs/knowledge-retrieval.md",
+        .metadata = { { "topic", "rag" }, { "visibility", "public" } },
+      }));
   }
 
   auto retriever = std::make_shared<knowledge::knowledge_retriever>(
@@ -109,9 +108,8 @@ int main() {
     wuwe::println("[{}] {}\n", message.role, message.content);
   }
 
-  const auto tool_result = tools.invoke(
-    "search_knowledge",
-    R"({"content":"RAG retrieval citations","limit":1})");
+  const auto tool_result =
+    tools.invoke("search_knowledge", R"({"content":"RAG retrieval citations","limit":1})");
   wuwe::println("Tool search result:\n{}\n", tool_result.content);
 
   std::error_code ignored;

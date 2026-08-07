@@ -60,9 +60,8 @@ public:
       }
 
       const auto exchange = server.handle_message_exchange(line);
-      write_exchange(exchange, [&output](const std::string& message) {
-        output << message << '\n';
-      });
+      write_exchange(
+        exchange, [&output](const std::string& message) { output << message << '\n'; });
       output.flush();
     }
     return 0;
@@ -81,9 +80,7 @@ public:
   }
 
   static void write_message(
-    std::ostream& output,
-    std::string_view message,
-    message_framing framing) {
+    std::ostream& output, std::string_view message, message_framing framing) {
     if (framing == message_framing::json_lines) {
       write_line_message(output, message);
       return;
@@ -152,9 +149,7 @@ public:
 
 private:
   template<typename WriteMessage>
-  static void write_exchange(
-    const mcp_server_exchange& exchange,
-    WriteMessage&& write_message) {
+  static void write_exchange(const mcp_server_exchange& exchange, WriteMessage&& write_message) {
     for (const auto& request : exchange.requests) {
       write_message(request);
     }

@@ -26,10 +26,17 @@ public:
   bool supports_streaming() const noexcept override {
     return true;
   }
+  [[nodiscard]] llm_provider_capabilities capabilities() const noexcept override {
+    return config_.capabilities_override.value_or(llm_provider_capabilities {
+      .streaming = true,
+      .tools = true,
+      .tool_choice = true,
+      .json_response_format = true,
+      .stop_sequences = true,
+    });
+  }
   llm_response complete(const llm_request& request, std::stop_token stop_token) override;
-  llm_response complete_stream(
-    const llm_request& request,
-    const llm_stream_callbacks& callbacks,
+  llm_response complete_stream(const llm_request& request, const llm_stream_callbacks& callbacks,
     std::stop_token stop_token = {}) override;
 
 protected:

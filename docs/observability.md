@@ -10,7 +10,7 @@ Wuwe exposes events and callbacks at runtime boundaries without prescribing a mo
 
 ## Common event sink
 
-`agent_event` is the shared event envelope. It carries a module and event name, trace and subject identifiers, timestamp, elapsed time, and string attributes.
+`agent_event` is the shared, versioned event envelope. It carries module and event names, trace, subject, run, request, step, and tool-call identifiers, a monotonic run sequence, timestamp, elapsed time, string attributes, and structured JSON data. `agent_event_to_json()` and `agent_event_from_json()` provide a stable round trip.
 
 ```cpp
 namespace obs = wuwe::agent::observability;
@@ -30,7 +30,7 @@ events->publish({
 });
 ```
 
-The built-in sinks support in-memory collection, JSON Lines output, and fan-out. Implement `event_sink` to connect Wuwe events to an existing logging, tracing, or telemetry stack.
+The built-in sinks support in-memory collection, JSON Lines output, fan-out, and bounded asynchronous delivery. `async_event_sink` never waits for downstream I/O on the producer path; it uses an explicit `drop_newest` or `drop_oldest` overflow policy and exposes published, delivered, dropped, and failure counters. `flush()` provides a deliberate drain boundary. Fan-out takes a stable sink snapshot, attempts delivery to every sink, and then rethrows the first failure. The JSON Lines sink flushes each record and reports both open and write failures. Implement `event_sink` to connect Wuwe events to an existing logging, tracing, or telemetry stack.
 
 ## Module observation surfaces
 
@@ -42,6 +42,13 @@ Modules expose the event shape appropriate to their work:
 | Reasoning | `reasoning_observer`, normalized usage, and structured trace records |
 | Planning | `plan_observer` and `plan_trace_sink` |
 | Reflection | `reflection_observer` |
+| Guardrails | `guardrail_observer`, common audit sink, and common event sink |
+| Evaluation | `evaluation_observer` and common event sink |
+| Learning and adaptation | `learning_observer` and common event sink for finalized candidate versions; stores retain Experience, Reward, and activation provenance |
+| Exploration and discovery | `exploration_observer` and common event sink for finalized hypothesis runs and evidence records |
+| Resource routing | `model_routing_observer`, common event sink, and Reasoning `model_routed` traces |
+| Multi-Agent | `team_observer` and common event sink for dispatch, task, and consensus lifecycle |
+| Skills | Common event sink for package loading and activation lifecycle; events contain identities, counts, decisions, and digests but no resource content |
 | Memory | A module-specific audit callback on `memory_context` |
 | Knowledge / RAG | `knowledge_event_sink` with in-memory, common-event, Prometheus-text, and OTEL-style adapters |
 | MCP host | `mcp_host_event_sink` with in-memory, JSONL, fan-out, common-event, Prometheus-text, and OTEL-style adapters |
@@ -54,6 +61,6 @@ Knowledge and MCP host events can be bridged into the common sink with `agent_kn
 
 The Prometheus sinks produce scrape text, and the OTEL-style sinks produce in-memory span representations. They do not automatically start an HTTP metrics endpoint or export to an OpenTelemetry collector.
 
-Production integrations should define trace propagation, attribute naming, sampling, secret and prompt redaction, file rotation, retention, and failure behavior. Telemetry sinks run in the calling process, so blocking or throwing adapters can affect the operation that publishes an event.
+Production integrations should define trace propagation, attribute naming, sampling, secret and prompt redaction, file rotation, retention, and failure behavior. A synchronous custom sink still runs in the caller; wrap it in `async_event_sink` when delivery must not add request latency. Failure behavior is module-specific: Guardrails, Resource Routing, and Multi-Agent isolate telemetry exceptions by default and expose an explicit propagation mode. Multi-Agent common events omit task input and output content.
 
 Use [Security and governance](security-governance.md) for authorization and audit semantics. Module pages describe the domain-specific events emitted by each runtime.

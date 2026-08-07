@@ -4,6 +4,7 @@
 
 #ifdef _WIN32
 #include "restricted_process_execution_plan_win32.hpp"
+#include "restricted_process_sandbox_plan_win32.hpp"
 #endif
 
 namespace wuwe::agent::execution::detail {
@@ -11,29 +12,39 @@ namespace {
 
 class restricted_process_backend_candidate final : public execution_backend {
 public:
+#ifdef _WIN32
   explicit restricted_process_backend_candidate(
-    restricted_process_backend_config config)
+    std::shared_ptr<const windows_restricted_process_sandbox_plan> plan)
+      : plan_(std::move(plan)) {
+  }
+#else
+  explicit restricted_process_backend_candidate(restricted_process_backend_config config)
       : config_(std::move(config)) {
   }
+#endif
 
   [[nodiscard]] sandbox::sandbox_backend_info info() const override {
     auto descriptor = restricted_process_backend_descriptor();
-    const auto availability =
-      evaluate_restricted_process_backend_availability(config_);
+#ifdef _WIN32
+    descriptor.enforcement = plan_->enforcement();
+#else
+    const auto availability = evaluate_restricted_process_backend_availability(config_);
+    descriptor.enforcement = availability.contract;
+#endif
     descriptor.unavailable_reason =
       "restricted_process backend candidate is internal and not registered";
-    descriptor.enforcement = availability.contract;
     return descriptor;
   }
 
   [[nodiscard]] execution_result run(
-    const execution_request& request,
-    std::stop_token stop_token) override {
+    const execution_request& request, std::stop_token stop_token) override {
 #ifdef _WIN32
-    auto result = run_restricted_execution_plan(config_, request, stop_token);
+    auto result = run_restricted_execution_plan(plan_, request, stop_token);
     result.metadata["backend_candidate"] = "true";
     return result;
 #else
+    (void)request;
+    (void)stop_token;
     execution_result result {
       .termination_reason = execution_termination_reason::backend_error,
       .error_message = "restricted_process backend candidate is Windows-only",
@@ -46,15 +57,31 @@ public:
   }
 
 private:
+#ifdef _WIN32
+  std::shared_ptr<const windows_restricted_process_sandbox_plan> plan_;
+#else
   restricted_process_backend_config config_;
+#endif
 };
 
 } // namespace
 
 std::unique_ptr<execution_backend> make_restricted_process_backend_candidate(
   restricted_process_backend_config config) {
-  return std::make_unique<restricted_process_backend_candidate>(
-    std::move(config));
+#ifdef _WIN32
+  auto compiler = make_restricted_process_sandbox_backend(config);
+  auto compiled = compiler->compile(restricted_process_sandbox_policy(config));
+  if (!compiled) {
+    return nullptr;
+  }
+  auto native = as_windows_restricted_process_sandbox_plan(compiled.plan);
+  if (!native) {
+    return nullptr;
+  }
+  return std::make_unique<restricted_process_backend_candidate>(std::move(native));
+#else
+  return std::make_unique<restricted_process_backend_candidate>(std::move(config));
+#endif
 }
 
 } // namespace wuwe::agent::execution::detail

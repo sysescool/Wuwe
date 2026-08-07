@@ -29,8 +29,12 @@ enum class mcp_host_server_state {
 struct mcp_host_server_config {
   std::string id;
   mcp_process_command command;
-  mcp_client_info client_info { .name = "wuwe-host", .version = "0.1.0" };
+  mcp_client_info client_info {
+    .name = "wuwe-host",
+    .version = std::string(::wuwe::framework_version),
+  };
   json capabilities = json::object();
+  std::string protocol_version { default_protocol_version };
   bool auto_initialize { true };
   bool send_initialized_notification { true };
   bool restart_on_failure { false };
@@ -126,10 +130,7 @@ public:
   const mcp_process_client& client(const std::string& id) const;
 
   json request(const std::string& id, std::string method, json params = json::object());
-  std::future<json> request_async(
-    std::string id,
-    std::string method,
-    json params = json::object());
+  std::future<json> request_async(std::string id, std::string method, json params = json::object());
   void notify(const std::string& id, std::string method, json params = json::object());
 
   json ping(const std::string& id);
@@ -137,9 +138,7 @@ public:
   std::future<json> list_tools_async(std::string id, json params = json::object());
   json call_tool(const std::string& id, std::string name, json arguments = json::object());
   std::future<json> call_tool_async(
-    std::string id,
-    std::string name,
-    json arguments = json::object());
+    std::string id, std::string name, json arguments = json::object());
   json list_resources(const std::string& id, json params = json::object());
   json read_resource(const std::string& id, std::string uri);
   json list_prompts(const std::string& id, json params = json::object());
@@ -175,13 +174,8 @@ private:
   std::chrono::milliseconds next_backoff_delay(const server_entry& entry) const;
   void restart_entry(server_entry& entry);
   mcp_host_server_snapshot snapshot_for(server_entry& entry) const;
-  void record_event(
-    mcp_host_event_type type,
-    const server_entry& entry,
-    std::string method = {},
-    std::string error = {},
-    std::chrono::milliseconds elapsed = {},
-    json metadata = json::object());
+  void record_event(mcp_host_event_type type, const server_entry& entry, std::string method = {},
+    std::string error = {}, std::chrono::milliseconds elapsed = {}, json metadata = json::object());
 
   std::map<std::string, server_entry> servers_;
   mutable std::mutex events_mutex_;
@@ -201,8 +195,7 @@ std::vector<mcp_host_config_diagnostic> mcp_host_config_diagnostics_from_json(
 std::vector<mcp_host_config_diagnostic> mcp_host_config_diagnostics_from_file(
   const std::filesystem::path& path);
 std::vector<std::filesystem::path> mcp_host_user_config_paths(
-  const std::filesystem::path& home = {},
-  const std::filesystem::path& appdata = {});
+  const std::filesystem::path& home = {}, const std::filesystem::path& appdata = {});
 std::vector<std::filesystem::path> mcp_host_default_config_paths(
   const std::filesystem::path& workspace_root = {});
 

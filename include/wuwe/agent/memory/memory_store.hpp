@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include <wuwe/agent/core/storage.hpp>
 #include <wuwe/agent/memory/memory_record.hpp>
 
 namespace wuwe::agent::memory {
@@ -12,6 +13,10 @@ namespace wuwe::agent::memory {
 class memory_store {
 public:
   virtual ~memory_store() = default;
+
+  [[nodiscard]] virtual core::storage_capabilities capabilities() const noexcept {
+    return {};
+  }
 
   virtual memory_record add(memory_record record) = 0;
 

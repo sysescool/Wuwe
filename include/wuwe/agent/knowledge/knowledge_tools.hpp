@@ -1,9 +1,9 @@
 #ifndef WUWE_AGENT_KNOWLEDGE_TOOLS_HPP
 #define WUWE_AGENT_KNOWLEDGE_TOOLS_HPP
 
-#include <optional>
 #include <algorithm>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -12,6 +12,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <wuwe/agent/core/execution_context.hpp>
+#include <wuwe/agent/knowledge/knowledge_context.hpp>
 #include <wuwe/agent/knowledge/knowledge_retriever.hpp>
 #include <wuwe/agent/tools/tool.hpp>
 
@@ -20,6 +22,10 @@ namespace wuwe::agent::knowledge {
 struct knowledge_tool_options {
   std::size_t max_search_results { 6 };
   double minimum_score { 0.0 };
+  knowledge_access_scope access {
+    .mode = knowledge_acl_mode::deny_if_unlabeled,
+  };
+  bool allow_model_supplied_access { false };
 };
 
 struct knowledge_tool_context {
@@ -55,6 +61,7 @@ struct search_knowledge {
       query.candidate_limit = static_cast<std::size_t>(*candidate_limit);
     }
     query.minimum_score = context.options.minimum_score;
+    query.access = context.options.access;
     if (topic && !topic->empty()) {
       query.filters["topic"] = *topic;
     }
@@ -65,14 +72,16 @@ struct search_knowledge {
         }
       }
     }
-    if (tenant_id) {
-      query.access.tenant_id = *tenant_id;
-    }
-    if (user_id) {
-      query.access.user_id = *user_id;
-    }
-    if (roles) {
-      query.access.roles = *roles;
+    if (context.options.allow_model_supplied_access) {
+      if (tenant_id) {
+        query.access.tenant_id = *tenant_id;
+      }
+      if (user_id) {
+        query.access.user_id = *user_id;
+      }
+      if (roles) {
+        query.access.roles = *roles;
+      }
     }
 
     nlohmann::json output = nlohmann::json::array();
@@ -114,9 +123,14 @@ private:
 class knowledge_tool_provider {
 public:
   explicit knowledge_tool_provider(
-    knowledge_retriever& retriever,
-    knowledge_tool_options options = {})
+    knowledge_retriever& retriever, knowledge_tool_options options = {})
       : retriever_(retriever), options_(std::move(options)) {
+  }
+
+  knowledge_tool_provider(knowledge_retriever& retriever,
+    const core::agent_execution_context& context, knowledge_tool_options options = {})
+      : retriever_(retriever), options_(std::move(options)) {
+    options_.access = knowledge_access_from_execution_context(std::move(options_.access), context);
   }
 
   std::vector<llm_tool> tools() const {

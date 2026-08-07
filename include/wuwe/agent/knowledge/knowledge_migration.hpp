@@ -41,8 +41,7 @@ struct knowledge_store_migration_report {
 };
 
 inline knowledge_store_audit_report audit_knowledge_store(
-  const knowledge_store& store,
-  knowledge_store_audit_options options = {}) {
+  const knowledge_store& store, knowledge_store_audit_options options = {}) {
   knowledge_store_audit_report report;
 
   const auto documents = store.list_documents();
@@ -94,10 +93,8 @@ inline knowledge_store_audit_report audit_knowledge_store(
   return report;
 }
 
-inline knowledge_store_migration_report migrate_knowledge_store(
-  const knowledge_store& source,
-  const knowledge_store& target_store,
-  knowledge_retriever& target,
+inline knowledge_store_migration_report migrate_knowledge_store(const knowledge_store& source,
+  const knowledge_store& target_store, knowledge_retriever& target,
   knowledge_store_migration_options options = {},
   knowledge_store_audit_options audit_options = {}) {
   knowledge_store_migration_report report;

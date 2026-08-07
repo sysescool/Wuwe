@@ -1,17 +1,31 @@
 #ifndef WUWE_AGENT_MCP_PROTOCOL_HPP
 #define WUWE_AGENT_MCP_PROTOCOL_HPP
 
+#include <algorithm>
+#include <array>
 #include <optional>
 #include <string>
 #include <string_view>
 
 #include <nlohmann/json.hpp>
 
+#include <wuwe/version.hpp>
+
 namespace wuwe::agent::mcp {
 
 using json = nlohmann::json;
 
-inline constexpr std::string_view default_protocol_version = "2024-11-05";
+inline constexpr std::string_view default_protocol_version = "2025-06-18";
+inline constexpr std::array<std::string_view, 2> supported_protocol_versions {
+  "2025-06-18",
+  "2024-11-05",
+};
+
+[[nodiscard]] inline bool supports_protocol_version(std::string_view version) {
+  return std::find(supported_protocol_versions.begin(),
+           supported_protocol_versions.end(),
+           version) != supported_protocol_versions.end();
+}
 
 enum class mcp_error_code : int {
   parse_error = -32700,
@@ -30,7 +44,7 @@ struct mcp_error {
 
 struct mcp_server_info {
   std::string name { "wuwe" };
-  std::string version { "0.1.0" };
+  std::string version { ::wuwe::framework_version };
 };
 
 struct mcp_client_info {
@@ -58,7 +72,8 @@ inline std::string make_success_response(const json& id, json result) {
     { "jsonrpc", "2.0" },
     { "id", id },
     { "result", std::move(result) },
-  }.dump();
+  }
+    .dump();
 }
 
 inline std::string make_error_response(const json& id, const mcp_error& error) {
@@ -66,7 +81,8 @@ inline std::string make_error_response(const json& id, const mcp_error& error) {
     { "jsonrpc", "2.0" },
     { "id", id },
     { "error", make_error_object(error) },
-  }.dump();
+  }
+    .dump();
 }
 
 inline std::string make_request(json id, std::string method, json params = json::object()) {
@@ -75,7 +91,8 @@ inline std::string make_request(json id, std::string method, json params = json:
     { "id", std::move(id) },
     { "method", std::move(method) },
     { "params", std::move(params) },
-  }.dump();
+  }
+    .dump();
 }
 
 inline std::string make_notification(std::string method, json params = json::object()) {
@@ -83,7 +100,8 @@ inline std::string make_notification(std::string method, json params = json::obj
     { "jsonrpc", "2.0" },
     { "method", std::move(method) },
     { "params", std::move(params) },
-  }.dump();
+  }
+    .dump();
 }
 
 } // namespace wuwe::agent::mcp

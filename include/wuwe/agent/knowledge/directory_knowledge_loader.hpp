@@ -31,8 +31,7 @@ public:
   }
 
   std::vector<knowledge_document> load(
-    const std::filesystem::path& root,
-    directory_knowledge_loader_options options = {}) const {
+    const std::filesystem::path& root, directory_knowledge_loader_options options = {}) const {
     if (!std::filesystem::exists(root)) {
       throw std::runtime_error("knowledge directory does not exist: " + root.string());
     }
@@ -67,19 +66,18 @@ public:
         }
       }
 
-      documents.push_back(file_loader_.load(path, {
-        .id = std::move(id),
-        .metadata = std::move(metadata),
-      }));
+      documents.push_back(file_loader_.load(path,
+        {
+          .id = std::move(id),
+          .metadata = std::move(metadata),
+        }));
     }
     return documents;
   }
 
 private:
-  static void append_candidate(
-    const std::filesystem::directory_entry& entry,
-    const directory_knowledge_loader_options& options,
-    std::vector<std::filesystem::path>& paths) {
+  static void append_candidate(const std::filesystem::directory_entry& entry,
+    const directory_knowledge_loader_options& options, std::vector<std::filesystem::path>& paths) {
     if (!entry.is_regular_file()) {
       return;
     }

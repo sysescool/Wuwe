@@ -63,16 +63,16 @@ struct memory_query {
 
 inline std::string to_string(memory_kind kind) {
   switch (kind) {
-  case memory_kind::conversation:
-    return "conversation";
-  case memory_kind::working:
-    return "working";
-  case memory_kind::summary:
-    return "summary";
-  case memory_kind::long_term:
-    return "long_term";
-  case memory_kind::retrieved:
-    return "retrieved";
+    case memory_kind::conversation:
+      return "conversation";
+    case memory_kind::working:
+      return "working";
+    case memory_kind::summary:
+      return "summary";
+    case memory_kind::long_term:
+      return "long_term";
+    case memory_kind::retrieved:
+      return "retrieved";
   }
 
   return "unknown";
@@ -80,10 +80,10 @@ inline std::string to_string(memory_kind kind) {
 
 inline std::string to_string(memory_visibility visibility) {
   switch (visibility) {
-  case memory_visibility::visible:
-    return "visible";
-  case memory_visibility::hidden:
-    return "hidden";
+    case memory_visibility::visible:
+      return "visible";
+    case memory_visibility::hidden:
+      return "hidden";
   }
 
   return "unknown";

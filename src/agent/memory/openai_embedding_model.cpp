@@ -1,7 +1,7 @@
 #include <wuwe/agent/memory/openai_embedding_model.hpp>
 
-#include <chrono>
 #include <algorithm>
+#include <chrono>
 #include <stdexcept>
 #include <system_error>
 #include <thread>
@@ -27,9 +27,8 @@ std::string trim_trailing_slash(std::string value) {
 
 bool is_retryable_error(const std::error_code& ec) {
   return ec == ::wuwe::net_errc::rate_limited || ec == ::wuwe::net_errc::timeout ||
-         ec == ::wuwe::net_errc::connection_failed ||
-         ec == ::wuwe::net_errc::transport_failed || ec == ::wuwe::net_errc::server_error ||
-         ec == ::wuwe::net_errc::service_unavailable;
+         ec == ::wuwe::net_errc::connection_failed || ec == ::wuwe::net_errc::transport_failed ||
+         ec == ::wuwe::net_errc::server_error || ec == ::wuwe::net_errc::service_unavailable;
 }
 
 int compute_backoff_ms(int attempt, int base_backoff_ms) {
@@ -45,8 +44,7 @@ openai_embedding_model::openai_embedding_model(openai_embedding_model_config con
 }
 
 openai_embedding_model::openai_embedding_model(
-  openai_embedding_model_config config,
-  std::shared_ptr<::wuwe::http_client> http)
+  openai_embedding_model_config config, std::shared_ptr<::wuwe::http_client> http)
     : config_(std::move(config)), http_(std::move(http)) {
   if (!http_) {
     throw std::invalid_argument("openai_embedding_model requires an http_client");
@@ -122,8 +120,7 @@ std::vector<std::vector<float>> openai_embedding_model::embed_batch(
 }
 
 std::vector<std::vector<float>> openai_embedding_model::parse_embedding_response(
-  const ::wuwe::http_response& response,
-  std::size_t expected_count) const {
+  const ::wuwe::http_response& response, std::size_t expected_count) const {
   if (response.error_code) {
     throw std::system_error(response.error_code, "embedding request failed");
   }
@@ -159,9 +156,9 @@ std::vector<std::vector<float>> openai_embedding_model::parse_embedding_response
     throw std::runtime_error("embedding response count does not match request count");
   }
 
-  std::sort(indexed_embeddings.begin(), indexed_embeddings.end(), [](const auto& lhs, const auto& rhs) {
-    return lhs.first < rhs.first;
-  });
+  std::sort(indexed_embeddings.begin(),
+    indexed_embeddings.end(),
+    [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
 
   std::vector<std::vector<float>> embeddings;
   embeddings.reserve(indexed_embeddings.size());

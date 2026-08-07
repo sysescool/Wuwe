@@ -29,8 +29,7 @@ public:
   qdrant_memory_index(qdrant_memory_index_config config, std::shared_ptr<::wuwe::http_client> http);
 
   void upsert(const memory_record& record, const std::vector<float>& embedding) override;
-  void upsert_batch(
-    const std::vector<memory_record>& records,
+  void upsert_batch(const std::vector<memory_record>& records,
     const std::vector<std::vector<float>>& embeddings) override;
 
   std::vector<vector_memory_match> search(const vector_memory_query& query) const override;

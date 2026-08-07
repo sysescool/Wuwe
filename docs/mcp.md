@@ -6,7 +6,13 @@ description: Build MCP servers, clients, process hosts, gateways, and HTTP endpo
 
 # Model Context Protocol
 
-Wuwe implements MCP protocol version `2024-11-05` for exposing tools and context, consuming external servers, and aggregating multiple process servers behind one host.
+Wuwe defaults to MCP protocol version `2025-06-18` and retains compatibility with `2024-11-05` for exposing tools and context, consuming external servers, and aggregating multiple process servers behind one host. Initialize requests negotiate an explicitly supported version; unsupported versions receive an error containing the supported-version list. Clients and host entries can select a supported version without changing global state.
+
+Skills integration is explicit. `mcp_skill_tool_provider` binds an allowlisted
+set of `(server_id, tool_name, exposed_name)` entries into the normal Wuwe Tool
+Contract surface. Activating a Skill never imports every Tool advertised by an MCP
+server and never bypasses MCP access policy, capability policy, or approval. See
+[Skills](skills.md) for the package and activation boundary.
 
 ## Server
 
@@ -35,7 +41,7 @@ int main() {
 
   wuwe::agent::mcp::mcp_server server({
     .name = "wuwe-example",
-    .version = "0.1.0",
+    .version = std::string(wuwe::framework_version),
   });
   server.add_tool_provider(tools);
 
@@ -58,6 +64,8 @@ Resources, templates, prompts, image content, and typed tools are demonstrated i
 | `mcp_gateway` | Re-export tools, resources, and prompts from running hosted servers with namespaced identifiers |
 
 The host runtime can load server definitions from JSON files, initialize processes, call protocol methods, collect stderr, and expose operational snapshots. The host application owns the user interface, secret handling, process allowlist, and configuration distribution.
+
+`mcp_async_task_registry` provides an in-process lifecycle registry for host-owned background work. Task IDs must be non-empty and unique until `clear_finished()` removes the prior record; timeouts must be non-negative and are measured with a monotonic clock. Cancellation is terminal even if the worker subsequently throws. The registry owns each future separately from the worker's shared task data, so destroying the registry safely waits for outstanding work without creating a self-referential future ownership cycle.
 
 ## HTTP
 

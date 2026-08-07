@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include <wuwe/agent/core/storage.hpp>
 #include <wuwe/agent/knowledge/knowledge_record.hpp>
 
 namespace wuwe::agent::knowledge {
@@ -11,6 +12,10 @@ namespace wuwe::agent::knowledge {
 class knowledge_store {
 public:
   virtual ~knowledge_store() = default;
+
+  [[nodiscard]] virtual core::storage_capabilities capabilities() const noexcept {
+    return {};
+  }
 
   virtual void add_document(knowledge_document document) = 0;
 

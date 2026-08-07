@@ -42,16 +42,14 @@ inline http_timeout_options make_stream_http_timeouts(const llm_client_config& c
 
 class stream_timeout_guard {
 public:
-  explicit stream_timeout_guard(llm_stream_timeout_options options)
-      : options_(options) {
+  explicit stream_timeout_guard(llm_stream_timeout_options options) : options_(options) {
   }
 
   std::optional<stream_timeout> check_before_event() const {
     const auto now = std::chrono::steady_clock::now();
     if (!saw_event_ && options_.first_event_ms > 0 &&
         now - started_at_ > std::chrono::milliseconds(options_.first_event_ms)) {
-      return stream_timeout { .phase = "first_event",
-        .timeout_ms = options_.first_event_ms };
+      return stream_timeout { .phase = "first_event", .timeout_ms = options_.first_event_ms };
     }
     if (saw_event_ && options_.idle_ms > 0 &&
         now - last_event_at_ > std::chrono::milliseconds(options_.idle_ms)) {

@@ -72,9 +72,7 @@ struct mcp_resource_content {
   std::string blob;
 
   static mcp_resource_content text_content(
-    std::string resource_uri,
-    std::string value,
-    std::string mime = "text/plain") {
+    std::string resource_uri, std::string value, std::string mime = "text/plain") {
     return {
       .uri = std::move(resource_uri),
       .mime_type = std::move(mime),
@@ -83,9 +81,7 @@ struct mcp_resource_content {
   }
 
   static mcp_resource_content blob_content(
-    std::string resource_uri,
-    std::string base64_data,
-    std::string mime) {
+    std::string resource_uri, std::string base64_data, std::string mime) {
     return {
       .uri = std::move(resource_uri),
       .mime_type = std::move(mime),
@@ -136,8 +132,8 @@ struct mcp_sampling_request {
   std::vector<mcp_sampling_message> messages;
   std::optional<int> max_tokens;
   std::optional<double> temperature;
-  json model_preferences { json::object() };
-  json metadata { json::object() };
+  json model_preferences = json::object();
+  json metadata = json::object();
 
   json to_json() const {
     json output;
@@ -207,8 +203,8 @@ struct mcp_sampling_result {
 
 struct mcp_elicitation_request {
   std::string message;
-  json requested_schema { json::object() };
-  json metadata { json::object() };
+  json requested_schema = json::object();
+  json metadata = json::object();
 
   json to_json() const {
     json output {
@@ -226,7 +222,7 @@ struct mcp_elicitation_request {
 
 struct mcp_elicitation_result {
   std::string action;
-  json content { json::object() };
+  json content = json::object();
 
   static std::optional<mcp_elicitation_result> from_json(const json& value) {
     if (!value.is_object()) {
@@ -289,7 +285,7 @@ struct mcp_prompt_entry {
 struct mcp_pending_client_request {
   json id;
   std::string method;
-  json params { json::object() };
+  json params = json::object();
   bool completed { false };
   json result;
   std::optional<mcp_error> error;

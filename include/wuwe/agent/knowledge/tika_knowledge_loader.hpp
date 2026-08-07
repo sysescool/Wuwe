@@ -40,8 +40,7 @@ struct tika_knowledge_loader_options {
 
 class tika_knowledge_loader {
 public:
-  explicit tika_knowledge_loader(
-    tika_knowledge_loader_config config = {},
+  explicit tika_knowledge_loader(tika_knowledge_loader_config config = {},
     std::shared_ptr<::wuwe::http_client> http = std::make_shared<::wuwe::default_http_client>())
       : config_(std::move(config)), http_(std::move(http)) {
     if (!http_) {
@@ -56,13 +55,11 @@ public:
   }
 
   knowledge_document load(
-    const std::filesystem::path& path,
-    tika_knowledge_loader_options options = {}) const {
+    const std::filesystem::path& path, tika_knowledge_loader_options options = {}) const {
     const auto body = read_file(path);
     const auto extension = lowercase_extension(path);
-    const auto content_type = options.content_type.empty()
-                                ? default_content_type(extension)
-                                : std::move(options.content_type);
+    const auto content_type = options.content_type.empty() ? default_content_type(extension)
+                                                           : std::move(options.content_type);
 
     ::wuwe::http_request request {
       .method = "PUT",
@@ -93,9 +90,8 @@ public:
     }
 
     knowledge_document document;
-    document.id = options.id.empty()
-                    ? file_knowledge_loader::default_id(path)
-                    : std::move(options.id);
+    document.id =
+      options.id.empty() ? file_knowledge_loader::default_id(path) : std::move(options.id);
     document.title = options.title.empty() ? stem_to_utf8(path) : std::move(options.title);
     document.content = std::move(content);
     document.source_uri =
@@ -166,9 +162,7 @@ private:
     return "application/octet-stream";
   }
 
-  paged_content parse_pdf_pages(
-    const std::string& body,
-    const std::string& content_type) const {
+  paged_content parse_pdf_pages(const std::string& body, const std::string& content_type) const {
     ::wuwe::http_request request {
       .method = "PUT",
       .url = endpoint(),

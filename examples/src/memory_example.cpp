@@ -24,8 +24,8 @@ int main() {
     .agent_id = "architect",
   });
 
-  memory.observe({ .role = "user",
-    .content = "We are designing Memory Management for Wuwe Agent Framework." });
+  memory.observe(
+    { .role = "user", .content = "We are designing Memory Management for Wuwe Agent Framework." });
   memory.observe({ .role = "assistant",
     .content = "The design should include short-term and long-term memory." });
 
@@ -43,8 +43,8 @@ int main() {
     { { "topic", "api-style" }, { "source", "user" } });
 
   auto request = wuwe::make_message()
-    << ("system" <wuwe::says> "You are a senior C++ framework engineer.")
-    << ("user" <wuwe::says> "Design the public API for memory stores.");
+                 << ("system" < wuwe::says > "You are a senior C++ framework engineer.")
+                 << ("user" < wuwe::says > "Design the public API for memory stores.");
 
   const auto augmented = memory.augment(std::move(request), "memory store public API");
 

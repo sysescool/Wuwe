@@ -71,8 +71,8 @@ void rule_reflector_flags_quality_issues() {
   });
 
   require(!result.passed, "rule reflector fails invalid output");
-  require(result.recommended_action == reflection_action::escalate,
-    "critical forbidden text escalates");
+  require(
+    result.recommended_action == reflection_action::escalate, "critical forbidden text escalates");
   require(result.issues.size() == 2, "rule reflector reports both issues");
 }
 
@@ -85,7 +85,7 @@ void llm_reflector_parses_structured_json() {
     "\"revised_output\":\"better answer\",\"metadata\":{\"source\":\"llm\"}}\n"
     "```");
 
-  llm_reflector reflector(client);
+  llm_reflector reflector(client, { .provider = "review-provider" });
   const auto result = reflector.reflect({
     .task = "Review answer",
     .candidate_output = "answer",
@@ -100,6 +100,8 @@ void llm_reflector_parses_structured_json() {
   require(result.revised_output == "better answer", "llm reflector parses revised output");
   require(client.last_request.messages.back().content.find("Rubric") != std::string::npos,
     "llm reflector prompt includes rubric");
+  require(client.last_request.provider == "review-provider",
+    "llm reflector propagates its configured provider");
 }
 
 void composite_reflector_merges_results() {
@@ -145,8 +147,7 @@ void policy_maps_result_to_action() {
 
   result.score = 0.1;
   result.revised_output.clear();
-  require(policy.action_for(result) == reflection_action::block,
-    "policy maps low score to block");
+  require(policy.action_for(result) == reflection_action::block, "policy maps low score to block");
 
   auto applied = reflection_policy_engine(policy).apply(result);
   require(applied.recommended_action == reflection_action::block, "policy engine applies action");
@@ -167,20 +168,21 @@ void result_normalizer_and_merger_are_reusable() {
   };
 
   const auto normalized = reflection_result_normalizer({
-    .allow_revision = false,
-  }).normalize(dirty);
+                                                         .allow_revision = false,
+                                                       })
+                            .normalize(dirty);
   require(!normalized.passed, "normalizer fails result with issues");
   require(normalized.score == 1.0, "normalizer clamps score");
   require(normalized.recommended_action == reflection_action::retry,
     "normalizer respects rubric revision policy");
   require(normalized.revised_output.empty(), "normalizer clears disallowed revision");
 
-  const auto merged = reflection_result_merger()
-                        .add(reflection_result::pass())
-                        .add(reflection_result::fail(reflection_action::retry,
-                          { .severity = reflection_severity::error, .code = "bad" },
-                          0.4))
-                        .finish();
+  const auto merged =
+    reflection_result_merger()
+      .add(reflection_result::pass())
+      .add(reflection_result::fail(
+        reflection_action::retry, { .severity = reflection_severity::error, .code = "bad" }, 0.4))
+      .finish();
   require(!merged.passed, "merger fails when any result fails");
   require(merged.recommended_action == reflection_action::retry, "merger keeps strongest action");
   require(merged.score == 0.4, "merger keeps lowest score");
@@ -219,9 +221,7 @@ void reflection_runner_applies_policy_and_records() {
     .reflector = reflector,
     .policy = { .pass_threshold = 0.8 },
     .store = &store,
-    .observer = [&](const reflection_event& event) {
-      events.push_back(event.type);
-    },
+    .observer = [&](const reflection_event& event) { events.push_back(event.type); },
   });
 
   const auto run = runner.run({
@@ -235,6 +235,16 @@ void reflection_runner_applies_policy_and_records() {
     "runner applies policy-compatible action");
   require(store.load(run.record.id).has_value(), "runner stores reflection record");
   require(events.size() == 2, "runner emits started and completed events");
+
+  const auto isolated = runner.run(
+    {
+      .task = "Isolated runner",
+      .candidate_output = "missing",
+    },
+    { .persist_record = false });
+  require(!store.load(isolated.record.id).has_value(),
+    "per-run reflection isolation suppresses store persistence");
+  require(events.size() == 4, "isolated reflection still emits normal lifecycle events");
 }
 
 void codec_round_trips_result() {

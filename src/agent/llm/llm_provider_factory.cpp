@@ -18,7 +18,7 @@ namespace {
 
 using raw_llm_client_factory = gmp::object_factory<llm_client, llm_config>;
 
-template <typename Client>
+template<typename Client>
 void register_llm_client(const std::string& provider_id) {
   static raw_llm_client_factory::register_type<Client> registration(provider_id);
   (void)registration;
@@ -53,27 +53,23 @@ llm_client_factory& llm_client_factory::instance() {
 }
 
 llm_client* llm_client_factory::create(
-  std::string_view provider_id,
-  const llm_config& config) const {
+  std::string_view provider_id, const llm_config& config) const {
   register_builtin_llm_clients();
   return raw_llm_client_factory::instance().create(std::string(provider_id), config);
 }
 
 std::shared_ptr<llm_client> llm_client_factory::create_shared(
-  std::string_view provider_id,
-  const llm_config& config) const {
+  std::string_view provider_id, const llm_config& config) const {
   return std::shared_ptr<llm_client>(create(provider_id, config));
 }
 
 std::unique_ptr<llm_client> llm_client_factory::create_unique(
-  std::string_view provider_id,
-  const llm_config& config) const {
+  std::string_view provider_id, const llm_config& config) const {
   return std::unique_ptr<llm_client>(create(provider_id, config));
 }
 
 std::shared_ptr<llm_client> make_llm_client(
-  std::string_view provider_id,
-  llm_client_config config) {
+  std::string_view provider_id, llm_client_config config) {
   return llm_client_factory::instance().create_shared(provider_id, std::move(config));
 }
 

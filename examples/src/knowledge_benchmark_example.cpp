@@ -166,19 +166,18 @@ int main(int argc, char** argv) {
   std::vector<knowledge::knowledge_document> documents;
   if (!options.corpus_path.empty()) {
     knowledge::directory_knowledge_loader loader;
-    documents = loader.load(options.corpus_path, {
-      .metadata = { { "collection", "benchmark" } },
-    });
+    documents = loader.load(options.corpus_path,
+      {
+        .metadata = { { "collection", "benchmark" } },
+      });
   }
   else {
     documents.reserve(options.document_count);
     for (std::size_t index = 0; index < options.document_count; ++index) {
       const auto topic = index % 3;
-      const auto content = topic == 0
-                             ? "RAG retrieval chunking indexing citations document "
-                             : topic == 1
-                                 ? "security policy tenant access control document "
-                                 : "operations runbook timeout backoff retry document ";
+      const auto content = topic == 0   ? "RAG retrieval chunking indexing citations document "
+                           : topic == 1 ? "security policy tenant access control document "
+                                        : "operations runbook timeout backoff retry document ";
       documents.push_back({
         .id = "bench-doc-" + std::to_string(index),
         .title = "Benchmark " + std::to_string(index),
@@ -190,9 +189,9 @@ int main(int argc, char** argv) {
 
   const auto ingest_start = std::chrono::steady_clock::now();
   const auto ingest = retriever->ingest_batch(documents);
-  const auto ingest_ms =
-    static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::steady_clock::now() - ingest_start).count());
+  const auto ingest_ms = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::steady_clock::now() - ingest_start)
+                                               .count());
 
   std::vector<knowledge::knowledge_benchmark_case> cases;
   if (!options.query_file.empty()) {
@@ -203,17 +202,19 @@ int main(int argc, char** argv) {
     for (std::size_t index = 0; index < options.query_count; ++index) {
       const auto topic = index % 3;
       cases.push_back({
-        .query = topic == 0
-                   ? "RAG retrieval citations"
-                   : topic == 1 ? "tenant security policy" : "timeout retry backoff",
+        .query = topic == 0   ? "RAG retrieval citations"
+                 : topic == 1 ? "tenant security policy"
+                              : "timeout retry backoff",
         .limit = 5,
       });
     }
   }
 
-  const auto report = knowledge::benchmark_knowledge_retrieval(*retriever, cases, {
-    .concurrency = options.concurrency,
-  });
+  const auto report = knowledge::benchmark_knowledge_retrieval(*retriever,
+    cases,
+    {
+      .concurrency = options.concurrency,
+    });
 
   if (options.json_output) {
     wuwe::println("{}", knowledge::knowledge_benchmark_report_to_json(report));
@@ -222,13 +223,9 @@ int main(int argc, char** argv) {
 
   wuwe::println("Knowledge benchmark");
   wuwe::println(
-    "documents={} ingested={} ingest_ms={}",
-    documents.size(),
-    ingest.ingested,
-    ingest_ms);
-  wuwe::println(
-    "queries={} concurrency={} total_ms={} average_ms={} p50_ms={} p95_ms={} p99_ms={} "
-    "max_ms={} total_results={}",
+    "documents={} ingested={} ingest_ms={}", documents.size(), ingest.ingested, ingest_ms);
+  wuwe::println("queries={} concurrency={} total_ms={} average_ms={} p50_ms={} p95_ms={} p99_ms={} "
+                "max_ms={} total_results={}",
     report.query_count,
     options.concurrency,
     report.total_ms,

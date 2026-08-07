@@ -40,9 +40,7 @@ public:
   tika_runtime_process& operator=(tika_runtime_process&&) noexcept;
 
   static tika_runtime_discovery discover(tika_runtime_config config = {});
-  static bool service_available(
-    const std::string& base_url,
-    int timeout_ms = 1000,
+  static bool service_available(const std::string& base_url, int timeout_ms = 1000,
     std::shared_ptr<::wuwe::http_client> http = {});
   static std::shared_ptr<tika_runtime_process> ensure_running(tika_runtime_config config = {});
 

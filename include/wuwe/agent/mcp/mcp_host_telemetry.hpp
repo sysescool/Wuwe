@@ -7,8 +7,8 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <stdexcept>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,8 +22,8 @@ namespace wuwe::agent::mcp {
 
 inline nlohmann::json mcp_host_event_to_json(const mcp_host_event& event) {
   const auto timestamp_ms =
-    std::chrono::duration_cast<std::chrono::milliseconds>(
-      event.timestamp.time_since_epoch()).count();
+    std::chrono::duration_cast<std::chrono::milliseconds>(event.timestamp.time_since_epoch())
+      .count();
 
   return {
     { "sequence", event.sequence },
@@ -102,8 +102,7 @@ private:
 
 class jsonl_mcp_host_event_sink final : public mcp_host_event_sink {
 public:
-  explicit jsonl_mcp_host_event_sink(std::filesystem::path path)
-      : path_(std::move(path)) {
+  explicit jsonl_mcp_host_event_sink(std::filesystem::path path) : path_(std::move(path)) {
   }
 
   void publish(const mcp_host_event& event) override {
@@ -247,8 +246,7 @@ private:
 };
 
 inline void attach_mcp_host_event_sink(
-  mcp_host_runtime& runtime,
-  std::shared_ptr<mcp_host_event_sink> sink) {
+  mcp_host_runtime& runtime, std::shared_ptr<mcp_host_event_sink> sink) {
   runtime.set_event_sink([sink = std::move(sink)](const mcp_host_event& event) {
     if (sink) {
       sink->publish(event);

@@ -19,7 +19,10 @@ struct echo_text {
 
 int main() {
   wuwe::tool_provider<echo_text> tools;
-  wuwe::agent::mcp::mcp_server server({ .name = "wuwe-mcp-example", .version = "0.1.0" });
+  wuwe::agent::mcp::mcp_server server({
+    .name = "wuwe-mcp-example",
+    .version = std::string(wuwe::framework_version),
+  });
   server.add_tool_provider(tools);
   server.add_mcp_tool(
     {

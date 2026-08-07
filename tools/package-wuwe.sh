@@ -8,6 +8,8 @@ artifacts_dir="artifacts"
 dist_dir="dist"
 skip_build=false
 keep_artifacts=false
+include_tika=true
+include_jre=true
 
 usage() {
   cat <<'EOF'
@@ -20,6 +22,8 @@ Options:
   --dist-dir <path>
   --skip-build
   --keep-artifacts
+  --without-tika
+  --without-jre
   --help
 EOF
 }
@@ -48,6 +52,14 @@ while (($# > 0)); do
       ;;
     --keep-artifacts)
       keep_artifacts=true
+      shift
+      ;;
+    --without-tika)
+      include_tika=false
+      shift
+      ;;
+    --without-jre)
+      include_jre=false
       shift
       ;;
     --help|-h)
@@ -153,7 +165,7 @@ if [[ "$keep_artifacts" != true && -e "$package_root" ]]; then
 fi
 
 cmake --install "$build_path" --config "$configuration" --prefix "$package_root"
-cp -a "$repo_root/README.md" "$repo_root/LICENSE" "$repo_root/VERSION" "$package_root/"
+cp -a "$repo_root/README.md" "$repo_root/CHANGELOG.md" "$repo_root/LICENSE" "$repo_root/VERSION" "$package_root/"
 cp -a "$repo_root/vcpkg.json" "$package_root/"
 cp -a "$repo_root/docs" "$package_root/docs"
 cp -a "$repo_root/examples" "$package_root/examples"
@@ -163,24 +175,34 @@ tika_path="$package_root/runtime/tika/tika-server-standard.jar"
 jre_archive="$repo_root/third_party/runtime/jre/temurin-21-jre-linux-x64.tar.gz"
 jre_checksum_path="$jre_archive.sha256"
 
-if [[ ! -x "$java_path" ]]; then
+if [[ "$include_tika" != true ]]; then
+  rm -rf -- "$package_root/runtime/tika"
+fi
+if [[ "$include_jre" != true ]]; then
+  rm -rf -- "$package_root/runtime/jre"
+fi
+
+if [[ "$include_jre" == true && ! -x "$java_path" ]]; then
   echo "Installed Linux JRE is missing or not executable: $java_path" >&2
   exit 1
 fi
-if [[ ! -f "$tika_path" ]]; then
+if [[ "$include_tika" == true && ! -f "$tika_path" ]]; then
   echo "Installed Tika runtime is missing: $tika_path" >&2
   exit 1
 fi
-if [[ ! -f "$jre_checksum_path" ]]; then
+if [[ "$include_jre" == true && ! -f "$jre_checksum_path" ]]; then
   echo "Linux JRE checksum is missing: $jre_checksum_path" >&2
   exit 1
 fi
 
-expected_jre_sha="$(awk 'NR == 1 { print tolower($1) }' "$jre_checksum_path")"
-actual_jre_sha="$(sha256sum "$jre_archive" | awk '{ print $1 }')"
-if [[ "$expected_jre_sha" != "$actual_jre_sha" ]]; then
-  echo "Linux JRE SHA-256 mismatch: expected $expected_jre_sha, found $actual_jre_sha" >&2
-  exit 1
+actual_jre_sha=""
+if [[ "$include_jre" == true ]]; then
+  expected_jre_sha="$(awk 'NR == 1 { print tolower($1) }' "$jre_checksum_path")"
+  actual_jre_sha="$(sha256sum "$jre_archive" | awk '{ print $1 }')"
+  if [[ "$expected_jre_sha" != "$actual_jre_sha" ]]; then
+    echo "Linux JRE SHA-256 mismatch: expected $expected_jre_sha, found $actual_jre_sha" >&2
+    exit 1
+  fi
 fi
 
 with_openssl="$(cmake_bool_json "$(cache_value WUWE_BUILT_WITH_OPENSSL OFF)")"
@@ -213,7 +235,20 @@ if [[ "$with_sqlite" == true ]]; then
 fi
 
 vcpkg_baseline="$(sed -n 's/.*"builtin-baseline"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$repo_root/vcpkg.json" | head -n 1)"
-tika_sha="$(sha256sum "$tika_path" | awk '{ print $1 }')"
+tika_sha=""
+tika_manifest_path=""
+jre_manifest_path=""
+jre_manifest_source=""
+jre_manifest_archive=""
+if [[ "$include_tika" == true ]]; then
+  tika_sha="$(sha256sum "$tika_path" | awk '{ print $1 }')"
+  tika_manifest_path="runtime/tika/tika-server-standard.jar"
+fi
+if [[ "$include_jre" == true ]]; then
+  jre_manifest_path="runtime/jre"
+  jre_manifest_source="archive"
+  jre_manifest_archive="third_party/runtime/jre/temurin-21-jre-linux-x64.tar.gz"
+fi
 generated_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
 cat > "$package_root/manifest.json" <<EOF
@@ -257,15 +292,16 @@ cat > "$package_root/manifest.json" <<EOF
   },
   "runtime": {
     "tika": {
-      "jar": "runtime/tika/tika-server-standard.jar",
+      "bundled": $include_tika,
+      "jar": "$tika_manifest_path",
       "sha256": "$tika_sha",
       "internal_url": "http://127.0.0.1:9998"
     },
     "jre": {
-      "bundled": true,
-      "path": "runtime/jre",
-      "source": "archive",
-      "archive": "third_party/runtime/jre/temurin-21-jre-linux-x64.tar.gz",
+      "bundled": $include_jre,
+      "path": "$jre_manifest_path",
+      "source": "$jre_manifest_source",
+      "archive": "$jre_manifest_archive",
       "sha256": "$actual_jre_sha"
     }
   }

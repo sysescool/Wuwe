@@ -7,8 +7,8 @@
 #include <cstdint>
 #include <map>
 #include <optional>
-#include <string>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include <wuwe/agent/memory/memory_record.hpp>
@@ -36,8 +36,7 @@ public:
   virtual void upsert(const memory_record& record, const std::vector<float>& embedding) = 0;
 
   virtual void upsert_batch(
-    const std::vector<memory_record>& records,
-    const std::vector<std::vector<float>>& embeddings) {
+    const std::vector<memory_record>& records, const std::vector<std::vector<float>>& embeddings) {
     if (records.size() != embeddings.size()) {
       throw std::invalid_argument("vector_memory_index upsert_batch size mismatch");
     }

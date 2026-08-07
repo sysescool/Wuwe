@@ -134,11 +134,11 @@ int main() {
   options.callbacks.on_tool_start = [](const wuwe::llm_tool_call& call) {
     wuwe::println("\n[tool start] {} {}", call.name, call.arguments_json);
   };
-  options.callbacks.on_tool_result =
-    [](const wuwe::llm_tool_call& call, const wuwe::llm_tool_result& result) {
-      wuwe::println("[tool result] {} -> {}", call.name, result.content);
-      wuwe::print("assistant: ");
-    };
+  options.callbacks.on_tool_result = [](const wuwe::llm_tool_call& call,
+                                       const wuwe::llm_tool_result& result) {
+    wuwe::println("[tool result] {} -> {}", call.name, result.content);
+    wuwe::print("assistant: ");
+  };
 
   wuwe::print("assistant: ");
   const auto runner_response = runner.complete(

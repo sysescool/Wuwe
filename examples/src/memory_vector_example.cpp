@@ -80,8 +80,8 @@ int main() {
 
   const auto qdrant_url = env_value("WUWE_QDRANT_URL");
   if (!qdrant_url.empty()) {
-    context.set_vector_index(std::make_shared<memory::qdrant_memory_index>(
-      memory::qdrant_memory_index_config {
+    context.set_vector_index(
+      std::make_shared<memory::qdrant_memory_index>(memory::qdrant_memory_index_config {
         .base_url = qdrant_url,
         .collection_name = "wuwe_memory_example",
         .embedding_provider = "deterministic-example",
@@ -96,17 +96,12 @@ int main() {
   }
 
   context.remember_long_term(
-    "Use explicit ownership in public APIs.",
-    context.scope(),
-    { { "topic", "api-style" } });
+    "Use explicit ownership in public APIs.", context.scope(), { { "topic", "api-style" } });
   context.remember_long_term(
-    "Prefer notebooks for exploratory analysis.",
-    context.scope(),
-    { { "topic", "analysis" } });
+    "Prefer notebooks for exploratory analysis.", context.scope(), { { "topic", "analysis" } });
 
   const auto rebuild = context.rebuild_vector_index_detailed();
-  wuwe::println(
-    "Rebuild scanned={} rebuilt={} errors={}",
+  wuwe::println("Rebuild scanned={} rebuilt={} errors={}",
     rebuild.scanned,
     rebuild.rebuilt,
     rebuild.errors.size());

@@ -22,6 +22,7 @@ namespace wuwe::agent::execution::detail {
 enum class restricted_appcontainer_launch_status {
   ok,
   invalid_appcontainer_sid,
+  invalid_limits,
   create_pipe_failed,
   set_handle_information_failed,
   attribute_list_failed,
@@ -35,7 +36,7 @@ enum class restricted_appcontainer_launch_status {
 };
 
 struct restricted_appcontainer_process_capture {
-  DWORD exit_code { 1 };
+  std::optional<DWORD> exit_code;
   bool timed_out { false };
   bool cancelled { false };
   bool stdout_truncated { false };
@@ -62,19 +63,15 @@ struct restricted_appcontainer_launch_request {
 };
 
 struct restricted_appcontainer_launch_result {
-  restricted_appcontainer_launch_status status {
-    restricted_appcontainer_launch_status::ok
-  };
+  restricted_appcontainer_launch_status status { restricted_appcontainer_launch_status::ok };
   restricted_appcontainer_process_capture capture;
   DWORD win32_error { ERROR_SUCCESS };
   std::string detail;
 };
 
-[[nodiscard]] const char* to_string(
-  restricted_appcontainer_launch_status status) noexcept;
+[[nodiscard]] const char* to_string(restricted_appcontainer_launch_status status) noexcept;
 
-[[nodiscard]] restricted_appcontainer_launch_result
-launch_restricted_appcontainer_process(
+[[nodiscard]] restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
   restricted_appcontainer_launch_request request);
 
 } // namespace wuwe::agent::execution::detail

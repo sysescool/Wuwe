@@ -30,6 +30,13 @@ const auto response = client->complete_stream(request, callbacks);
 
 Normalized event types cover content, provider-supplied reasoning summaries, tool-call deltas, completion, and errors. Tool-call name and argument fragments are assembled by the higher-level runner before dispatch.
 
+Built-in provider clients emit callbacks serially and never retain them after
+`complete_stream` returns. Custom clients must also finish every callback before
+returning. A `dispatching_llm_client` accepts providers that emit from multiple
+worker threads and serializes those events before invoking consumer callbacks.
+Consumer exceptions stop further consumer delivery, are rethrown to the caller,
+and remain distinct from the backend request outcome.
+
 ## Runner streaming
 
 ```cpp

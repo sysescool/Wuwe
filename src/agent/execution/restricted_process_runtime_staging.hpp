@@ -17,6 +17,8 @@ enum class restricted_python_runtime_staging_status {
   source_python_not_regular_file,
   source_home_missing,
   source_lib_missing,
+  source_reparse_point,
+  destination_reparse_point,
   create_destination_failed,
   copy_failed,
   write_configuration_failed,
@@ -29,9 +31,7 @@ struct restricted_python_runtime_staging_request {
 };
 
 struct restricted_python_runtime_staging_result {
-  restricted_python_runtime_staging_status status {
-    restricted_python_runtime_staging_status::ok
-  };
+  restricted_python_runtime_staging_status status { restricted_python_runtime_staging_status::ok };
   std::filesystem::path source_home;
   std::filesystem::path destination_home;
   std::filesystem::path python_executable;
@@ -40,8 +40,7 @@ struct restricted_python_runtime_staging_result {
   std::string detail;
 };
 
-[[nodiscard]] const char* to_string(
-  restricted_python_runtime_staging_status status) noexcept;
+[[nodiscard]] const char* to_string(restricted_python_runtime_staging_status status) noexcept;
 
 [[nodiscard]] restricted_python_runtime_staging_result
 stage_minimal_python_runtime_for_restricted_process(

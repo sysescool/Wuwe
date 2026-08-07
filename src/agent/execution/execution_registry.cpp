@@ -28,6 +28,7 @@ sandbox::sandbox_enforcement_contract planned_strong_process_contract() {
     .filesystem_read_deny = sandbox::enforcement_level::planned,
     .filesystem_write_deny = sandbox::enforcement_level::planned,
     .network_deny = sandbox::enforcement_level::planned,
+    .network_filter = sandbox::enforcement_level::planned,
   };
 }
 
@@ -47,13 +48,12 @@ sandbox::sandbox_enforcement_contract planned_wasm_contract() {
     .filesystem_read_deny = sandbox::enforcement_level::planned,
     .filesystem_write_deny = sandbox::enforcement_level::planned,
     .network_deny = sandbox::enforcement_level::planned,
+    .network_filter = sandbox::enforcement_level::planned,
   };
 }
 
-sandbox::sandbox_backend_info planned_backend_descriptor(
-  std::string name,
-  sandbox::isolation_level isolation,
-  sandbox::sandbox_enforcement_contract enforcement) {
+sandbox::sandbox_backend_info planned_backend_descriptor(std::string name,
+  sandbox::isolation_level isolation, sandbox::sandbox_enforcement_contract enforcement) {
   return {
     .name = std::move(name),
     .isolation = isolation,
@@ -70,16 +70,15 @@ sandbox::sandbox_backend_info planned_backend_descriptor(
       sandbox::sandbox_feature::filesystem_read_restriction,
       sandbox::sandbox_feature::filesystem_write_restriction,
       sandbox::sandbox_feature::network_restriction,
+      sandbox::sandbox_feature::network_filtering,
     },
     .enforcement = std::move(enforcement),
   };
 }
 
 sandbox::sandbox_backend_info planned_wasm_descriptor() {
-  auto info = planned_backend_descriptor(
-    "wasm",
-    sandbox::isolation_level::wasm,
-    planned_wasm_contract());
+  auto info =
+    planned_backend_descriptor("wasm", sandbox::isolation_level::wasm, planned_wasm_contract());
   info.features = {
     sandbox::sandbox_feature::working_directory,
     sandbox::sandbox_feature::stdout_capture,
@@ -89,48 +88,40 @@ sandbox::sandbox_backend_info planned_wasm_descriptor() {
     sandbox::sandbox_feature::filesystem_read_restriction,
     sandbox::sandbox_feature::filesystem_write_restriction,
     sandbox::sandbox_feature::network_restriction,
+    sandbox::sandbox_feature::network_filtering,
   };
   return info;
 }
 
 bool satisfies_requirements(
-  const sandbox::sandbox_backend_info& info,
-  const execution_backend_requirements& requirements) {
+  const sandbox::sandbox_backend_info& info, const execution_backend_requirements& requirements) {
   if (!info.available) {
     return false;
   }
-  if (requirements.isolation.has_value() &&
-      info.isolation != *requirements.isolation) {
+  if (requirements.isolation.has_value() && info.isolation != *requirements.isolation) {
     return false;
   }
 
   const auto& enforcement = info.enforcement;
-  return (!requirements.require_shell_disabled ||
-           is_enforced(enforcement.shell_execution)) &&
-         (!requirements.require_timeout ||
-           is_enforced(enforcement.timeout)) &&
-         (!requirements.require_cancellation ||
-           is_enforced(enforcement.cancellation)) &&
-         (!requirements.require_stdout_limit ||
-           is_enforced(enforcement.stdout_limit)) &&
-         (!requirements.require_stderr_limit ||
-           is_enforced(enforcement.stderr_limit)) &&
+  return (!requirements.require_shell_disabled || is_enforced(enforcement.shell_execution)) &&
+         (!requirements.require_timeout || is_enforced(enforcement.timeout)) &&
+         (!requirements.require_cancellation || is_enforced(enforcement.cancellation)) &&
+         (!requirements.require_stdout_limit || is_enforced(enforcement.stdout_limit)) &&
+         (!requirements.require_stderr_limit || is_enforced(enforcement.stderr_limit)) &&
          (!requirements.require_environment_allowlist ||
            is_enforced(enforcement.environment_allowlist)) &&
          (!requirements.require_process_tree_cleanup ||
            is_enforced(enforcement.process_tree_cleanup)) &&
          (!requirements.require_process_count_limit ||
            is_enforced(enforcement.process_count_limit)) &&
-         (!requirements.require_cpu_time_limit ||
-           is_enforced(enforcement.cpu_time_limit)) &&
-         (!requirements.require_memory_limit ||
-           is_enforced(enforcement.memory_limit)) &&
+         (!requirements.require_cpu_time_limit || is_enforced(enforcement.cpu_time_limit)) &&
+         (!requirements.require_memory_limit || is_enforced(enforcement.memory_limit)) &&
          (!requirements.require_filesystem_read_deny ||
            is_enforced(enforcement.filesystem_read_deny)) &&
          (!requirements.require_filesystem_write_deny ||
            is_enforced(enforcement.filesystem_write_deny)) &&
-         (!requirements.require_network_deny ||
-           is_enforced(enforcement.network_deny));
+         (!requirements.require_network_deny || is_enforced(enforcement.network_deny)) &&
+         (!requirements.require_network_filter || is_enforced(enforcement.network_filter));
 }
 
 std::string join_blockers(const std::vector<std::string>& blockers) {
@@ -147,12 +138,13 @@ std::string join_blockers(const std::vector<std::string>& blockers) {
 } // namespace
 
 void execution_backend_registry::register_backend(std::string name, factory create) {
-  entries_.push_back({ .name = std::move(name), .create = std::move(create) });
+  entries_.push_back(
+    { .name = std::move(name), .create = std::move(create), .descriptor = std::nullopt });
 }
 
 void execution_backend_registry::register_descriptor(sandbox::sandbox_backend_info info) {
   const auto name = info.name;
-  entries_.push_back({ .name = name, .descriptor = std::move(info) });
+  entries_.push_back({ .name = name, .create = {}, .descriptor = std::move(info) });
 }
 
 std::unique_ptr<execution_backend> execution_backend_registry::create(
@@ -224,19 +216,14 @@ std::unique_ptr<execution_backend> execution_backend_registry::create_best(
 execution_backend_registry make_execution_backend_registry(
   execution_backend_registry_options options) {
   execution_backend_registry registry;
-  registry.register_backend("controlled_process", [config = options.controlled_process] {
-    return make_controlled_process_backend(config);
-  });
+  registry.register_backend("controlled_process",
+    [config = options.controlled_process] { return make_controlled_process_backend(config); });
   if (options.enable_restricted_process_backend) {
     const auto availability = evaluate_restricted_process_backend_availability(
-      options.restricted_process,
-      restricted_process_backend_registration::registered_factory);
+      options.restricted_process, restricted_process_backend_registration::registered_factory);
     if (availability.available) {
-      registry.register_backend(
-        "restricted_process",
-        [config = options.restricted_process] {
-          return make_restricted_process_backend(config);
-        });
+      registry.register_backend("restricted_process",
+        [config = options.restricted_process] { return make_restricted_process_backend(config); });
     }
     else {
       auto descriptor = restricted_process_backend_descriptor();
@@ -251,9 +238,7 @@ execution_backend_registry make_execution_backend_registry(
     registry.register_descriptor(restricted_process_backend_descriptor());
   }
   registry.register_descriptor(planned_backend_descriptor(
-    "container",
-    sandbox::isolation_level::container,
-    planned_strong_process_contract()));
+    "container", sandbox::isolation_level::container, planned_strong_process_contract()));
   registry.register_descriptor(planned_wasm_descriptor());
   return registry;
 }

@@ -49,9 +49,7 @@ enum class execution_termination_reason {
 
 struct execution_result {
   std::optional<int> exit_code;
-  execution_termination_reason termination_reason {
-    execution_termination_reason::backend_error
-  };
+  execution_termination_reason termination_reason { execution_termination_reason::backend_error };
   bool timed_out { false };
   bool cancelled { false };
   bool stdout_truncated { false };

@@ -1,10 +1,37 @@
 #include <chrono>
+#include <compare>
 #include <string>
 #include <utility>
 
 #include <wuwe/wuwe.h>
 
 int main() {
+  static_assert(wuwe::framework_version_major == 1);
+  static_assert(wuwe::framework_version_minor == 0);
+  static_assert(wuwe::framework_version_patch == 0);
+  if (wuwe::framework_version != "1.0.0") {
+    return 1;
+  }
+
+  wuwe::agent::skills::skill_registry skills;
+  const auto skill_version = wuwe::agent::skills::semantic_version::parse("1.0.0");
+  const auto linux_build = wuwe::agent::skills::semantic_version::parse("1.0.0+linux");
+  const auto windows_build = wuwe::agent::skills::semantic_version::parse("1.0.0+windows");
+  if (skill_version.major != 1 || !skills.snapshot().empty() || linux_build == windows_build ||
+      wuwe::agent::skills::compare_precedence(linux_build, windows_build) !=
+        std::strong_ordering::equal ||
+      std::string(wuwe::agent::skills::to_string(
+        wuwe::agent::skills::skill_error_code::registration_conflict)) !=
+        "registration_conflict") {
+    return 1;
+  }
+
+  auto filesystem_backend = wuwe::agent::filesystem::make_local_filesystem_backend();
+  auto process_backend = wuwe::agent::process::make_local_process_backend();
+  if (!filesystem_backend || !process_backend || process_backend->info().name != "local_process") {
+    return 1;
+  }
+
   wuwe::agent::execution::controlled_process_backend_config config;
   config.validate_python_on_start = false;
   config.python_startup_timeout = std::chrono::milliseconds(3000);
@@ -28,42 +55,31 @@ int main() {
     return 1;
   }
 
-  auto registry =
-    wuwe::agent::execution::make_default_execution_backend_registry();
-  auto restricted_descriptor =
-    wuwe::agent::execution::restricted_process_backend_descriptor();
-  if (restricted_descriptor.available ||
-      restricted_descriptor.name != "restricted_process") {
+  auto registry = wuwe::agent::execution::make_default_execution_backend_registry();
+  auto restricted_descriptor = wuwe::agent::execution::restricted_process_backend_descriptor();
+  if (restricted_descriptor.available || restricted_descriptor.name != "restricted_process") {
     return 1;
   }
   wuwe::agent::execution::restricted_process_backend_config restricted_config;
   auto restricted_contract =
-    wuwe::agent::execution::restricted_process_backend_configured_contract(
-      restricted_config);
+    wuwe::agent::execution::restricted_process_backend_configured_contract(restricted_config);
   auto restricted_availability =
-    wuwe::agent::execution::evaluate_restricted_process_backend_availability(
-      restricted_config);
+    wuwe::agent::execution::evaluate_restricted_process_backend_availability(restricted_config);
   auto registered_restricted_availability =
-    wuwe::agent::execution::evaluate_restricted_process_backend_availability(
-      restricted_config,
-      wuwe::agent::execution::restricted_process_backend_registration::
-        registered_factory);
+    wuwe::agent::execution::evaluate_restricted_process_backend_availability(restricted_config,
+      wuwe::agent::execution::restricted_process_backend_registration::registered_factory);
   if (!restricted_config.deny_network || !restricted_config.use_job_object ||
-      restricted_config.inherit_parent_environment ||
-      !restricted_config.cleanup_runtime_staging ||
+      restricted_config.inherit_parent_environment || !restricted_config.cleanup_runtime_staging ||
       wuwe::agent::execution::to_string(restricted_config.runtime_staging) !=
         std::string("copy_minimal_python_runtime")) {
     return 1;
   }
 #ifdef _WIN32
-  const auto expected_restricted_read_deny =
-    wuwe::agent::sandbox::enforcement_level::enforced;
+  const auto expected_restricted_read_deny = wuwe::agent::sandbox::enforcement_level::enforced;
 #else
-  const auto expected_restricted_read_deny =
-    wuwe::agent::sandbox::enforcement_level::not_enforced;
+  const auto expected_restricted_read_deny = wuwe::agent::sandbox::enforcement_level::not_enforced;
 #endif
-  if (restricted_contract.filesystem_read_deny !=
-      expected_restricted_read_deny) {
+  if (restricted_contract.filesystem_read_deny != expected_restricted_read_deny) {
     return 1;
   }
   if (restricted_availability.available) {
@@ -105,8 +121,7 @@ int main() {
     return 1;
   }
 #else
-  if (explicit_restricted->available ||
-      explicit_registry.create("restricted_process") != nullptr) {
+  if (explicit_restricted->available || explicit_registry.create("restricted_process") != nullptr) {
     return 1;
   }
 #endif

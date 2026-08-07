@@ -17,13 +17,10 @@ struct mcp_gateway_options {
 
 class mcp_gateway {
 public:
-  explicit mcp_gateway(mcp_gateway_options options = {})
-      : options_(std::move(options)) {
+  explicit mcp_gateway(mcp_gateway_options options = {}) : options_(std::move(options)) {
   }
 
-  void populate_server(
-    mcp_server& server,
-    mcp_host_runtime& runtime) const {
+  void populate_server(mcp_server& server, mcp_host_runtime& runtime) const {
     for (const auto& snapshot : runtime.snapshots()) {
       if (!snapshot.running) {
         continue;
@@ -34,8 +31,10 @@ public:
     }
   }
 
-  static mcp_server make_server(
-    mcp_server_info info = { .name = "wuwe-mcp-gateway", .version = "0.1.0" }) {
+  static mcp_server make_server(mcp_server_info info = {
+                                  .name = "wuwe-mcp-gateway",
+                                  .version = std::string(::wuwe::framework_version),
+                                }) {
     return mcp_server(std::move(info));
   }
 
@@ -45,9 +44,7 @@ public:
 
 private:
   void add_server_tools(
-    mcp_server& server,
-    mcp_host_runtime& runtime,
-    const std::string& server_id) const {
+    mcp_server& server, mcp_host_runtime& runtime, const std::string& server_id) const {
     const auto tools = runtime.list_tools(server_id);
     for (const auto& item : tools["result"].value("tools", nlohmann::json::array())) {
       if (!item.is_object() || !item.value("name", std::string()).size()) {
@@ -59,8 +56,8 @@ private:
         .description = item.value("description", std::string()),
         .parameters_json_schema = item.value("inputSchema", nlohmann::json::object()).dump(),
       };
-      server.add_mcp_tool(std::move(tool),
-        [&runtime, server_id, original_name](const nlohmann::json& arguments) {
+      server.add_mcp_tool(
+        std::move(tool), [&runtime, server_id, original_name](const nlohmann::json& arguments) {
           const auto response = runtime.call_tool(server_id, original_name, arguments);
           return tool_call_result_from_response(response);
         });
@@ -68,9 +65,7 @@ private:
   }
 
   void add_server_resources(
-    mcp_server& server,
-    mcp_host_runtime& runtime,
-    const std::string& server_id) const {
+    mcp_server& server, mcp_host_runtime& runtime, const std::string& server_id) const {
     const auto resources = runtime.list_resources(server_id);
     for (const auto& item : resources["result"].value("resources", nlohmann::json::array())) {
       if (!item.is_object() || !item.value("uri", std::string()).size()) {
@@ -91,9 +86,7 @@ private:
   }
 
   void add_server_prompts(
-    mcp_server& server,
-    mcp_host_runtime& runtime,
-    const std::string& server_id) const {
+    mcp_server& server, mcp_host_runtime& runtime, const std::string& server_id) const {
     const auto prompts = runtime.list_prompts(server_id);
     for (const auto& item : prompts["result"].value("prompts", nlohmann::json::array())) {
       if (!item.is_object() || !item.value("name", std::string()).size()) {
@@ -114,17 +107,15 @@ private:
           .required = argument.value("required", false),
         });
       }
-      server.add_prompt(std::move(prompt),
-        [&runtime, server_id, original_name](const nlohmann::json& arguments) {
+      server.add_prompt(
+        std::move(prompt), [&runtime, server_id, original_name](const nlohmann::json& arguments) {
           const auto response = runtime.get_prompt(server_id, original_name, arguments);
           return prompt_result_from_response(response);
         });
     }
   }
 
-  std::string gateway_resource_uri(
-    const std::string& server_id,
-    const std::string& uri) const {
+  std::string gateway_resource_uri(const std::string& server_id, const std::string& uri) const {
     return "mcp-gateway://" + server_id + "/" + uri;
   }
 

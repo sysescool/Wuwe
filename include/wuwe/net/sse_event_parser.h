@@ -79,9 +79,8 @@ private:
 
     const auto separator = line.find(':');
     const auto field = line.substr(0, separator);
-    auto value = separator == std::string_view::npos
-                   ? std::string_view {}
-                   : line.substr(separator + 1);
+    auto value =
+      separator == std::string_view::npos ? std::string_view {} : line.substr(separator + 1);
     if (!value.empty() && value.front() == ' ') {
       value.remove_prefix(1);
     }

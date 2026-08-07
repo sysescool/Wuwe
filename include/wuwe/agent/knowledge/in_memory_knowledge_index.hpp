@@ -21,14 +21,21 @@ inline double lexical_knowledge_score(const std::string& query, const knowledge_
     return 0.0;
   }
   return ::wuwe::agent::text::token_overlap_ratio(
-    query,
-    chunk.title + " " + chunk.content + " " + chunk.source_uri);
+    query, chunk.title + " " + chunk.content + " " + chunk.source_uri);
 }
 
 } // namespace detail
 
 class in_memory_knowledge_index final : public knowledge_index {
 public:
+  [[nodiscard]] core::storage_capabilities capabilities() const noexcept override {
+    return {
+      .declared = true,
+      .atomic_mutations = true,
+      .coordination_scope = core::storage_coordination_scope::process_local,
+    };
+  }
+
   void upsert(const knowledge_chunk& chunk, const std::vector<float>& embedding) override {
     std::scoped_lock lock(mutex_);
     entries_[chunk.id] = entry {
@@ -38,8 +45,7 @@ public:
   }
 
   std::vector<knowledge_result> search(
-    const knowledge_query& query,
-    const std::vector<float>& embedding) const override {
+    const knowledge_query& query, const std::vector<float>& embedding) const override {
     std::scoped_lock lock(mutex_);
 
     std::vector<knowledge_result> result;
@@ -52,8 +58,7 @@ public:
       const auto vector_score =
         ::wuwe::agent::memory::vector_detail::cosine_similarity(embedding, item.embedding);
       const auto lexical_score = detail::lexical_knowledge_score(query.text, item.chunk);
-      const auto score =
-        query.vector_weight * vector_score + query.lexical_weight * lexical_score;
+      const auto score = query.vector_weight * vector_score + query.lexical_weight * lexical_score;
       if (score < query.minimum_score) {
         continue;
       }
@@ -66,16 +71,16 @@ public:
       });
     }
 
-    std::sort(result.begin(), result.end(), [](const knowledge_result& lhs,
-                                                const knowledge_result& rhs) {
-      if (lhs.score != rhs.score) {
-        return lhs.score > rhs.score;
-      }
-      if (lhs.chunk.document_id != rhs.chunk.document_id) {
-        return lhs.chunk.document_id < rhs.chunk.document_id;
-      }
-      return lhs.chunk.start_offset < rhs.chunk.start_offset;
-    });
+    std::sort(
+      result.begin(), result.end(), [](const knowledge_result& lhs, const knowledge_result& rhs) {
+        if (lhs.score != rhs.score) {
+          return lhs.score > rhs.score;
+        }
+        if (lhs.chunk.document_id != rhs.chunk.document_id) {
+          return lhs.chunk.document_id < rhs.chunk.document_id;
+        }
+        return lhs.chunk.start_offset < rhs.chunk.start_offset;
+      });
 
     if (query.limit != 0 && result.size() > query.limit) {
       result.resize(query.limit);

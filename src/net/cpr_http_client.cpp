@@ -49,8 +49,8 @@ void configure_session(cpr::Session& session, const http_request& request) {
   session.SetUrl(cpr::Url { request.url });
   session.SetHeader(make_cpr_headers(request));
   const long max_redirects = request.max_redirects > 0 ? request.max_redirects : 50L;
-  session.SetRedirect(cpr::Redirect { max_redirects, request.follow_redirects, false,
-    cpr::PostRedirectFlags::POST_ALL });
+  session.SetRedirect(cpr::Redirect {
+    max_redirects, request.follow_redirects, false, cpr::PostRedirectFlags::POST_ALL });
   session.SetUserAgent(cpr::UserAgent { "Wuwe/1.0" });
 
   cpr::SslOptions ssl_options = cpr::Ssl(cpr::ssl::NoRevoke { true },
@@ -83,12 +83,9 @@ void configure_session(cpr::Session& session, const http_request& request) {
     });
     if (!request.proxy->username.empty() || !request.proxy->password.empty()) {
       session.SetProxyAuth(cpr::ProxyAuthentication {
-        { "http", cpr::EncodedAuthentication {
-                    request.proxy->username,
-                    request.proxy->password } },
-        { "https", cpr::EncodedAuthentication {
-                     request.proxy->username,
-                     request.proxy->password } },
+        { "http", cpr::EncodedAuthentication { request.proxy->username, request.proxy->password } },
+        { "https",
+          cpr::EncodedAuthentication { request.proxy->username, request.proxy->password } },
       });
     }
   }
@@ -144,10 +141,8 @@ http_response cpr_http_client::send(const http_request& request) {
   return { .error_code = std::make_error_code(std::errc::invalid_argument) };
 }
 
-http_response cpr_http_client::send_stream(
-  const http_request& request,
-  const http_stream_chunk_callback& on_chunk,
-  std::stop_token stop_token) {
+http_response cpr_http_client::send_stream(const http_request& request,
+  const http_stream_chunk_callback& on_chunk, std::stop_token stop_token) {
   if (stop_token.stop_requested()) {
     return { .error_code = std::make_error_code(std::errc::operation_canceled) };
   }
@@ -157,20 +152,19 @@ http_response cpr_http_client::send_stream(
 
   std::string body;
   bool aborted = false;
-  session.SetWriteCallback(cpr::WriteCallback(
-    [&](std::string_view data, intptr_t) {
-      if (stop_token.stop_requested()) {
-        aborted = true;
-        return false;
-      }
+  session.SetWriteCallback(cpr::WriteCallback([&](std::string_view data, intptr_t) {
+    if (stop_token.stop_requested()) {
+      aborted = true;
+      return false;
+    }
 
-      body.append(data);
-      if (on_chunk && !on_chunk(data)) {
-        aborted = true;
-        return false;
-      }
-      return true;
-    }));
+    body.append(data);
+    if (on_chunk && !on_chunk(data)) {
+      aborted = true;
+      return false;
+    }
+    return true;
+  }));
 
   session.SetProgressCallback(cpr::ProgressCallback(
     [&](cpr::cpr_pf_arg_t, cpr::cpr_pf_arg_t, cpr::cpr_pf_arg_t, cpr::cpr_pf_arg_t, intptr_t) {

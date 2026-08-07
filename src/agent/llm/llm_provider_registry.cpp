@@ -13,7 +13,15 @@ llm_provider_capabilities cloud_chat_capabilities() {
     .tools = true,
     .tool_choice = true,
     .json_response_format = true,
+    .stop_sequences = true,
   };
+}
+
+llm_provider_capabilities openai_capabilities() {
+  auto capabilities = cloud_chat_capabilities();
+  capabilities.deterministic_seed = true;
+  capabilities.json_schema_output = true;
+  return capabilities;
 }
 
 llm_provider_capabilities reasoning_openai_compatible_capabilities() {
@@ -32,6 +40,7 @@ llm_provider_capabilities anthropic_capabilities() {
     .reasoning_summary = true,
     .streaming_reasoning_summary = true,
     .reasoning_language_control = llm_reasoning_language_control::prompt_contract,
+    .stop_sequences = true,
   };
 }
 
@@ -44,6 +53,9 @@ llm_provider_capabilities gemini_capabilities() {
     .streaming_reasoning_summary = true,
     .reasoning_language_control = llm_reasoning_language_control::prompt_contract,
     .multimodal_input = true,
+    .stop_sequences = true,
+    .deterministic_seed = true,
+    .json_schema_output = true,
   };
 }
 
@@ -56,6 +68,9 @@ llm_provider_capabilities ollama_capabilities() {
     .streaming_reasoning_summary = true,
     .reasoning_language_control = llm_reasoning_language_control::prompt_contract,
     .local_runtime = true,
+    .stop_sequences = true,
+    .deterministic_seed = true,
+    .json_schema_output = true,
   };
 }
 
@@ -93,8 +108,8 @@ const std::vector<llm_provider_info>& list_llm_providers() {
       .protocol = llm_provider_protocol::openai_compatible,
       .default_base_url = "https://api.openai.com",
       .default_chat_completions_path = "/v1/chat/completions",
-      .api_key_env_names = {"OPENAI_API_KEY"},
-      .capabilities = cloud_chat_capabilities(),
+      .api_key_env_names = { "OPENAI_API_KEY" },
+      .capabilities = openai_capabilities(),
     },
     {
       .id = "OpenAICompatible",
@@ -102,7 +117,7 @@ const std::vector<llm_provider_info>& list_llm_providers() {
       .protocol = llm_provider_protocol::openai_compatible,
       .default_chat_completions_path = "/v1/chat/completions",
       .base_url_required = true,
-      .api_key_env_names = {"OPENAI_API_KEY"},
+      .api_key_env_names = { "OPENAI_API_KEY" },
       .capabilities = cloud_chat_capabilities(),
     },
     {
@@ -111,7 +126,7 @@ const std::vector<llm_provider_info>& list_llm_providers() {
       .protocol = llm_provider_protocol::openai_compatible,
       .default_base_url = "https://openrouter.ai/api",
       .default_chat_completions_path = "/v1/chat/completions",
-      .api_key_env_names = {"OPENROUTER_API_KEY", "OPENAI_API_KEY"},
+      .api_key_env_names = { "OPENROUTER_API_KEY", "OPENAI_API_KEY" },
       .capabilities = reasoning_openai_compatible_capabilities(),
     },
     {
@@ -119,7 +134,7 @@ const std::vector<llm_provider_info>& list_llm_providers() {
       .display_name = "Anthropic Claude",
       .protocol = llm_provider_protocol::anthropic_messages,
       .default_base_url = "https://api.anthropic.com",
-      .api_key_env_names = {"ANTHROPIC_API_KEY"},
+      .api_key_env_names = { "ANTHROPIC_API_KEY" },
       .capabilities = anthropic_capabilities(),
     },
     {
@@ -127,7 +142,7 @@ const std::vector<llm_provider_info>& list_llm_providers() {
       .display_name = "Google Gemini",
       .protocol = llm_provider_protocol::gemini_generate_content,
       .default_base_url = "https://generativelanguage.googleapis.com",
-      .api_key_env_names = {"GEMINI_API_KEY", "GOOGLE_API_KEY"},
+      .api_key_env_names = { "GEMINI_API_KEY", "GOOGLE_API_KEY" },
       .capabilities = gemini_capabilities(),
     },
     {
@@ -144,7 +159,7 @@ const std::vector<llm_provider_info>& list_llm_providers() {
       .protocol = llm_provider_protocol::openai_compatible,
       .default_base_url = "https://api.deepseek.com",
       .default_chat_completions_path = "/v1/chat/completions",
-      .api_key_env_names = {"DEEPSEEK_API_KEY", "OPENAI_API_KEY"},
+      .api_key_env_names = { "DEEPSEEK_API_KEY", "OPENAI_API_KEY" },
       .capabilities = reasoning_openai_compatible_capabilities(),
     },
     {
@@ -153,7 +168,7 @@ const std::vector<llm_provider_info>& list_llm_providers() {
       .protocol = llm_provider_protocol::openai_compatible,
       .default_base_url = "https://dashscope.aliyuncs.com/compatible-mode",
       .default_chat_completions_path = "/v1/chat/completions",
-      .api_key_env_names = {"DASHSCOPE_API_KEY", "QWEN_API_KEY", "OPENAI_API_KEY"},
+      .api_key_env_names = { "DASHSCOPE_API_KEY", "QWEN_API_KEY", "OPENAI_API_KEY" },
       .capabilities = cloud_chat_capabilities(),
     },
     {
@@ -162,7 +177,7 @@ const std::vector<llm_provider_info>& list_llm_providers() {
       .protocol = llm_provider_protocol::openai_compatible,
       .default_base_url = "https://dashscope.aliyuncs.com/compatible-mode",
       .default_chat_completions_path = "/v1/chat/completions",
-      .api_key_env_names = {"QWEN_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY"},
+      .api_key_env_names = { "QWEN_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY" },
       .capabilities = cloud_chat_capabilities(),
     },
     {
@@ -171,7 +186,7 @@ const std::vector<llm_provider_info>& list_llm_providers() {
       .protocol = llm_provider_protocol::openai_compatible,
       .default_base_url = "https://open.bigmodel.cn/api/paas/v4",
       .default_chat_completions_path = "/chat/completions",
-      .api_key_env_names = {"ZHIPU_API_KEY", "BIGMODEL_API_KEY"},
+      .api_key_env_names = { "ZHIPU_API_KEY", "BIGMODEL_API_KEY" },
       .capabilities = cloud_chat_capabilities(),
     },
   };
@@ -180,9 +195,8 @@ const std::vector<llm_provider_info>& list_llm_providers() {
 
 const llm_provider_info* find_llm_provider(std::string_view id) noexcept {
   const auto& providers = list_llm_providers();
-  const auto it = std::find_if(providers.begin(), providers.end(), [&](const auto& provider) {
-    return provider.id == id;
-  });
+  const auto it = std::find_if(
+    providers.begin(), providers.end(), [&](const auto& provider) { return provider.id == id; });
   return it == providers.end() ? nullptr : &*it;
 }
 
@@ -199,6 +213,7 @@ llm_client_config make_default_llm_config(const llm_provider_info& provider) {
   config.base_url = provider.default_base_url;
   config.chat_completions_path = provider.default_chat_completions_path;
   config.require_api_key = provider.api_key_required;
+  config.capabilities_override = provider.capabilities;
   if (config.load_api_key_from_environment) {
     config.api_key = load_first_env_value(provider.api_key_env_names);
   }
@@ -206,8 +221,7 @@ llm_client_config make_default_llm_config(const llm_provider_info& provider) {
 }
 
 std::optional<llm_client_config> normalize_llm_client_config(
-  std::string_view provider_id,
-  llm_client_config config) {
+  std::string_view provider_id, llm_client_config config) {
   const auto* provider = find_llm_provider(provider_id);
   if (!provider) {
     return std::nullopt;
@@ -216,8 +230,7 @@ std::optional<llm_client_config> normalize_llm_client_config(
 }
 
 llm_client_config normalize_llm_client_config(
-  const llm_provider_info& provider,
-  llm_client_config config) {
+  const llm_provider_info& provider, llm_client_config config) {
   if (config.base_url.empty()) {
     config.base_url = provider.default_base_url;
   }
@@ -227,6 +240,9 @@ llm_client_config normalize_llm_client_config(
   config.require_api_key = provider.api_key_required && config.require_api_key;
   if (config.api_key.empty() && config.load_api_key_from_environment) {
     config.api_key = load_first_env_value(provider.api_key_env_names);
+  }
+  if (!config.capabilities_override) {
+    config.capabilities_override = provider.capabilities;
   }
   return config;
 }

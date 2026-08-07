@@ -19,9 +19,13 @@ Choose memory components from the application's durability, scale, and isolation
 
 ## SQLite boundary
 
-`sqlite_memory_store` provides durable CRUD and scoped queries when Wuwe is built with SQLite. The official 0.1.0 presets require SQLite.
+`sqlite_memory_store` provides durable CRUD and scoped queries when Wuwe is built with SQLite. The official 1.0.0 presets require SQLite.
 
-It is intended for local persistence. It does not provide a distributed coordination model, a built-in migration service, or a vector extension. Memory ranking can still happen in C++ after scoped records are read.
+It is intended for local persistence. It applies built-in, ordered schema migrations
+for its own database and validates the resulting table contract at startup. It does
+not provide a distributed coordination model, a fleet-wide migration orchestrator,
+or a vector extension. Memory ranking can still happen in C++ after scoped records
+are read.
 
 Create it only when the compile-time capability is enabled:
 

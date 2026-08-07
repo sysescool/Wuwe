@@ -8,8 +8,7 @@
 
 namespace wuwe::agent::execution::detail {
 
-[[nodiscard]] std::unique_ptr<execution_backend>
-make_restricted_process_backend_candidate(
+[[nodiscard]] std::unique_ptr<execution_backend> make_restricted_process_backend_candidate(
   restricted_process_backend_config config = {});
 
 } // namespace wuwe::agent::execution::detail

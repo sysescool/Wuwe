@@ -22,8 +22,8 @@ json parse_json_object_or_default(const std::string& text) {
   return parsed.is_object() ? parsed : json::object();
 }
 
-std::error_code classify_gemini_error(const std::error_code& transport_or_http_error,
-  const json& body) {
+std::error_code classify_gemini_error(
+  const std::error_code& transport_or_http_error, const json& body) {
   if (transport_or_http_error == net_errc::unauthorized ||
       transport_or_http_error == net_errc::forbidden) {
     return agent::make_error_code(agent::llm_error_code::authentication_failed);
@@ -120,12 +120,12 @@ void emit_stream_event(const llm_stream_callbacks& callbacks, llm_stream_event e
   if (callbacks.on_event) {
     callbacks.on_event(event);
   }
-  if (event.type == llm_stream_event_type::reasoning_delta &&
-      callbacks.on_reasoning_delta && !event.reasoning_delta.empty()) {
+  if (event.type == llm_stream_event_type::reasoning_delta && callbacks.on_reasoning_delta &&
+      !event.reasoning_delta.empty()) {
     callbacks.on_reasoning_delta(event.reasoning_delta);
   }
-  if (event.type == llm_stream_event_type::reasoning_done &&
-      callbacks.on_reasoning_done && !event.reasoning_summary.empty()) {
+  if (event.type == llm_stream_event_type::reasoning_done && callbacks.on_reasoning_done &&
+      !event.reasoning_summary.empty()) {
     callbacks.on_reasoning_done(event.reasoning_summary);
   }
 }
@@ -133,14 +133,11 @@ void emit_stream_event(const llm_stream_callbacks& callbacks, llm_stream_event e
 } // namespace
 
 gemini_llm_client::gemini_llm_client(llm_client_config config)
-    : config_(normalize_config(std::move(config))),
-      http_(std::make_shared<default_http_client>()) {}
+    : config_(normalize_config(std::move(config))), http_(std::make_shared<default_http_client>()) {
+}
 
-gemini_llm_client::gemini_llm_client(
-  llm_client_config config,
-  std::shared_ptr<http_client> http)
-    : config_(normalize_config(std::move(config))),
-      http_(std::move(http)) {
+gemini_llm_client::gemini_llm_client(llm_client_config config, std::shared_ptr<http_client> http)
+    : config_(normalize_config(std::move(config))), http_(std::move(http)) {
   if (!http_) {
     http_ = std::make_shared<default_http_client>();
   }
@@ -170,25 +167,19 @@ json gemini_llm_client::build_payload(const llm_request& request) const {
     content["role"] = msg.role == "assistant" ? "model" : "user";
     auto parts = json::array();
     if (msg.role == "tool") {
-      parts.push_back({
-        {"functionResponse", {
-          {"name", msg.name.value_or("tool")},
-          {"response", {{"content", msg.content}}}
-        }}
-      });
+      parts.push_back({ { "functionResponse",
+        { { "name", msg.name.value_or("tool") },
+          { "response", { { "content", msg.content } } } } } });
     }
     else {
       if (!msg.content.empty()) {
-        parts.push_back({{"text", msg.content}});
+        parts.push_back({ { "text", msg.content } });
       }
       for (const auto& call : msg.tool_calls) {
-        parts.push_back({
-          {"functionCall", {
-            {"id", call.id},
-            {"name", call.name},
-            {"args", parse_json_object_or_default(call.arguments_json)}
-          }}
-        });
+        parts.push_back({ { "functionCall",
+          { { "id", call.id },
+            { "name", call.name },
+            { "args", parse_json_object_or_default(call.arguments_json) } } } });
       }
     }
     content["parts"] = std::move(parts);
@@ -196,22 +187,33 @@ json gemini_llm_client::build_payload(const llm_request& request) const {
   }
 
   json payload = {
-    {"contents", std::move(contents)},
-    {"generationConfig", {{"temperature", request.temperature}}},
+    { "contents", std::move(contents) },
+    { "generationConfig", { { "temperature", request.temperature } } },
   };
+  if (request.max_output_tokens && *request.max_output_tokens > 0) {
+    payload["generationConfig"]["maxOutputTokens"] = *request.max_output_tokens;
+  }
+  if (!request.stop_sequences.empty()) {
+    payload["generationConfig"]["stopSequences"] = request.stop_sequences;
+  }
+  if (request.seed) {
+    payload["generationConfig"]["seed"] = *request.seed;
+  }
+  if (request.json_schema_output) {
+    payload["generationConfig"]["responseMimeType"] = "application/json";
+    payload["generationConfig"]["responseSchema"] = request.json_schema_output->schema;
+  }
   if (!system.empty()) {
-    payload["systemInstruction"] = {{"parts", json::array({{{"text", system}}})}};
+    payload["systemInstruction"] = { { "parts", json::array({ { { "text", system } } }) } };
   }
   if (!request.tools.empty()) {
     auto declarations = json::array();
     for (const auto& tool : request.tools) {
-      declarations.push_back({
-        {"name", tool.name},
-        {"description", tool.description},
-        {"parameters", parse_json_object_or_default(tool.parameters_json_schema)}
-      });
+      declarations.push_back({ { "name", tool.name },
+        { "description", tool.description },
+        { "parameters", parse_json_object_or_default(tool.parameters_json_schema) } });
     }
-    payload["tools"] = json::array({{{"functionDeclarations", std::move(declarations)}}});
+    payload["tools"] = json::array({ { { "functionDeclarations", std::move(declarations) } } });
   }
   if (request.tool_choice.has_value()) {
     json config;
@@ -224,23 +226,23 @@ json gemini_llm_client::build_payload(const llm_request& request) const {
         break;
       case llm_tool_choice_mode::named:
         config["mode"] = "ANY";
-        config["allowedFunctionNames"] = json::array({request.tool_choice->name});
+        config["allowedFunctionNames"] = json::array({ request.tool_choice->name });
         break;
       default:
         config["mode"] = "AUTO";
         break;
     }
-    payload["toolConfig"] = {{"functionCallingConfig", std::move(config)}};
+    payload["toolConfig"] = { { "functionCallingConfig", std::move(config) } };
   }
   return payload;
 }
 
 std::vector<std::pair<std::string, std::string>> gemini_llm_client::build_headers() const {
   std::vector<std::pair<std::string, std::string>> headers {
-    {"Content-Type", "application/json"},
+    { "Content-Type", "application/json" },
   };
   if (!config_.api_key.empty()) {
-    headers.push_back({"x-goog-api-key", config_.api_key});
+    headers.push_back({ "x-goog-api-key", config_.api_key });
   }
   return headers;
 }
@@ -257,9 +259,8 @@ llm_response gemini_llm_client::parse_response(const http_response& response) co
   const auto data = json::parse(response.body, nullptr, false);
   if (response.error_code) {
     result.content = response.body;
-    result.error_code = classify_gemini_error(
-      response.error_code,
-      data.is_discarded() ? json::object() : data);
+    result.error_code =
+      classify_gemini_error(response.error_code, data.is_discarded() ? json::object() : data);
     return result;
   }
   if (data.is_discarded() || !data.is_object()) {
@@ -277,6 +278,9 @@ llm_response gemini_llm_client::parse_response(const http_response& response) co
     result.usage.prompt_tokens = data["usageMetadata"].value("promptTokenCount", 0);
     result.usage.completion_tokens = data["usageMetadata"].value("candidatesTokenCount", 0);
     result.usage.total_tokens = data["usageMetadata"].value("totalTokenCount", 0);
+    result.usage.cached_prompt_tokens = data["usageMetadata"].value("cachedContentTokenCount", 0);
+    result.usage.reasoning_tokens = data["usageMetadata"].value("thoughtsTokenCount", 0);
+    result.usage.completion_tokens += result.usage.reasoning_tokens;
   }
   if (!data.contains("candidates") || !data["candidates"].is_array() ||
       data["candidates"].empty()) {
@@ -293,6 +297,9 @@ llm_response gemini_llm_client::complete(const llm_request& request) {
 }
 
 llm_response gemini_llm_client::complete(const llm_request& request, std::stop_token stop_token) {
+  if (auto rejected = agent::llm::llm_request_rejection(request, capabilities())) {
+    return std::move(*rejected);
+  }
   if (stop_token.stop_requested()) {
     return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
   }
@@ -305,20 +312,20 @@ llm_response gemini_llm_client::complete(const llm_request& request, std::stop_t
     .headers = build_headers(),
     .body = build_payload(request).dump(),
     .timeout = config_.timeout,
+    .trace_id = request.execution_context ? request.execution_context->trace_id : std::string {},
   };
   const int max_retries = config_.max_retries < 0 ? 0 : config_.max_retries;
-  const int base_backoff_ms = config_.retry_backoff_ms <= 0 ? 500 : config_.retry_backoff_ms;
   for (int attempt = 0; attempt <= max_retries; ++attempt) {
     if (stop_token.stop_requested()) {
       return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
     }
-    auto result = parse_response(http_->send(req));
-    apply_reasoning_language_metadata(
-      result,
+    const auto response = http_->send(req);
+    auto result = parse_response(response);
+    agent::llm_detail::apply_retry_metadata(result, response);
+    apply_reasoning_language_metadata(result,
       request.language,
-      has_language_preferences(request.language)
-        ? llm_reasoning_language_control::prompt_contract
-        : llm_reasoning_language_control::unsupported);
+      has_language_preferences(request.language) ? llm_reasoning_language_control::prompt_contract
+                                                 : llm_reasoning_language_control::unsupported);
     if (stop_token.stop_requested() && !result.error_code) {
       result.error_code = agent::make_error_code(agent::llm_error_code::cancelled);
     }
@@ -327,10 +334,7 @@ llm_response gemini_llm_client::complete(const llm_request& request, std::stop_t
       return result;
     }
     if (!agent::llm_detail::wait_for_retry(
-          stop_token,
-          std::chrono::milliseconds(agent::llm_detail::compute_backoff_ms(
-            attempt,
-            base_backoff_ms)))) {
+          stop_token, agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
       return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
     }
   }
@@ -338,37 +342,41 @@ llm_response gemini_llm_client::complete(const llm_request& request, std::stop_t
 }
 
 llm_response gemini_llm_client::complete_stream(
-  const llm_request& request,
-  const llm_stream_callbacks& callbacks,
-  std::stop_token stop_token) {
+  const llm_request& request, const llm_stream_callbacks& callbacks, std::stop_token stop_token) {
+  if (auto rejected = agent::llm::llm_request_rejection(request, capabilities())) {
+    agent::llm::emit_llm_request_rejection(callbacks, *rejected);
+    return std::move(*rejected);
+  }
   if (stop_token.stop_requested()) {
     return { .error_code = agent::make_error_code(agent::llm_error_code::cancelled) };
   }
   if (config_.require_api_key && config_.api_key.empty()) {
-    llm_response response { .error_code = agent::make_error_code(agent::llm_error_code::missing_api_key) };
-    emit_stream_event(callbacks, { .type = llm_stream_event_type::error, .response = response, .error_code = response.error_code });
+    llm_response response { .error_code =
+                              agent::make_error_code(agent::llm_error_code::missing_api_key) };
+    emit_stream_event(callbacks,
+      { .type = llm_stream_event_type::error,
+        .response = response,
+        .error_code = response.error_code });
     return response;
   }
 
   llm_response result;
-  const auto reasoning_language_control =
-    has_language_preferences(request.language)
-      ? llm_reasoning_language_control::prompt_contract
-      : llm_reasoning_language_control::unsupported;
+  const auto reasoning_language_control = has_language_preferences(request.language)
+                                            ? llm_reasoning_language_control::prompt_contract
+                                            : llm_reasoning_language_control::unsupported;
   sse_event_parser parser;
   bool emitted_output = false;
   bool saw_event = false;
   bool saw_done = false;
   bool ignored_invalid_stream_event = false;
   agent::llm_detail::stream_timeout_guard timeout_guard(config_.stream_timeouts);
-  const auto fail_stream_timeout =
-    [&](const agent::llm_detail::stream_timeout& timeout) {
-      result.metadata["timeout_phase"] = timeout.phase;
-      result.metadata["timeout_ms"] = std::to_string(timeout.timeout_ms);
-      result.content = "Gemini streaming " + timeout.phase + " timeout.";
-      result.error_code = agent::make_error_code(agent::llm_error_code::timeout);
-      return false;
-    };
+  const auto fail_stream_timeout = [&](const agent::llm_detail::stream_timeout& timeout) {
+    result.metadata["timeout_phase"] = timeout.phase;
+    result.metadata["timeout_ms"] = std::to_string(timeout.timeout_ms);
+    result.content = "Gemini streaming " + timeout.phase + " timeout.";
+    result.error_code = agent::make_error_code(agent::llm_error_code::timeout);
+    return false;
+  };
   const auto process_event = [&](const sse_event& event) {
     if (event.data.empty()) {
       return true;
@@ -398,9 +406,19 @@ llm_response gemini_llm_client::complete_stream(
 
     llm_response chunk;
     if (data.contains("usageMetadata") && data["usageMetadata"].is_object()) {
-      result.usage.prompt_tokens = data["usageMetadata"].value("promptTokenCount", result.usage.prompt_tokens);
-      result.usage.completion_tokens = data["usageMetadata"].value("candidatesTokenCount", result.usage.completion_tokens);
-      result.usage.total_tokens = data["usageMetadata"].value("totalTokenCount", result.usage.total_tokens);
+      result.usage.prompt_tokens =
+        data["usageMetadata"].value("promptTokenCount", result.usage.prompt_tokens);
+      result.usage.completion_tokens =
+        data["usageMetadata"].value("candidatesTokenCount", result.usage.completion_tokens);
+      result.usage.total_tokens =
+        data["usageMetadata"].value("totalTokenCount", result.usage.total_tokens);
+      result.usage.cached_prompt_tokens =
+        data["usageMetadata"].value("cachedContentTokenCount", result.usage.cached_prompt_tokens);
+      const auto candidate_tokens = data["usageMetadata"].value(
+        "candidatesTokenCount", result.usage.completion_tokens - result.usage.reasoning_tokens);
+      result.usage.reasoning_tokens =
+        data["usageMetadata"].value("thoughtsTokenCount", result.usage.reasoning_tokens);
+      result.usage.completion_tokens = candidate_tokens + result.usage.reasoning_tokens;
     }
     if (data.contains("candidates") && data["candidates"].is_array()) {
       for (const auto& candidate : data["candidates"]) {
@@ -412,27 +430,29 @@ llm_response gemini_llm_client::complete_stream(
       for (const auto& [key, value] : chunk.reasoning_metadata) {
         result.reasoning_metadata[key] = value;
       }
-      merge_reasoning_language_metadata(
-        result.reasoning_metadata,
+      merge_reasoning_language_metadata(result.reasoning_metadata,
         request.language,
         reasoning_language_control,
         chunk.reasoning_summary);
       emitted_output = true;
-      emit_stream_event(callbacks, {
-        .type = llm_stream_event_type::reasoning_delta,
-        .reasoning_delta = chunk.reasoning_summary,
-        .reasoning_metadata = result.reasoning_metadata,
-      });
+      emit_stream_event(callbacks,
+        {
+          .type = llm_stream_event_type::reasoning_delta,
+          .reasoning_delta = chunk.reasoning_summary,
+          .reasoning_metadata = result.reasoning_metadata,
+        });
     }
     if (!chunk.content.empty()) {
       result.content += chunk.content;
       emitted_output = true;
-      emit_stream_event(callbacks, { .type = llm_stream_event_type::content_delta, .content_delta = chunk.content });
+      emit_stream_event(callbacks,
+        { .type = llm_stream_event_type::content_delta, .content_delta = chunk.content });
     }
     for (const auto& call : chunk.tool_calls) {
       result.tool_calls.push_back(call);
       emitted_output = true;
-      emit_stream_event(callbacks, { .type = llm_stream_event_type::tool_call_done, .tool_call = call });
+      emit_stream_event(
+        callbacks, { .type = llm_stream_event_type::tool_call_done, .tool_call = call });
     }
     if (!chunk.finish_reason.empty()) {
       result.finish_reason = chunk.finish_reason;
@@ -448,9 +468,9 @@ llm_response gemini_llm_client::complete_stream(
     .body = build_payload(request).dump(),
     .timeout = config_.timeout,
     .timeouts = agent::llm_detail::make_stream_http_timeouts(config_),
+    .trace_id = request.execution_context ? request.execution_context->trace_id : std::string {},
   };
   const int max_retries = config_.max_retries < 0 ? 0 : config_.max_retries;
-  const int base_backoff_ms = config_.retry_backoff_ms <= 0 ? 500 : config_.retry_backoff_ms;
   http_response response;
   for (int attempt = 0; attempt <= max_retries; ++attempt) {
     response = http_->send_stream(
@@ -459,21 +479,18 @@ llm_response gemini_llm_client::complete_stream(
         return !stop_token.stop_requested() && parser.feed(chunk, process_event);
       },
       stop_token);
+    agent::llm_detail::apply_retry_metadata(result, response);
     if (!response.error_code || emitted_output || attempt >= max_retries) {
       break;
     }
     const auto body = json::parse(response.body, nullptr, false);
-    const auto error_code = classify_gemini_error(
-      response.error_code,
-      body.is_discarded() ? json::object() : body);
+    const auto error_code =
+      classify_gemini_error(response.error_code, body.is_discarded() ? json::object() : body);
     if (!agent::llm_detail::is_retryable_error(error_code)) {
       break;
     }
     if (!agent::llm_detail::wait_for_retry(
-          stop_token,
-          std::chrono::milliseconds(agent::llm_detail::compute_backoff_ms(
-            attempt,
-            base_backoff_ms)))) {
+          stop_token, agent::llm_detail::compute_retry_delay(config_, attempt, response))) {
       result.error_code = agent::make_error_code(agent::llm_error_code::cancelled);
       break;
     }
@@ -498,9 +515,8 @@ llm_response gemini_llm_client::complete_stream(
       result.metadata["ignored_stream_transport_error"] = response.error_code.message();
     }
     else {
-      result.content = gemini_error_message(
-        result.error_code,
-        body.is_discarded() ? json::object() : body);
+      result.content =
+        gemini_error_message(result.error_code, body.is_discarded() ? json::object() : body);
     }
   }
   else if (!result.error_code &&
@@ -509,17 +525,22 @@ llm_response gemini_llm_client::complete_stream(
     result.content = "Gemini streaming response ended without a complete candidate.";
   }
   if (result.error_code) {
-    emit_stream_event(callbacks, { .type = llm_stream_event_type::error, .response = result, .error_code = result.error_code, .message = result.content });
+    emit_stream_event(callbacks,
+      { .type = llm_stream_event_type::error,
+        .response = result,
+        .error_code = result.error_code,
+        .message = result.content });
   }
   else {
     if (!result.reasoning_summary.empty()) {
       apply_reasoning_language_metadata(result, request.language, reasoning_language_control);
-      emit_stream_event(callbacks, {
-        .type = llm_stream_event_type::reasoning_done,
-        .reasoning_summary = result.reasoning_summary,
-        .reasoning_metadata = result.reasoning_metadata,
-        .response = result,
-      });
+      emit_stream_event(callbacks,
+        {
+          .type = llm_stream_event_type::reasoning_done,
+          .reasoning_summary = result.reasoning_summary,
+          .reasoning_metadata = result.reasoning_metadata,
+          .response = result,
+        });
     }
     emit_stream_event(callbacks, { .type = llm_stream_event_type::done, .response = result });
   }

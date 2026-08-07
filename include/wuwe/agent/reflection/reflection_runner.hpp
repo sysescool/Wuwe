@@ -7,8 +7,8 @@
 #include <string>
 #include <utility>
 
-#include <wuwe/agent/reflection/reflector.hpp>
 #include <wuwe/agent/reflection/reflection_store.hpp>
+#include <wuwe/agent/reflection/reflector.hpp>
 
 namespace wuwe::agent::reflection {
 
@@ -38,6 +38,10 @@ struct reflection_run_result {
   reflection_result result;
   reflection_record record;
   std::chrono::milliseconds elapsed { 0 };
+};
+
+struct reflection_run_options {
+  bool persist_record { true };
 };
 
 class reflection_runtime_services {
@@ -76,12 +80,13 @@ public:
     }
   }
 
-  reflection_run_result run(reflection_request request) {
+  reflection_run_result run(reflection_request request, reflection_run_options run_options = {}) {
     const auto started = std::chrono::steady_clock::now();
     auto services = runtime_services();
     services.notify({ .type = reflection_event_type::reflection_started, .request = &request });
 
-    auto result = reflection_policy_engine(options_.policy).apply(options_.reflector->reflect(request));
+    auto result =
+      reflection_policy_engine(options_.policy).apply(options_.reflector->reflect(request));
 
     reflection_record record {
       .id = services.next_id(),
@@ -91,7 +96,9 @@ public:
 
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - started);
-    services.save(record);
+    if (run_options.persist_record) {
+      services.save(record);
+    }
     services.notify({
       .type = reflection_event_type::reflection_completed,
       .request = &record.request,

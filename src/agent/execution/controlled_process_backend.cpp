@@ -3,10 +3,10 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <chrono>
 #include <cctype>
-#include <functional>
+#include <chrono>
 #include <fstream>
+#include <functional>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -114,10 +114,8 @@ std::string win32_error_message(DWORD error) {
 
   LPSTR raw_message = nullptr;
   const auto flags =
-    FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-    FORMAT_MESSAGE_IGNORE_INSERTS;
-  const auto size = FormatMessageA(
-    flags,
+    FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
+  const auto size = FormatMessageA(flags,
     nullptr,
     error,
     MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
@@ -139,8 +137,7 @@ std::string win32_error_message(DWORD error) {
 
   std::string message(raw_message, size);
   while (!message.empty() &&
-         (message.back() == '\n' || message.back() == '\r' ||
-          message.back() == ' ')) {
+         (message.back() == '\n' || message.back() == '\r' || message.back() == ' ')) {
     message.pop_back();
   }
   return message;
@@ -162,9 +159,7 @@ python_interpreter_status status_for_win32_launch_error(DWORD error) {
   }
 }
 
-execution_result last_error_result(
-  execution_termination_reason reason,
-  std::string message) {
+execution_result last_error_result(execution_termination_reason reason, std::string message) {
   const auto error = GetLastError();
   if (error != ERROR_SUCCESS) {
     message += " (win32_error=" + std::to_string(error) + ")";
@@ -175,12 +170,8 @@ execution_result last_error_result(
   };
 }
 
-void add_python_launch_metadata(
-  execution_result& result,
-  const std::filesystem::path& interpreter,
-  python_interpreter_status status,
-  DWORD launch_error,
-  std::string timeout_phase = {}) {
+void add_python_launch_metadata(execution_result& result, const std::filesystem::path& interpreter,
+  python_interpreter_status status, DWORD launch_error, std::string timeout_phase = {}) {
   result.metadata["error_code"] = stable_error_code_for_status(status);
   result.metadata["python_interpreter"] = interpreter.string();
   if (launch_error != ERROR_SUCCESS) {
@@ -192,11 +183,8 @@ void add_python_launch_metadata(
   }
 }
 
-execution_result python_launch_failure_result(
-  const std::filesystem::path& interpreter,
-  python_interpreter_status status,
-  DWORD launch_error,
-  std::string message) {
+execution_result python_launch_failure_result(const std::filesystem::path& interpreter,
+  python_interpreter_status status, DWORD launch_error, std::string message) {
   execution_result result {
     .termination_reason = execution_termination_reason::launch_failed,
     .error_message = std::move(message),
@@ -206,9 +194,7 @@ execution_result python_launch_failure_result(
   return result;
 }
 
-void add_job_metadata(
-  execution_result& result,
-  const controlled_process_backend_config& config,
+void add_job_metadata(execution_result& result, const controlled_process_backend_config& config,
   const execution_request& request) {
   result.metadata["job_object_enabled"] = config.use_job_object ? "true" : "false";
   result.metadata["process_tree_cleanup_enforcement"] =
@@ -217,20 +203,14 @@ void add_job_metadata(
     config.use_job_object ? "enforced" : "not_enforced";
   result.metadata["cpu_time_limit_enforcement"] =
     config.use_job_object ? "enforced" : "not_enforced";
-  result.metadata["memory_limit_enforcement"] =
-    config.use_job_object ? "enforced" : "not_enforced";
-  result.metadata["max_process_count"] =
-    std::to_string(request.limits.max_process_count);
-  result.metadata["max_memory_bytes"] =
-    std::to_string(request.limits.max_memory_bytes);
-  result.metadata["max_cpu_time_ms"] =
-    std::to_string(request.limits.max_cpu_time.count());
+  result.metadata["memory_limit_enforcement"] = config.use_job_object ? "enforced" : "not_enforced";
+  result.metadata["max_process_count"] = std::to_string(request.limits.max_process_count);
+  result.metadata["max_memory_bytes"] = std::to_string(request.limits.max_memory_bytes);
+  result.metadata["max_cpu_time_ms"] = std::to_string(request.limits.max_cpu_time.count());
 }
 
 bool configure_job_limits(
-  HANDLE job,
-  const execution_request& request,
-  std::string& error_message) {
+  HANDLE job, const execution_request& request, std::string& error_message) {
   JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits {};
   limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
 
@@ -249,11 +229,7 @@ bool configure_job_limits(
       request.limits.max_cpu_time.count() * 10000LL;
   }
 
-  if (!SetInformationJobObject(
-        job,
-        JobObjectExtendedLimitInformation,
-        &limits,
-        sizeof(limits))) {
+  if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
     error_message = "failed to configure job object limits";
     return false;
   }
@@ -273,9 +249,7 @@ public:
   process_thread_attribute_list(const process_thread_attribute_list&) = delete;
   process_thread_attribute_list& operator=(const process_thread_attribute_list&) = delete;
 
-  [[nodiscard]] bool initialize_with_handle_list(
-    HANDLE* handles,
-    DWORD handle_count) {
+  [[nodiscard]] bool initialize_with_handle_list(HANDLE* handles, DWORD handle_count) {
     SIZE_T attribute_list_size = 0;
     InitializeProcThreadAttributeList(nullptr, 1, 0, &attribute_list_size);
     if (attribute_list_size == 0) {
@@ -290,8 +264,7 @@ public:
       return false;
     }
 
-    if (!UpdateProcThreadAttribute(
-          list_,
+    if (!UpdateProcThreadAttribute(list_,
           0,
           PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
           handles,
@@ -359,19 +332,13 @@ std::optional<std::wstring> utf8_to_wide(const std::string& text) {
   }
 
   const auto required = MultiByteToWideChar(
-    CP_UTF8,
-    MB_ERR_INVALID_CHARS,
-    text.data(),
-    static_cast<int>(text.size()),
-    nullptr,
-    0);
+    CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0);
   if (required <= 0) {
     return std::nullopt;
   }
 
   std::wstring output(static_cast<std::size_t>(required), L'\0');
-  const auto written = MultiByteToWideChar(
-    CP_UTF8,
+  const auto written = MultiByteToWideChar(CP_UTF8,
     MB_ERR_INVALID_CHARS,
     text.data(),
     static_cast<int>(text.size()),
@@ -388,16 +355,14 @@ struct environment_block {
   std::string error_message;
 };
 
-environment_block make_environment_block(
-  const std::map<std::string, std::string>& env) {
+environment_block make_environment_block(const std::map<std::string, std::string>& env) {
   std::wstring block;
   for (const auto& [key, value] : env) {
     const auto wide_key = utf8_to_wide(key);
     const auto wide_value = utf8_to_wide(value);
     if (!wide_key.has_value() || !wide_value.has_value()) {
       return {
-        .error_message =
-          "environment contains a value that is not valid UTF-8: " + key,
+        .error_message = "environment contains a value that is not valid UTF-8: " + key,
       };
     }
 
@@ -417,8 +382,7 @@ environment_block make_environment_block(
 }
 
 std::filesystem::path choose_workdir(
-  const controlled_process_backend_config& config,
-  const execution_request& request) {
+  const controlled_process_backend_config& config, const execution_request& request) {
   if (!request.workdir.empty()) {
     return request.workdir;
   }
@@ -429,8 +393,7 @@ std::filesystem::path choose_workdir(
 }
 
 std::filesystem::path script_path_for(
-  const std::filesystem::path& workdir,
-  const execution_request& request) {
+  const std::filesystem::path& workdir, const execution_request& request) {
   static std::atomic_uint64_t next_script_id { 1 };
 
   const auto raw_execution_id = request.metadata.contains("execution_id")
@@ -452,32 +415,22 @@ std::filesystem::path script_path_for(
   }
 
   return workdir / ("wuwe-" + std::to_string(GetCurrentProcessId()) + "-" +
-                    std::to_string(next_script_id.fetch_add(1)) + "-" +
-                    execution_id + ".py");
+                     std::to_string(next_script_id.fetch_add(1)) + "-" + execution_id + ".py");
 }
 
-void read_pipe_to_string(
-  HANDLE pipe,
-  std::string& output,
-  std::size_t limit,
-  bool& truncated) {
+void read_pipe_to_string(HANDLE pipe, std::string& output, std::size_t limit, bool& truncated) {
   unique_handle handle(pipe);
   std::array<char, 4096> buffer {};
   for (;;) {
     DWORD bytes_read = 0;
     const auto ok = ReadFile(
-      handle.get(),
-      buffer.data(),
-      static_cast<DWORD>(buffer.size()),
-      &bytes_read,
-      nullptr);
+      handle.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &bytes_read, nullptr);
     if (!ok || bytes_read == 0) {
       break;
     }
 
     const auto remaining = limit > output.size() ? limit - output.size() : 0;
-    const auto to_append =
-      std::min<std::size_t>(remaining, static_cast<std::size_t>(bytes_read));
+    const auto to_append = std::min<std::size_t>(remaining, static_cast<std::size_t>(bytes_read));
     if (to_append > 0) {
       output.append(buffer.data(), to_append);
     }
@@ -494,11 +447,7 @@ void write_string_to_pipe(HANDLE pipe, const std::string& input) {
     const auto chunk = std::min<std::size_t>(input.size() - offset, 4096);
     DWORD bytes_written = 0;
     const auto ok = WriteFile(
-      handle.get(),
-      input.data() + offset,
-      static_cast<DWORD>(chunk),
-      &bytes_written,
-      nullptr);
+      handle.get(), input.data() + offset, static_cast<DWORD>(chunk), &bytes_written, nullptr);
     if (!ok || bytes_written == 0) {
       break;
     }
@@ -516,15 +465,10 @@ struct process_capture {
   DWORD launch_error { ERROR_SUCCESS };
 };
 
-process_capture run_python_script_file(
-  const std::filesystem::path& interpreter,
-  const std::filesystem::path& script_path,
-  const std::filesystem::path& workdir,
-  const std::map<std::string, std::string>& env,
-  std::chrono::milliseconds timeout,
-  std::size_t max_stdout_bytes,
-  std::size_t max_stderr_bytes,
-  std::stop_token stop_token = {}) {
+process_capture run_python_script_file(const std::filesystem::path& interpreter,
+  const std::filesystem::path& script_path, const std::filesystem::path& workdir,
+  const std::map<std::string, std::string>& env, std::chrono::milliseconds timeout,
+  std::size_t max_stdout_bytes, std::size_t max_stderr_bytes, std::stop_token stop_token = {}) {
   process_capture capture;
 
   SECURITY_ATTRIBUTES security_attributes {
@@ -592,8 +536,7 @@ process_capture run_python_script_file(
   };
   process_thread_attribute_list attribute_list;
   if (!attribute_list.initialize_with_handle_list(
-        inherited_handles,
-        static_cast<DWORD>(std::size(inherited_handles)))) {
+        inherited_handles, static_cast<DWORD>(std::size(inherited_handles)))) {
     capture.launch_error = GetLastError();
     if (capture.launch_error == ERROR_SUCCESS) {
       capture.launch_error = ERROR_INVALID_PARAMETER;
@@ -611,17 +554,14 @@ process_capture run_python_script_file(
 
   PROCESS_INFORMATION process {};
   auto command_line =
-    quote_windows_arg(interpreter.wstring()) + L" " +
-    quote_windows_arg(script_path.wstring());
+    quote_windows_arg(interpreter.wstring()) + L" " + quote_windows_arg(script_path.wstring());
   auto workdir_w = workdir.wstring();
-  const auto created = CreateProcessW(
-    nullptr,
+  const auto created = CreateProcessW(nullptr,
     command_line.data(),
     nullptr,
     nullptr,
     TRUE,
-    CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT |
-      EXTENDED_STARTUPINFO_PRESENT,
+    CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
     environment.data.data(),
     workdir_w.empty() ? nullptr : workdir_w.c_str(),
     &startup_ex.StartupInfo,
@@ -643,14 +583,12 @@ process_capture run_python_script_file(
 
   bool stdout_truncated = false;
   bool stderr_truncated = false;
-  std::thread stdout_thread(
-    read_pipe_to_string,
+  std::thread stdout_thread(read_pipe_to_string,
     stdout_read.release(),
     std::ref(capture.stdout_text),
     max_stdout_bytes,
     std::ref(stdout_truncated));
-  std::thread stderr_thread(
-    read_pipe_to_string,
+  std::thread stderr_thread(read_pipe_to_string,
     stderr_read.release(),
     std::ref(capture.stderr_text),
     max_stderr_bytes,
@@ -663,8 +601,7 @@ process_capture run_python_script_file(
       break;
     }
     if (stop_token.stop_requested() ||
-        (timeout.count() > 0 &&
-         std::chrono::steady_clock::now() - started >= timeout)) {
+        (timeout.count() > 0 && std::chrono::steady_clock::now() - started >= timeout)) {
       capture.timed_out = !stop_token.stop_requested();
       TerminateProcess(process_handle.get(), 1);
       WaitForSingleObject(process_handle.get(), INFINITE);
@@ -690,15 +627,12 @@ process_capture run_python_script_file(
 
 std::filesystem::path probe_script_path_for(const std::filesystem::path& workdir) {
   static std::atomic_uint64_t next_probe_id { 1 };
-  return workdir / ("wuwe-python-probe-" +
-                    std::to_string(GetCurrentProcessId()) + "-" +
-                    std::to_string(next_probe_id.fetch_add(1)) + ".py");
+  return workdir / ("wuwe-python-probe-" + std::to_string(GetCurrentProcessId()) + "-" +
+                     std::to_string(next_probe_id.fetch_add(1)) + ".py");
 }
 
-execution_result launch_python_process(
-  const controlled_process_backend_config& config,
-  const execution_request& request,
-  std::stop_token stop_token) {
+execution_result launch_python_process(const controlled_process_backend_config& config,
+  const execution_request& request, std::stop_token stop_token) {
   if (request.use_shell) {
     return {
       .termination_reason = execution_termination_reason::policy_denied,
@@ -808,8 +742,7 @@ execution_result launch_python_process(
   };
   process_thread_attribute_list attribute_list;
   if (!attribute_list.initialize_with_handle_list(
-        inherited_handles,
-        static_cast<DWORD>(std::size(inherited_handles)))) {
+        inherited_handles, static_cast<DWORD>(std::size(inherited_handles)))) {
     return {
       .termination_reason = execution_termination_reason::launch_failed,
       .error_message = "failed to restrict process handle inheritance",
@@ -830,26 +763,22 @@ execution_result launch_python_process(
   }
   auto workdir_w = workdir.wstring();
   unique_handle job_handle;
-  DWORD creation_flags = CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT |
-                         EXTENDED_STARTUPINFO_PRESENT;
+  DWORD creation_flags =
+    CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT;
   if (config.use_job_object) {
     job_handle.reset(CreateJobObjectW(nullptr, nullptr));
     if (!job_handle.valid()) {
       return last_error_result(
-        execution_termination_reason::launch_failed,
-        "failed to create job object");
+        execution_termination_reason::launch_failed, "failed to create job object");
     }
     std::string job_error;
     if (!configure_job_limits(job_handle.get(), request, job_error)) {
-      return last_error_result(
-        execution_termination_reason::launch_failed,
-        job_error);
+      return last_error_result(execution_termination_reason::launch_failed, job_error);
     }
     creation_flags |= CREATE_SUSPENDED;
   }
 
-  const auto created = CreateProcessW(
-    nullptr,
+  const auto created = CreateProcessW(nullptr,
     command_line.data(),
     nullptr,
     nullptr,
@@ -868,10 +797,7 @@ execution_result launch_python_process(
     const auto launch_error = GetLastError();
     const auto status = status_for_win32_launch_error(launch_error);
     return python_launch_failure_result(
-      config.python_interpreter,
-      status,
-      launch_error,
-      "failed to launch Python interpreter");
+      config.python_interpreter, status, launch_error, "failed to launch Python interpreter");
   }
 
   unique_handle process_handle(process.hProcess);
@@ -880,35 +806,29 @@ execution_result launch_python_process(
     if (!AssignProcessToJobObject(job_handle.get(), process_handle.get())) {
       TerminateProcess(process_handle.get(), 1);
       return last_error_result(
-        execution_termination_reason::launch_failed,
-        "failed to assign process to job object");
+        execution_termination_reason::launch_failed, "failed to assign process to job object");
     }
     if (ResumeThread(thread_handle.get()) == static_cast<DWORD>(-1)) {
       TerminateJobObject(job_handle.get(), 1);
-      return last_error_result(
-        execution_termination_reason::launch_failed,
+      return last_error_result(execution_termination_reason::launch_failed,
         "failed to resume process after job assignment");
     }
   }
 
   execution_result result;
   add_job_metadata(result, config, request);
-  std::thread stdout_thread(
-    read_pipe_to_string,
+  std::thread stdout_thread(read_pipe_to_string,
     stdout_read.release(),
     std::ref(result.stdout_text),
     request.limits.max_stdout_bytes,
     std::ref(result.stdout_truncated));
-  std::thread stderr_thread(
-    read_pipe_to_string,
+  std::thread stderr_thread(read_pipe_to_string,
     stderr_read.release(),
     std::ref(result.stderr_text),
     request.limits.max_stderr_bytes,
     std::ref(result.stderr_truncated));
   std::thread stdin_thread(
-    write_string_to_pipe,
-    stdin_write.release(),
-    std::cref(request.stdin_text));
+    write_string_to_pipe, stdin_write.release(), std::cref(request.stdin_text));
 
   const auto started = std::chrono::steady_clock::now();
   bool terminated = false;
@@ -1026,9 +946,9 @@ python_interpreter_probe_result probe_python_interpreter(
   }
 
 #ifdef _WIN32
-  const auto explicit_path =
-    request.interpreter.is_absolute() || request.interpreter.has_parent_path() ||
-    request.interpreter.has_root_name();
+  const auto explicit_path = request.interpreter.is_absolute() ||
+                             request.interpreter.has_parent_path() ||
+                             request.interpreter.has_root_name();
   if (explicit_path) {
     std::error_code filesystem_error;
     const auto exists = std::filesystem::exists(request.interpreter, filesystem_error);
@@ -1036,8 +956,7 @@ python_interpreter_probe_result probe_python_interpreter(
       result.status = python_interpreter_status::permission_denied;
       result.system_error = filesystem_error;
       result.metadata["error_code"] = stable_error_code_for_status(result.status);
-      result.metadata["filesystem_error_code"] =
-        std::to_string(filesystem_error.value());
+      result.metadata["filesystem_error_code"] = std::to_string(filesystem_error.value());
       result.metadata["filesystem_error_message"] = filesystem_error.message();
       return result;
     }
@@ -1066,13 +985,12 @@ python_interpreter_probe_result probe_python_interpreter(
       result.metadata["probe_error"] = "failed_to_create_probe_script";
       return result;
     }
-    script
-      << "import sys, json\n"
-      << "print(json.dumps({\n"
-      << "  \"version\": sys.version,\n"
-      << "  \"version_info\": list(sys.version_info[:3]),\n"
-      << "  \"executable\": sys.executable,\n"
-      << "}))\n";
+    script << "import sys, json\n"
+           << "print(json.dumps({\n"
+           << "  \"version\": sys.version,\n"
+           << "  \"version_info\": list(sys.version_info[:3]),\n"
+           << "  \"executable\": sys.executable,\n"
+           << "}))\n";
   }
   catch (const std::exception& error) {
     result.status = python_interpreter_status::launch_failed;
@@ -1090,13 +1008,7 @@ python_interpreter_probe_result probe_python_interpreter(
   } cleanup { script_path };
 
   const auto capture = run_python_script_file(
-    request.interpreter,
-    script_path,
-    workdir,
-    request.env,
-    request.timeout,
-    65536,
-    65536);
+    request.interpreter, script_path, workdir, request.env, request.timeout, 65536, 65536);
   result.stdout_text = capture.stdout_text;
   result.stderr_text = capture.stderr_text;
   result.metadata["elapsed_ms"] = std::to_string(capture.elapsed.count());
@@ -1109,8 +1021,7 @@ python_interpreter_probe_result probe_python_interpreter(
     result.system_error = win32_error_code(capture.launch_error);
     result.metadata["error_code"] = stable_error_code_for_status(result.status);
     result.metadata["launch_error_code"] = std::to_string(capture.launch_error);
-    result.metadata["launch_error_message"] =
-      win32_error_message(capture.launch_error);
+    result.metadata["launch_error_message"] = win32_error_message(capture.launch_error);
     return result;
   }
 
@@ -1138,8 +1049,7 @@ python_interpreter_probe_result probe_python_interpreter(
     result.metadata["executable"] = result.executable;
 
     const auto version_info = parsed.at("version_info");
-    if (!version_info.is_array() || version_info.empty() ||
-        version_info.at(0).get<int>() < 3) {
+    if (!version_info.is_array() || version_info.empty() || version_info.at(0).get<int>() < 3) {
       result.status = python_interpreter_status::unsupported_version;
       result.metadata["error_code"] = stable_error_code_for_status(result.status);
       return result;
@@ -1164,13 +1074,11 @@ python_interpreter_probe_result probe_python_interpreter(
 #endif
 }
 
-controlled_process_backend::controlled_process_backend(
-  controlled_process_backend_config config)
+controlled_process_backend::controlled_process_backend(controlled_process_backend_config config)
     : config_(std::move(config)) {
 }
 
-std::optional<execution_result>
-controlled_process_backend::validate_python_interpreter(
+std::optional<execution_result> controlled_process_backend::validate_python_interpreter(
   const execution_request& request) const {
   if (!config_.validate_python_on_start) {
     return std::nullopt;
@@ -1188,21 +1096,24 @@ controlled_process_backend::validate_python_interpreter(
   }
 
   execution_result result {
+    .exit_code = std::nullopt,
     .termination_reason = probe.status == python_interpreter_status::startup_timeout
                             ? execution_termination_reason::timeout
                             : execution_termination_reason::launch_failed,
     .timed_out = probe.status == python_interpreter_status::startup_timeout,
+    .cancelled = false,
+    .stdout_truncated = false,
+    .stderr_truncated = false,
     .stdout_text = probe.stdout_text,
     .stderr_text = probe.stderr_text,
-    .error_message =
-      "Python interpreter validation failed: " + to_string(probe.status),
+    .error_message = "Python interpreter validation failed: " + to_string(probe.status),
+    .elapsed = std::chrono::milliseconds { 0 },
     .metadata = probe.metadata,
   };
   result.metadata["python_interpreter_probe_status"] = to_string(probe.status);
   result.metadata["python_interpreter"] = config_.python_interpreter.string();
   if (probe.system_error) {
-    result.metadata["launch_error_code"] =
-      std::to_string(probe.system_error.value());
+    result.metadata["launch_error_code"] = std::to_string(probe.system_error.value());
     result.metadata["launch_error_message"] = probe.system_error.message();
   }
   if (probe.status == python_interpreter_status::startup_timeout) {
@@ -1212,9 +1123,17 @@ controlled_process_backend::validate_python_interpreter(
 #else
   (void)request;
   execution_result result {
+    .exit_code = std::nullopt,
     .termination_reason = execution_termination_reason::backend_error,
-    .error_message =
-      "Python interpreter validation is currently implemented only on Windows",
+    .timed_out = false,
+    .cancelled = false,
+    .stdout_truncated = false,
+    .stderr_truncated = false,
+    .stdout_text = {},
+    .stderr_text = {},
+    .error_message = "Python interpreter validation is currently implemented only on Windows",
+    .elapsed = std::chrono::milliseconds { 0 },
+    .metadata = {},
   };
   result.metadata["error_code"] = "python_interpreter_validation_unavailable";
   result.metadata["python_interpreter"] = config_.python_interpreter.string();
@@ -1234,6 +1153,8 @@ sandbox::sandbox_backend_info controlled_process_backend::info() const {
   return {
     .name = "controlled_process",
     .isolation = sandbox::isolation_level::controlled_process,
+    .available = true,
+    .unavailable_reason = {},
     .features = {
       sandbox::sandbox_feature::environment_allowlist,
       sandbox::sandbox_feature::working_directory,
@@ -1262,12 +1183,20 @@ sandbox::sandbox_backend_info controlled_process_backend::info() const {
 }
 
 execution_result controlled_process_backend::run(
-  const execution_request& request,
-  std::stop_token stop_token) {
+  const execution_request& request, std::stop_token stop_token) {
   if (request.language != execution_language::python) {
     return {
+      .exit_code = std::nullopt,
       .termination_reason = execution_termination_reason::policy_denied,
+      .timed_out = false,
+      .cancelled = false,
+      .stdout_truncated = false,
+      .stderr_truncated = false,
+      .stdout_text = {},
+      .stderr_text = {},
       .error_message = "controlled process backend only supports Python",
+      .elapsed = std::chrono::milliseconds { 0 },
+      .metadata = {},
     };
   }
 
@@ -1283,9 +1212,17 @@ execution_result controlled_process_backend::run(
   (void)request;
   (void)stop_token;
   return {
+    .exit_code = std::nullopt,
     .termination_reason = execution_termination_reason::backend_error,
-    .error_message =
-      "controlled process backend is currently implemented only on Windows",
+    .timed_out = false,
+    .cancelled = false,
+    .stdout_truncated = false,
+    .stderr_truncated = false,
+    .stdout_text = {},
+    .stderr_text = {},
+    .error_message = "controlled process backend is currently implemented only on Windows",
+    .elapsed = std::chrono::milliseconds { 0 },
+    .metadata = {},
   };
 #endif
 }

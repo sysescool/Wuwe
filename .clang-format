@@ -4,7 +4,6 @@ TabWidth: 2
 UseTab: Never
 ColumnLimit: 100
 AlignEscapedNewlines: DontAlign
-SkipMacroDefinitionBody: true
 AlignAfterOpenBracket: DontAlign
 ContinuationIndentWidth: 2
 Cpp11BracedListStyle: false
@@ -30,6 +29,8 @@ SpaceBeforeParens: ControlStatements
 PointerAlignment: Left
 ReferenceAlignment: Left
 SpaceAfterTemplateKeyword: false
-BreakTemplateDeclarations: Yes
+AlwaysBreakTemplateDeclarations: Yes
 SortIncludes: true
 Standard: Latest
+DeriveLineEnding: false
+UseCRLF: false

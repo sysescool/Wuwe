@@ -26,7 +26,7 @@ struct mcp_request_record {
   std::string target;
   mcp_request_state state { mcp_request_state::pending };
   std::string error;
-  json params { json::object() };
+  json params = json::object();
   json progress_token;
   double progress { 0.0 };
   std::optional<double> total;
@@ -38,11 +38,7 @@ struct mcp_request_record {
 
 class mcp_request_registry {
 public:
-  void start(
-    std::string id,
-    std::string method,
-    std::string target,
-    json params,
+  void start(std::string id, std::string method, std::string target, json params,
     std::chrono::milliseconds timeout = std::chrono::milliseconds { 0 }) {
     std::lock_guard lock(mutex_);
     mcp_request_record record;
@@ -71,12 +67,8 @@ public:
     finish(id, mcp_request_state::cancelled, std::move(reason));
   }
 
-  void progress(
-    const std::string& id,
-    json progress_token,
-    double value,
-    std::optional<double> total = std::nullopt,
-    std::string message = {}) {
+  void progress(const std::string& id, json progress_token, double value,
+    std::optional<double> total = std::nullopt, std::string message = {}) {
     std::lock_guard lock(mutex_);
     const auto it = records_.find(id);
     if (it == records_.end()) {

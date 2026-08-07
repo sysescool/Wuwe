@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <future>
+#include <limits>
 #include <utility>
 
 namespace wuwe::agent::execution::detail {
@@ -69,27 +70,18 @@ public:
   }
 
   process_thread_attribute_list(const process_thread_attribute_list&) = delete;
-  process_thread_attribute_list& operator=(const process_thread_attribute_list&) =
-    delete;
+  process_thread_attribute_list& operator=(const process_thread_attribute_list&) = delete;
 
   [[nodiscard]] bool initialize(DWORD attribute_count) {
     SIZE_T attribute_list_size = 0;
-    InitializeProcThreadAttributeList(
-      nullptr,
-      attribute_count,
-      0,
-      &attribute_list_size);
+    InitializeProcThreadAttributeList(nullptr, attribute_count, 0, &attribute_list_size);
     if (attribute_list_size == 0) {
       return false;
     }
 
     storage_.resize(attribute_list_size);
     list_ = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage_.data());
-    if (!InitializeProcThreadAttributeList(
-          list_,
-          attribute_count,
-          0,
-          &attribute_list_size)) {
+    if (!InitializeProcThreadAttributeList(list_, attribute_count, 0, &attribute_list_size)) {
       list_ = nullptr;
       storage_.clear();
       return false;
@@ -98,8 +90,7 @@ public:
   }
 
   [[nodiscard]] bool update_handle_list(HANDLE* handles, DWORD handle_count) {
-    if (!UpdateProcThreadAttribute(
-          list_,
+    if (!UpdateProcThreadAttribute(list_,
           0,
           PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
           handles,
@@ -111,10 +102,8 @@ public:
     return true;
   }
 
-  [[nodiscard]] bool update_security_capabilities(
-    SECURITY_CAPABILITIES& capabilities) {
-    if (!UpdateProcThreadAttribute(
-          list_,
+  [[nodiscard]] bool update_security_capabilities(SECURITY_CAPABILITIES& capabilities) {
+    if (!UpdateProcThreadAttribute(list_,
           0,
           PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
           &capabilities,
@@ -136,8 +125,7 @@ private:
 };
 
 restricted_appcontainer_launch_result make_launch_result(
-  restricted_appcontainer_launch_status status,
-  DWORD win32_error = ERROR_SUCCESS,
+  restricted_appcontainer_launch_status status, DWORD win32_error = ERROR_SUCCESS,
   std::string detail = {}) {
   return {
     .status = status,
@@ -184,16 +172,13 @@ std::wstring quote_windows_arg(std::wstring arg) {
   return result;
 }
 
-bool configure_job(
-  HANDLE job,
-  const restricted_appcontainer_launch_request& request,
+bool configure_job(HANDLE job, const restricted_appcontainer_launch_request& request,
   restricted_appcontainer_launch_result& result) {
   JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits {};
   limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
   if (request.max_process_count > 0) {
     limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
-    limits.BasicLimitInformation.ActiveProcessLimit =
-      static_cast<DWORD>(request.max_process_count);
+    limits.BasicLimitInformation.ActiveProcessLimit = static_cast<DWORD>(request.max_process_count);
   }
   if (request.max_memory_bytes > 0) {
     limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_JOB_MEMORY;
@@ -204,13 +189,8 @@ bool configure_job(
     limits.BasicLimitInformation.PerJobUserTimeLimit.QuadPart =
       request.max_cpu_time.count() * 10000LL;
   }
-  if (!SetInformationJobObject(
-        job,
-        JobObjectExtendedLimitInformation,
-        &limits,
-        sizeof(limits))) {
-    result = make_launch_result(
-      restricted_appcontainer_launch_status::configure_job_failed,
+  if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
+    result = make_launch_result(restricted_appcontainer_launch_status::configure_job_failed,
       GetLastError(),
       "SetInformationJobObject");
     return false;
@@ -218,10 +198,7 @@ bool configure_job(
   return true;
 }
 
-void terminate_restricted_process(
-  HANDLE job,
-  HANDLE process,
-  UINT exit_code) noexcept {
+void terminate_restricted_process(HANDLE job, HANDLE process, UINT exit_code) noexcept {
   if (job != nullptr && job != INVALID_HANDLE_VALUE) {
     TerminateJobObject(job, exit_code);
     return;
@@ -229,28 +206,20 @@ void terminate_restricted_process(
   TerminateProcess(process, exit_code);
 }
 
-std::string read_pipe_to_limit(
-  HANDLE pipe,
-  std::size_t limit,
-  bool& truncated) {
+std::string read_pipe_to_limit(HANDLE pipe, std::size_t limit, bool& truncated) {
   unique_handle handle(pipe);
   std::string output;
   std::array<char, 4096> buffer {};
   for (;;) {
     DWORD bytes_read = 0;
     const auto ok = ReadFile(
-      handle.get(),
-      buffer.data(),
-      static_cast<DWORD>(buffer.size()),
-      &bytes_read,
-      nullptr);
+      handle.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &bytes_read, nullptr);
     if (!ok || bytes_read == 0) {
       break;
     }
 
     const auto remaining = limit > output.size() ? limit - output.size() : 0;
-    const auto to_append =
-      (std::min<std::size_t>)(remaining, static_cast<std::size_t>(bytes_read));
+    const auto to_append = (std::min<std::size_t>)(remaining, static_cast<std::size_t>(bytes_read));
     if (to_append > 0) {
       output.append(buffer.data(), to_append);
     }
@@ -267,8 +236,7 @@ void write_string_to_handle(HANDLE pipe, std::string text) {
   std::size_t remaining = text.size();
   while (remaining > 0) {
     DWORD bytes_written = 0;
-    const auto chunk =
-      static_cast<DWORD>((std::min<std::size_t>)(remaining, 65536));
+    const auto chunk = static_cast<DWORD>((std::min<std::size_t>)(remaining, 65536));
     const auto ok = WriteFile(handle.get(), cursor, chunk, &bytes_written, nullptr);
     if (!ok || bytes_written == 0) {
       break;
@@ -278,8 +246,7 @@ void write_string_to_handle(HANDLE pipe, std::string text) {
   }
 }
 
-std::vector<wchar_t> make_environment_block(
-  const std::map<std::wstring, std::wstring>& env) {
+std::vector<wchar_t> make_environment_block(const std::map<std::wstring, std::wstring>& env) {
   std::wstring block;
   for (const auto& [name, value] : env) {
     block.append(name);
@@ -295,47 +262,37 @@ std::vector<wchar_t> make_environment_block(
 }
 
 void copy_current_environment_variable_if_present(
-  std::map<std::wstring, std::wstring>& environment,
-  const wchar_t* name) {
+  std::map<std::wstring, std::wstring>& environment, const wchar_t* name) {
   if (environment.contains(name)) {
     return;
   }
   std::wstring value(32767, L'\0');
-  const auto written = GetEnvironmentVariableW(
-    name,
-    value.data(),
-    static_cast<DWORD>(value.size()));
+  const auto written =
+    GetEnvironmentVariableW(name, value.data(), static_cast<DWORD>(value.size()));
   if (written > 0 && written < value.size()) {
     value.resize(written);
     environment.emplace(name, std::move(value));
   }
 }
 
-bool create_pipe_pair(
-  PHANDLE read_pipe,
-  PHANDLE write_pipe,
-  SECURITY_ATTRIBUTES& security_attributes,
-  restricted_appcontainer_launch_result& result,
+bool create_pipe_pair(PHANDLE read_pipe, PHANDLE write_pipe,
+  SECURITY_ATTRIBUTES& security_attributes, restricted_appcontainer_launch_result& result,
   std::string detail) {
   if (!CreatePipe(read_pipe, write_pipe, &security_attributes, 0)) {
     result = make_launch_result(
-      restricted_appcontainer_launch_status::create_pipe_failed,
-      GetLastError(),
-      std::move(detail));
+      restricted_appcontainer_launch_status::create_pipe_failed, GetLastError(), std::move(detail));
     return false;
   }
   return true;
 }
 
 bool make_handle_non_inheritable(
-  HANDLE handle,
-  restricted_appcontainer_launch_result& result,
-  std::string detail) {
+  HANDLE handle, restricted_appcontainer_launch_result& result, std::string detail) {
   if (!SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0)) {
-    result = make_launch_result(
-      restricted_appcontainer_launch_status::set_handle_information_failed,
-      GetLastError(),
-      std::move(detail));
+    result =
+      make_launch_result(restricted_appcontainer_launch_status::set_handle_information_failed,
+        GetLastError(),
+        std::move(detail));
     return false;
   }
   return true;
@@ -349,6 +306,8 @@ const char* to_string(restricted_appcontainer_launch_status status) noexcept {
       return "ok";
     case restricted_appcontainer_launch_status::invalid_appcontainer_sid:
       return "invalid_appcontainer_sid";
+    case restricted_appcontainer_launch_status::invalid_limits:
+      return "invalid_limits";
     case restricted_appcontainer_launch_status::create_pipe_failed:
       return "create_pipe_failed";
     case restricted_appcontainer_launch_status::set_handle_information_failed:
@@ -376,8 +335,13 @@ const char* to_string(restricted_appcontainer_launch_status status) noexcept {
 restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
   restricted_appcontainer_launch_request request) {
   if (request.appcontainer_sid == nullptr) {
+    return make_launch_result(restricted_appcontainer_launch_status::invalid_appcontainer_sid);
+  }
+  if (request.max_process_count > (std::numeric_limits<DWORD>::max)() ||
+      request.max_memory_bytes > (std::numeric_limits<SIZE_T>::max)() ||
+      request.max_cpu_time.count() > (std::numeric_limits<LONGLONG>::max)() / 10000LL) {
     return make_launch_result(
-      restricted_appcontainer_launch_status::invalid_appcontainer_sid);
+      restricted_appcontainer_launch_status::invalid_limits, ERROR_INVALID_PARAMETER, "limits");
   }
 
   SECURITY_ATTRIBUTES security_attributes {
@@ -400,34 +364,21 @@ restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
   unique_handle stderr_read;
   unique_handle stderr_write;
 
-  if (!create_pipe_pair(
-        &raw_stdin_read,
-        &raw_stdin_write,
-        security_attributes,
-        result,
-        "stdin")) {
+  if (!create_pipe_pair(&raw_stdin_read, &raw_stdin_write, security_attributes, result, "stdin")) {
     return result;
   }
   stdin_read.reset(raw_stdin_read);
   stdin_write.reset(raw_stdin_write);
 
   if (!create_pipe_pair(
-        &raw_stdout_read,
-        &raw_stdout_write,
-        security_attributes,
-        result,
-        "stdout")) {
+        &raw_stdout_read, &raw_stdout_write, security_attributes, result, "stdout")) {
     return result;
   }
   stdout_read.reset(raw_stdout_read);
   stdout_write.reset(raw_stdout_write);
 
   if (!create_pipe_pair(
-        &raw_stderr_read,
-        &raw_stderr_write,
-        security_attributes,
-        result,
-        "stderr")) {
+        &raw_stderr_read, &raw_stderr_write, security_attributes, result, "stderr")) {
     return result;
   }
   stderr_read.reset(raw_stderr_read);
@@ -458,11 +409,9 @@ restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
   process_thread_attribute_list attribute_list;
   if (!attribute_list.initialize(2) ||
       !attribute_list.update_handle_list(
-        inherited_handles,
-        static_cast<DWORD>(std::size(inherited_handles))) ||
+        inherited_handles, static_cast<DWORD>(std::size(inherited_handles))) ||
       !attribute_list.update_security_capabilities(capabilities)) {
-    return make_launch_result(
-      restricted_appcontainer_launch_status::attribute_list_failed,
+    return make_launch_result(restricted_appcontainer_launch_status::attribute_list_failed,
       GetLastError(),
       "PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES");
   }
@@ -472,8 +421,7 @@ restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
   if (request.use_job_object) {
     job.reset(CreateJobObjectW(nullptr, nullptr));
     if (!job.valid()) {
-      return make_launch_result(
-        restricted_appcontainer_launch_status::create_job_failed,
+      return make_launch_result(restricted_appcontainer_launch_status::create_job_failed,
         GetLastError(),
         "CreateJobObjectW");
     }
@@ -488,9 +436,8 @@ restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
     command_line += quote_windows_arg(argument);
   }
 
-  const auto working_directory_text = request.working_directory.empty()
-                                      ? std::wstring {}
-                                      : request.working_directory.wstring();
+  const auto working_directory_text =
+    request.working_directory.empty() ? std::wstring {} : request.working_directory.wstring();
   std::vector<wchar_t> environment_block;
   if (request.environment.has_value()) {
     for (const auto* name : {
@@ -506,29 +453,24 @@ restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
     environment_block = make_environment_block(*request.environment);
   }
 
-  DWORD creation_flags = CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT |
-                         CREATE_SUSPENDED;
+  DWORD creation_flags = CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED;
   if (request.environment.has_value()) {
     creation_flags |= CREATE_UNICODE_ENVIRONMENT;
   }
 
   PROCESS_INFORMATION process {};
-  const auto created = CreateProcessW(
-    nullptr,
+  const auto created = CreateProcessW(nullptr,
     command_line.data(),
     nullptr,
     nullptr,
     TRUE,
     creation_flags,
-    request.environment.has_value()
-      ? static_cast<LPVOID>(environment_block.data())
-      : nullptr,
+    request.environment.has_value() ? static_cast<LPVOID>(environment_block.data()) : nullptr,
     working_directory_text.empty() ? nullptr : working_directory_text.c_str(),
     &startup_ex.StartupInfo,
     &process);
   if (!created) {
-    return make_launch_result(
-      restricted_appcontainer_launch_status::launch_failed,
+    return make_launch_result(restricted_appcontainer_launch_status::launch_failed,
       GetLastError(),
       request.executable.string());
   }
@@ -542,8 +484,7 @@ restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
   if (request.use_job_object) {
     if (!AssignProcessToJobObject(job.get(), process_handle.get())) {
       terminate_restricted_process(job.get(), process_handle.get(), 1);
-      return make_launch_result(
-        restricted_appcontainer_launch_status::assign_job_failed,
+      return make_launch_result(restricted_appcontainer_launch_status::assign_job_failed,
         GetLastError(),
         "AssignProcessToJobObject");
     }
@@ -551,26 +492,21 @@ restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
   if (ResumeThread(thread_handle.get()) == static_cast<DWORD>(-1)) {
     terminate_restricted_process(job.get(), process_handle.get(), 1);
     return make_launch_result(
-      restricted_appcontainer_launch_status::resume_failed,
-      GetLastError(),
-      "ResumeThread");
+      restricted_appcontainer_launch_status::resume_failed, GetLastError(), "ResumeThread");
   }
 
-  auto stdin_future = std::async(
-    std::launch::async,
+  auto stdin_future = std::async(std::launch::async,
     write_string_to_handle,
     stdin_write.release(),
     std::move(request.stdin_text));
   bool stdout_truncated = false;
   bool stderr_truncated = false;
-  auto stdout_future = std::async(
-    std::launch::async,
+  auto stdout_future = std::async(std::launch::async,
     read_pipe_to_limit,
     stdout_read.release(),
     request.max_stdout_bytes,
     std::ref(stdout_truncated));
-  auto stderr_future = std::async(
-    std::launch::async,
+  auto stderr_future = std::async(std::launch::async,
     read_pipe_to_limit,
     stderr_read.release(),
     request.max_stderr_bytes,
@@ -611,10 +547,14 @@ restricted_appcontainer_launch_result launch_restricted_appcontainer_process(
     stdin_future.get();
   }
 
-  if (!GetExitCodeProcess(process_handle.get(), &result.capture.exit_code)) {
+  DWORD exit_code = 0;
+  if (!GetExitCodeProcess(process_handle.get(), &exit_code)) {
     result.status = restricted_appcontainer_launch_status::get_exit_code_failed;
     result.win32_error = GetLastError();
     result.detail = "GetExitCodeProcess";
+  }
+  else {
+    result.capture.exit_code = exit_code;
   }
   result.capture.stdout_text = stdout_future.get();
   result.capture.stderr_text = stderr_future.get();

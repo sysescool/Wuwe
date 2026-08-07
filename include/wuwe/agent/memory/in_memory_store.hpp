@@ -26,8 +26,8 @@ inline double lexical_score(const std::string& query, const memory_record& recor
     score += 10.0;
   }
 
-  score += ::wuwe::agent::text::ascii_token_set(query)
-             .count_matches(::wuwe::agent::text::ascii_token_set(content));
+  score += ::wuwe::agent::text::ascii_token_set(query).count_matches(
+    ::wuwe::agent::text::ascii_token_set(content));
 
   return score;
 }
@@ -36,8 +36,7 @@ inline bool contains_kind(const std::vector<memory_kind>& kinds, memory_kind kin
   return kinds.empty() || std::find(kinds.begin(), kinds.end(), kind) != kinds.end();
 }
 
-inline bool metadata_matches(
-  const std::map<std::string, std::string>& metadata,
+inline bool metadata_matches(const std::map<std::string, std::string>& metadata,
   const std::map<std::string, std::string>& filters) {
   for (const auto& [key, value] : filters) {
     const auto it = metadata.find(key);
@@ -48,8 +47,7 @@ inline bool metadata_matches(
   return true;
 }
 
-inline bool is_expired(
-  const memory_record& record,
+inline bool is_expired(const memory_record& record,
   std::chrono::system_clock::time_point now = std::chrono::system_clock::now()) {
   return record.expires_at && *record.expires_at <= now;
 }
@@ -58,6 +56,14 @@ inline bool is_expired(
 
 class in_memory_store final : public memory_store {
 public:
+  [[nodiscard]] core::storage_capabilities capabilities() const noexcept override {
+    return {
+      .declared = true,
+      .atomic_mutations = true,
+      .coordination_scope = core::storage_coordination_scope::process_local,
+    };
+  }
+
   memory_record add(memory_record record) override {
     std::scoped_lock lock(mutex_);
 
@@ -78,9 +84,10 @@ public:
     const std::string& id, const memory_scope& scope) const override {
     std::scoped_lock lock(mutex_);
 
-    const auto it = std::find_if(records_.begin(), records_.end(), [&](const memory_record& record) {
-      return record.id == id && scope_matches(record.scope, scope);
-    });
+    const auto it =
+      std::find_if(records_.begin(), records_.end(), [&](const memory_record& record) {
+        return record.id == id && scope_matches(record.scope, scope);
+      });
 
     if (it == records_.end()) {
       return std::nullopt;
@@ -132,9 +139,10 @@ public:
   bool update(memory_record record) override {
     std::scoped_lock lock(mutex_);
 
-    const auto it = std::find_if(records_.begin(), records_.end(), [&](const memory_record& current) {
-      return current.id == record.id && scope_matches(current.scope, record.scope);
-    });
+    const auto it =
+      std::find_if(records_.begin(), records_.end(), [&](const memory_record& current) {
+        return current.id == record.id && scope_matches(current.scope, record.scope);
+      });
 
     if (it == records_.end()) {
       return false;
@@ -160,9 +168,8 @@ public:
     std::scoped_lock lock(mutex_);
 
     const auto old_size = records_.size();
-    std::erase_if(records_, [&](const memory_record& record) {
-      return scope_matches(record.scope, scope);
-    });
+    std::erase_if(
+      records_, [&](const memory_record& record) { return scope_matches(record.scope, scope); });
     return old_size - records_.size();
   }
 

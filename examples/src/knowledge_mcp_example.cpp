@@ -19,8 +19,7 @@ class example_embedding_model final : public wuwe::agent::memory::embedding_mode
 public:
   std::vector<float> embed(std::string_view text) const override {
     const std::string value(text);
-    if (value.find("RAG") != std::string::npos ||
-        value.find("retrieval") != std::string::npos ||
+    if (value.find("RAG") != std::string::npos || value.find("retrieval") != std::string::npos ||
         value.find("citation") != std::string::npos) {
       return { 1.0F, 0.0F, 0.0F };
     }
@@ -45,9 +44,10 @@ int main() {
 
   {
     std::ofstream document(document_path, std::ios::binary);
-    document << "# Wuwe RAG MCP\n"
-                "RAG retrieves relevant document chunks and returns citations with source URIs.\n"
-                "MCP hosts can call search_knowledge to inspect grounded context before answering.\n";
+    document
+      << "# Wuwe RAG MCP\n"
+         "RAG retrieves relevant document chunks and returns citations with source URIs.\n"
+         "MCP hosts can call search_knowledge to inspect grounded context before answering.\n";
   }
 
   auto retriever = std::make_shared<knowledge::knowledge_retriever>(
@@ -60,19 +60,24 @@ int main() {
     }));
 
   knowledge::file_knowledge_loader loader;
-  retriever->ingest(loader.load(document_path, {
-    .id = "wuwe-rag-mcp",
-    .title = "Wuwe RAG MCP",
-    .source_uri = "wuwe://examples/knowledge-mcp",
-    .metadata = { { "topic", "rag" } },
-  }));
+  retriever->ingest(loader.load(document_path,
+    {
+      .id = "wuwe-rag-mcp",
+      .title = "Wuwe RAG MCP",
+      .source_uri = "wuwe://examples/knowledge-mcp",
+      .metadata = { { "topic", "rag" }, { "visibility", "public" } },
+    }));
 
-  knowledge::knowledge_tool_provider tools(*retriever, {
-    .max_search_results = 5,
-    .minimum_score = 0.0,
+  knowledge::knowledge_tool_provider tools(*retriever,
+    {
+      .max_search_results = 5,
+      .minimum_score = 0.0,
+    });
+
+  wuwe::agent::mcp::mcp_server server({
+    .name = "wuwe-knowledge-mcp",
+    .version = std::string(wuwe::framework_version),
   });
-
-  wuwe::agent::mcp::mcp_server server({ .name = "wuwe-knowledge-mcp", .version = "0.1.0" });
   server.add_tool_provider(tools);
   server.add_resource(
     {
@@ -83,8 +88,7 @@ int main() {
     },
     [] {
       return std::vector<wuwe::agent::mcp::mcp_resource_content> {
-        wuwe::agent::mcp::mcp_resource_content::text_content(
-          "wuwe://examples/knowledge-mcp",
+        wuwe::agent::mcp::mcp_resource_content::text_content("wuwe://examples/knowledge-mcp",
           "# Wuwe RAG MCP\n"
           "RAG retrieves relevant document chunks and returns citations with source URIs.\n"
           "MCP hosts can call search_knowledge to inspect grounded context before answering.\n",

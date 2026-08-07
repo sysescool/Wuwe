@@ -38,7 +38,8 @@ public:
   json request(std::string method, json params = json::object());
   void notify(std::string method, json params = json::object());
 
-  json initialize(mcp_client_info info = {}, json capabilities = json::object());
+  json initialize(mcp_client_info info = {}, json capabilities = json::object(),
+    std::string protocol_version = std::string(default_protocol_version));
   json ping();
   json list_tools(json params = json::object());
   json call_tool(std::string name, json arguments = json::object());

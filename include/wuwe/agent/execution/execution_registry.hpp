@@ -28,6 +28,7 @@ struct execution_backend_requirements {
   bool require_filesystem_read_deny { false };
   bool require_filesystem_write_deny { false };
   bool require_network_deny { false };
+  bool require_network_filter { false };
 };
 
 struct execution_backend_registry_options {
@@ -43,8 +44,7 @@ public:
   void register_backend(std::string name, factory create);
   void register_descriptor(sandbox::sandbox_backend_info info);
 
-  [[nodiscard]] std::unique_ptr<execution_backend> create(
-    const std::string& name) const;
+  [[nodiscard]] std::unique_ptr<execution_backend> create(const std::string& name) const;
 
   [[nodiscard]] std::optional<sandbox::sandbox_backend_info> describe(
     const std::string& name) const;

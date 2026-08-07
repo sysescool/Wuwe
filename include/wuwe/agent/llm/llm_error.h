@@ -21,7 +21,16 @@ enum class llm_error_code {
   invalid_response,
   empty_response,
   timeout,
-  agent_loop_budget_exceeded
+  agent_loop_budget_exceeded,
+  approval_required,
+  tool_call_denied,
+  run_state_conflict,
+  circuit_open,
+  rate_limit_wait_exceeded,
+  context_budget_exceeded,
+  invalid_request,
+  unsupported_capability,
+  tool_output_projection_failed,
 };
 
 [[nodiscard]] const ::std::error_category& llm_category() noexcept;

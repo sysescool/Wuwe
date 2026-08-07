@@ -149,7 +149,7 @@ const config = {
           items: [
             {label: 'GitHub', href: 'https://github.com/lkimuk/Wuwe'},
             {
-              label: 'Release 0.1.0',
+              label: 'Release 1.0.0',
               href: 'https://github.com/lkimuk/Wuwe/releases',
             },
           ],

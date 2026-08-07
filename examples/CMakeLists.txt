@@ -1,8 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
-
-project(wuwe_example)
-
-include("${CMAKE_SOURCE_DIR}/cmake/wuwe-runtime.cmake")
+include("${PROJECT_SOURCE_DIR}/cmake/wuwe-runtime.cmake")
 
 file(GLOB SOURCE_FILES CONFIGURE_DEPENDS src/*.cpp)
 list(LENGTH SOURCE_FILES SRC_FILES_SIZE)

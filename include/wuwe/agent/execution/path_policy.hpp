@@ -18,12 +18,10 @@ struct path_boundary_result {
   const std::filesystem::path& path);
 
 [[nodiscard]] bool path_is_within_root(
-  const std::filesystem::path& path,
-  const std::filesystem::path& root);
+  const std::filesystem::path& path, const std::filesystem::path& root);
 
 [[nodiscard]] path_boundary_result evaluate_path_boundary(
-  const std::filesystem::path& path,
-  const std::vector<std::filesystem::path>& allowed_roots);
+  const std::filesystem::path& path, const std::vector<std::filesystem::path>& allowed_roots);
 
 } // namespace wuwe::agent::execution
 

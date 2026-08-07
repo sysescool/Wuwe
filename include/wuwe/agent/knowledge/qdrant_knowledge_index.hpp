@@ -27,17 +27,14 @@ class qdrant_knowledge_index final : public knowledge_index {
 public:
   explicit qdrant_knowledge_index(qdrant_knowledge_index_config config);
   qdrant_knowledge_index(
-    qdrant_knowledge_index_config config,
-    std::shared_ptr<::wuwe::http_client> http);
+    qdrant_knowledge_index_config config, std::shared_ptr<::wuwe::http_client> http);
 
   void upsert(const knowledge_chunk& chunk, const std::vector<float>& embedding) override;
-  void upsert_batch(
-    const std::vector<knowledge_chunk>& chunks,
+  void upsert_batch(const std::vector<knowledge_chunk>& chunks,
     const std::vector<std::vector<float>>& embeddings) override;
 
   std::vector<knowledge_result> search(
-    const knowledge_query& query,
-    const std::vector<float>& embedding) const override;
+    const knowledge_query& query, const std::vector<float>& embedding) const override;
 
   bool erase_document(const std::string& document_id) override;
 

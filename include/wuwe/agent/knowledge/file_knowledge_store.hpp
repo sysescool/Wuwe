@@ -81,6 +81,14 @@ public:
     load();
   }
 
+  [[nodiscard]] core::storage_capabilities capabilities() const noexcept override {
+    return {
+      .declared = true,
+      .durable = true,
+      .coordination_scope = core::storage_coordination_scope::process_local,
+    };
+  }
+
   void add_document(knowledge_document document) override {
     std::scoped_lock lock(mutex_);
     documents_[document.id] = std::move(document);
@@ -95,10 +103,9 @@ public:
     for (const auto& [_, document] : documents_) {
       result.push_back(document);
     }
-    std::sort(result.begin(), result.end(), [](const knowledge_document& lhs,
-                                                const knowledge_document& rhs) {
-      return lhs.id < rhs.id;
-    });
+    std::sort(result.begin(),
+      result.end(),
+      [](const knowledge_document& lhs, const knowledge_document& rhs) { return lhs.id < rhs.id; });
     return result;
   }
 
@@ -122,13 +129,13 @@ public:
       result.push_back(chunk);
     }
 
-    std::sort(result.begin(), result.end(), [](const knowledge_chunk& lhs,
-                                                const knowledge_chunk& rhs) {
-      if (lhs.document_id != rhs.document_id) {
-        return lhs.document_id < rhs.document_id;
-      }
-      return lhs.start_offset < rhs.start_offset;
-    });
+    std::sort(
+      result.begin(), result.end(), [](const knowledge_chunk& lhs, const knowledge_chunk& rhs) {
+        if (lhs.document_id != rhs.document_id) {
+          return lhs.document_id < rhs.document_id;
+        }
+        return lhs.start_offset < rhs.start_offset;
+      });
 
     if (query.limit != 0 && result.size() > query.limit) {
       result.resize(query.limit);

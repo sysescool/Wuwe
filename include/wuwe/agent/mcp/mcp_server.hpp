@@ -3,8 +3,8 @@
 
 #include <algorithm>
 #include <cctype>
-#include <functional>
 #include <chrono>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -16,9 +16,9 @@
 
 #include <nlohmann/json.hpp>
 
-#include <wuwe/agent/mcp/mcp_protocol.hpp>
 #include <wuwe/agent/mcp/mcp_lifecycle.hpp>
 #include <wuwe/agent/mcp/mcp_pagination.hpp>
+#include <wuwe/agent/mcp/mcp_protocol.hpp>
 #include <wuwe/agent/mcp/mcp_security.hpp>
 #include <wuwe/agent/mcp/mcp_types.hpp>
 #include <wuwe/agent/tools/tool.hpp>
@@ -27,21 +27,18 @@ namespace wuwe::agent::mcp {
 
 class mcp_server {
 public:
-  explicit mcp_server(mcp_server_info info = {})
-      : info_(std::move(info)) {
+  explicit mcp_server(mcp_server_info info = {}) : info_(std::move(info)) {
   }
 
   void add_tool(
-    llm_tool tool,
-    std::function<llm_tool_result(const std::string& arguments_json)> invoke) {
+    llm_tool tool, std::function<llm_tool_result(const std::string& arguments_json)> invoke) {
     add_mcp_tool(std::move(tool), [invoke = std::move(invoke)](const json& arguments) {
       return tool_call_result_from_llm(invoke(arguments.dump()));
     });
   }
 
   void add_mcp_tool(
-    llm_tool tool,
-    std::function<mcp_tool_call_result(const json& arguments)> invoke) {
+    llm_tool tool, std::function<mcp_tool_call_result(const json& arguments)> invoke) {
     std::lock_guard lock(mutex_);
     if (tool.name.empty()) {
       return;
@@ -64,8 +61,7 @@ public:
   }
 
   void add_resource(
-    mcp_resource resource,
-    std::function<std::vector<mcp_resource_content>()> read) {
+    mcp_resource resource, std::function<std::vector<mcp_resource_content>()> read) {
     std::lock_guard lock(mutex_);
     if (resource.uri.empty()) {
       return;
@@ -110,9 +106,7 @@ public:
     }
   }
 
-  void add_prompt(
-    mcp_prompt prompt,
-    std::function<mcp_prompt_result(const json& arguments)> get) {
+  void add_prompt(mcp_prompt prompt, std::function<mcp_prompt_result(const json& arguments)> get) {
     std::lock_guard lock(mutex_);
     if (prompt.name.empty()) {
       return;
@@ -159,10 +153,7 @@ public:
     request_timeout_ = timeout;
   }
 
-  void emit_log(
-    std::string level,
-    std::string message,
-    std::string logger = {},
+  void emit_log(std::string level, std::string message, std::string logger = {},
     json data = json::object()) const {
     std::lock_guard lock(mutex_);
     json params {
@@ -178,11 +169,8 @@ public:
     pending_notifications_.push_back(make_notification("notifications/message", std::move(params)));
   }
 
-  void emit_progress(
-    json progress_token,
-    double progress,
-    std::optional<double> total = std::nullopt,
-    std::string message = {}) const {
+  void emit_progress(json progress_token, double progress,
+    std::optional<double> total = std::nullopt, std::string message = {}) const {
     std::lock_guard lock(mutex_);
     json params {
       { "progressToken", std::move(progress_token) },
@@ -198,15 +186,10 @@ public:
       make_notification("notifications/progress", std::move(params)));
   }
 
-  void emit_request_progress(
-    json request_id,
-    json progress_token,
-    double progress,
-    std::optional<double> total = std::nullopt,
-    std::string message = {}) const {
+  void emit_request_progress(json request_id, json progress_token, double progress,
+    std::optional<double> total = std::nullopt, std::string message = {}) const {
     std::lock_guard lock(mutex_);
-    request_registry_.progress(
-      registry_key(request_id), progress_token, progress, total, message);
+    request_registry_.progress(registry_key(request_id), progress_token, progress, total, message);
     emit_progress(std::move(progress_token), progress, total, std::move(message));
   }
 
@@ -225,8 +208,8 @@ public:
     if (!contains(subscribed_resource_uris_, uri)) {
       return;
     }
-    pending_notifications_.push_back(make_notification(
-      "notifications/resources/updated", { { "uri", std::move(uri) } }));
+    pending_notifications_.push_back(
+      make_notification("notifications/resources/updated", { { "uri", std::move(uri) } }));
   }
 
   void emit_prompt_list_changed() const {
@@ -276,6 +259,11 @@ public:
   bool initialized() const {
     std::lock_guard lock(mutex_);
     return initialized_;
+  }
+
+  std::string negotiated_protocol_version() const {
+    std::lock_guard lock(mutex_);
+    return negotiated_protocol_version_;
   }
 
   mcp_client_info client_info() const {
@@ -365,14 +353,15 @@ public:
       request = json::parse(message);
     }
     catch (const std::exception& ex) {
-      return make_error_response(nullptr,
-        { .code = mcp_error_code::parse_error, .message = ex.what() });
+      return make_error_response(
+        nullptr, { .code = mcp_error_code::parse_error, .message = ex.what() });
     }
 
     if (request.is_array()) {
       if (request.empty()) {
         return make_error_response(nullptr,
-          { .code = mcp_error_code::invalid_request, .message = "batch request must not be empty" });
+          { .code = mcp_error_code::invalid_request,
+            .message = "batch request must not be empty" });
       }
 
       json responses = json::array();
@@ -408,7 +397,8 @@ public:
     const json id = has_id ? request["id"] : json(nullptr);
     if (has_id && !is_valid_jsonrpc_id(id)) {
       return make_error_response(nullptr,
-        { .code = mcp_error_code::invalid_request, .message = "id must be string, integer, or null" });
+        { .code = mcp_error_code::invalid_request,
+          .message = "id must be string, integer, or null" });
     }
 
     const auto method_it = request.find("method");
@@ -416,8 +406,8 @@ public:
       if (!has_id) {
         return std::nullopt;
       }
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_request, .message = "method must be a string" });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_request, .message = "method must be a string" });
     }
 
     const auto method = method_it->get<std::string>();
@@ -439,7 +429,8 @@ public:
       return handle_tools_call(id, request.value("params", json::object()));
     }
     if (method == "resources/list") {
-      return make_success_response(id, resources_list_result(request.value("params", json::object())));
+      return make_success_response(
+        id, resources_list_result(request.value("params", json::object())));
     }
     if (method == "resources/read") {
       return handle_resources_read(id, request.value("params", json::object()));
@@ -451,21 +442,22 @@ public:
       return handle_resources_unsubscribe(id, request.value("params", json::object()));
     }
     if (method == "resources/templates/list") {
-      return make_success_response(id,
-        resource_templates_list_result(request.value("params", json::object())));
+      return make_success_response(
+        id, resource_templates_list_result(request.value("params", json::object())));
     }
     if (method == "roots/list") {
       return make_success_response(id, roots_list_result(request.value("params", json::object())));
     }
     if (method == "prompts/list") {
-      return make_success_response(id, prompts_list_result(request.value("params", json::object())));
+      return make_success_response(
+        id, prompts_list_result(request.value("params", json::object())));
     }
     if (method == "prompts/get") {
       return handle_prompts_get(id, request.value("params", json::object()));
     }
 
-    return make_error_response(id,
-      { .code = mcp_error_code::method_not_found, .message = "method not found: " + method });
+    return make_error_response(
+      id, { .code = mcp_error_code::method_not_found, .message = "method not found: " + method });
   }
 
 private:
@@ -536,16 +528,31 @@ private:
 
   std::optional<std::string> handle_initialize(const json& id, const json& params) const {
     if (!params.is_object()) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "params must be an object" });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "params must be an object" });
     }
 
     const auto protocol_version = params.find("protocolVersion");
-    if (protocol_version != params.end() && !protocol_version->is_string()) {
+    if (protocol_version == params.end() || !protocol_version->is_string()) {
       return make_error_response(id,
         { .code = mcp_error_code::invalid_params,
           .message = "params.protocolVersion must be a string" });
     }
+    const auto requested_version = protocol_version->get<std::string>();
+    if (!supports_protocol_version(requested_version)) {
+      json supported = json::array();
+      for (const auto version : supported_protocol_versions) {
+        supported.push_back(version);
+      }
+      return make_error_response(id,
+        { .code = mcp_error_code::invalid_params,
+          .message = "unsupported MCP protocol version",
+          .data = json {
+            { "requestedVersion", requested_version },
+            { "supportedVersions", std::move(supported) },
+          } });
+    }
+    negotiated_protocol_version_ = requested_version;
 
     const auto capabilities = params.find("capabilities");
     if (capabilities != params.end() && capabilities->is_object()) {
@@ -574,14 +581,18 @@ private:
 
   json initialize_result() const {
     return {
-      { "protocolVersion", std::string(default_protocol_version) },
-      { "capabilities", {
+      { "protocolVersion",
+        negotiated_protocol_version_.empty() ? std::string(default_protocol_version)
+                                             : negotiated_protocol_version_ },
+      { "capabilities",
+        {
           { "tools", { { "listChanged", true } } },
           { "resources", { { "subscribe", true }, { "listChanged", true } } },
           { "roots", { { "listChanged", true } } },
           { "prompts", { { "listChanged", true } } },
         } },
-      { "serverInfo", {
+      { "serverInfo",
+        {
           { "name", info_.name },
           { "version", info_.version },
         } },
@@ -687,34 +698,34 @@ private:
 
   std::optional<std::string> handle_tools_call(const json& id, const json& params) const {
     if (!params.is_object()) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "params must be an object" });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "params must be an object" });
     }
 
     const auto name_it = params.find("name");
     if (name_it == params.end() || !name_it->is_string()) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "params.name must be a string" });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "params.name must be a string" });
     }
 
     const auto name = name_it->get<std::string>();
     const auto tool_it = tools_.find(name);
     if (tool_it == tools_.end()) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "tool not found: " + name });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "tool not found: " + name });
     }
 
     const auto arguments = params.value("arguments", json::object());
     if (!arguments.is_object()) {
       return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "params.arguments must be an object" });
+        { .code = mcp_error_code::invalid_params,
+          .message = "params.arguments must be an object" });
     }
 
     std::string reason;
     if (!access_allowed("tool", name, reason)) {
       audit("tools/call", name, false, reason, arguments);
-      return make_error_response(id,
-        { .code = mcp_error_code::request_denied, .message = reason });
+      return make_error_response(id, { .code = mcp_error_code::request_denied, .message = reason });
     }
     audit("tools/call", name, true, {}, arguments);
 
@@ -725,15 +736,15 @@ private:
       result = tool_it->second.invoke(arguments);
       if (request_registry_.timed_out(registry_id)) {
         request_registry_.fail(registry_id, "request timed out");
-        return make_error_response(id,
-          { .code = mcp_error_code::internal_error, .message = "request timed out" });
+        return make_error_response(
+          id, { .code = mcp_error_code::internal_error, .message = "request timed out" });
       }
       request_registry_.complete(registry_id);
     }
     catch (const std::exception& ex) {
       request_registry_.fail(registry_id, ex.what());
-      return make_error_response(id,
-        { .code = mcp_error_code::internal_error, .message = ex.what() });
+      return make_error_response(
+        id, { .code = mcp_error_code::internal_error, .message = ex.what() });
     }
 
     return make_success_response(id, tool_call_result_to_json(result));
@@ -741,28 +752,27 @@ private:
 
   std::optional<std::string> handle_resources_read(const json& id, const json& params) const {
     if (!params.is_object()) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "params must be an object" });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "params must be an object" });
     }
 
     const auto uri_it = params.find("uri");
     if (uri_it == params.end() || !uri_it->is_string()) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "params.uri must be a string" });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "params.uri must be a string" });
     }
 
     const auto uri = uri_it->get<std::string>();
     const auto resource_it = resources_.find(uri);
     if (resource_it == resources_.end()) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "resource not found: " + uri });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "resource not found: " + uri });
     }
 
     std::string reason;
     if (!access_allowed("resource", uri, reason)) {
       audit("resources/read", uri, false, reason, params);
-      return make_error_response(id,
-        { .code = mcp_error_code::request_denied, .message = reason });
+      return make_error_response(id, { .code = mcp_error_code::request_denied, .message = reason });
     }
     audit("resources/read", uri, true, {}, params);
 
@@ -773,15 +783,15 @@ private:
       contents = resource_it->second.read();
       if (request_registry_.timed_out(registry_id)) {
         request_registry_.fail(registry_id, "request timed out");
-        return make_error_response(id,
-          { .code = mcp_error_code::internal_error, .message = "request timed out" });
+        return make_error_response(
+          id, { .code = mcp_error_code::internal_error, .message = "request timed out" });
       }
       request_registry_.complete(registry_id);
     }
     catch (const std::exception& ex) {
       request_registry_.fail(registry_id, ex.what());
-      return make_error_response(id,
-        { .code = mcp_error_code::internal_error, .message = ex.what() });
+      return make_error_response(
+        id, { .code = mcp_error_code::internal_error, .message = ex.what() });
     }
 
     json output = json::array();
@@ -791,25 +801,22 @@ private:
     return make_success_response(id, { { "contents", std::move(output) } });
   }
 
-  std::optional<std::string> handle_resources_subscribe(
-    const json& id,
-    const json& params) const {
+  std::optional<std::string> handle_resources_subscribe(const json& id, const json& params) const {
     const auto uri = resource_uri_param(id, params);
     if (!uri) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "params.uri must be a string" });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "params.uri must be a string" });
     }
 
     const auto resource_it = resources_.find(*uri);
     if (resource_it == resources_.end()) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "resource not found: " + *uri });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "resource not found: " + *uri });
     }
 
     std::string reason;
     if (!access_allowed("resource", *uri, reason)) {
-      return make_error_response(id,
-        { .code = mcp_error_code::request_denied, .message = reason });
+      return make_error_response(id, { .code = mcp_error_code::request_denied, .message = reason });
     }
 
     if (!contains(subscribed_resource_uris_, *uri)) {
@@ -819,17 +826,14 @@ private:
   }
 
   std::optional<std::string> handle_resources_unsubscribe(
-    const json& id,
-    const json& params) const {
+    const json& id, const json& params) const {
     const auto uri = resource_uri_param(id, params);
     if (!uri) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "params.uri must be a string" });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "params.uri must be a string" });
     }
 
-    for (auto it = subscribed_resource_uris_.begin();
-         it != subscribed_resource_uris_.end();
-         ++it) {
+    for (auto it = subscribed_resource_uris_.begin(); it != subscribed_resource_uris_.end(); ++it) {
       if (*it == *uri) {
         subscribed_resource_uris_.erase(it);
         break;
@@ -840,34 +844,34 @@ private:
 
   std::optional<std::string> handle_prompts_get(const json& id, const json& params) const {
     if (!params.is_object()) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "params must be an object" });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "params must be an object" });
     }
 
     const auto name_it = params.find("name");
     if (name_it == params.end() || !name_it->is_string()) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "params.name must be a string" });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "params.name must be a string" });
     }
 
     const auto name = name_it->get<std::string>();
     const auto prompt_it = prompts_.find(name);
     if (prompt_it == prompts_.end()) {
-      return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "prompt not found: " + name });
+      return make_error_response(
+        id, { .code = mcp_error_code::invalid_params, .message = "prompt not found: " + name });
     }
 
     const auto arguments = params.value("arguments", json::object());
     if (!arguments.is_object()) {
       return make_error_response(id,
-        { .code = mcp_error_code::invalid_params, .message = "params.arguments must be an object" });
+        { .code = mcp_error_code::invalid_params,
+          .message = "params.arguments must be an object" });
     }
 
     std::string reason;
     if (!access_allowed("prompt", name, reason)) {
       audit("prompts/get", name, false, reason, arguments);
-      return make_error_response(id,
-        { .code = mcp_error_code::request_denied, .message = reason });
+      return make_error_response(id, { .code = mcp_error_code::request_denied, .message = reason });
     }
     audit("prompts/get", name, true, {}, arguments);
 
@@ -878,15 +882,15 @@ private:
       prompt_result = prompt_it->second.get(arguments);
       if (request_registry_.timed_out(registry_id)) {
         request_registry_.fail(registry_id, "request timed out");
-        return make_error_response(id,
-          { .code = mcp_error_code::internal_error, .message = "request timed out" });
+        return make_error_response(
+          id, { .code = mcp_error_code::internal_error, .message = "request timed out" });
       }
       request_registry_.complete(registry_id);
     }
     catch (const std::exception& ex) {
       request_registry_.fail(registry_id, ex.what());
-      return make_error_response(id,
-        { .code = mcp_error_code::internal_error, .message = ex.what() });
+      return make_error_response(
+        id, { .code = mcp_error_code::internal_error, .message = ex.what() });
     }
 
     return make_success_response(id, prompt_result_to_json(prompt_result));
@@ -1025,10 +1029,7 @@ private:
     return found != client_capabilities_.end() && found->is_object();
   }
 
-  bool access_allowed(
-    std::string_view kind,
-    const std::string& target,
-    std::string& reason) const {
+  bool access_allowed(std::string_view kind, const std::string& target, std::string& reason) const {
     const auto& allowed = allowed_targets(kind);
     const auto& denied = denied_targets(kind);
     if (contains(denied, target)) {
@@ -1081,11 +1082,7 @@ private:
     return false;
   }
 
-  void audit(
-    std::string action,
-    std::string target,
-    bool allowed,
-    std::string reason,
+  void audit(std::string action, std::string target, bool allowed, std::string reason,
     json arguments) const {
     if (!audit_sink_) {
       return;
@@ -1159,8 +1156,9 @@ private:
   mutable std::vector<std::string> subscribed_resource_uris_;
   std::size_t list_page_size_ { 0 };
   mutable bool initialized_ { false };
+  mutable std::string negotiated_protocol_version_;
   mutable mcp_client_info client_info_;
-  mutable json client_capabilities_ { json::object() };
+  mutable json client_capabilities_ = json::object();
   mutable bool client_capabilities_known_ { false };
   mutable mcp_request_registry request_registry_;
   std::chrono::milliseconds request_timeout_ { 0 };

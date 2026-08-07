@@ -226,13 +226,14 @@ int main(int argc, char** argv) {
       }
     }
 
-    auto chat_client = (options.generate_answer || options.llm_summary)
-                         ? std::make_shared<wuwe::openai_compatible_llm_client>(wuwe::llm_client_config {
-                             .base_url = options.embedding_base_url,
-                             .api_key = options.embedding_api_key,
-                             .model = options.chat_model,
-                           })
-                         : std::shared_ptr<wuwe::openai_compatible_llm_client> {};
+    auto chat_client =
+      (options.generate_answer || options.llm_summary)
+        ? std::make_shared<wuwe::openai_compatible_llm_client>(wuwe::llm_client_config {
+            .base_url = options.embedding_base_url,
+            .api_key = options.embedding_api_key,
+            .model = options.chat_model,
+          })
+        : std::shared_ptr<wuwe::openai_compatible_llm_client> {};
 
     knowledge::knowledge_rag_service service(
       retriever, knowledge::knowledge_document_loader::make_default(), chat_client);
@@ -245,7 +246,7 @@ int main(int argc, char** argv) {
     }
     const auto upload = service.upload_document(options.docs_path,
       {
-        .metadata = { { "collection", "rag-demo" } },
+        .metadata = { { "collection", "rag-demo" }, { "visibility", "public" } },
         .enrichers = std::move(enrichers),
       },
       true);

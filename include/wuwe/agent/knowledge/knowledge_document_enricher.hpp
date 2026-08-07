@@ -30,13 +30,13 @@ struct llm_knowledge_document_enricher_config {
     "Summarize this document for retrieval. Focus on the main topics, named "
     "patterns, sections, and concepts. Return concise plain text."
   };
+  std::string provider;
 };
 
 class llm_knowledge_document_enricher final : public knowledge_document_enricher {
 public:
   llm_knowledge_document_enricher(
-    std::shared_ptr<::wuwe::llm_client> client,
-    llm_knowledge_document_enricher_config config = {})
+    std::shared_ptr<::wuwe::llm_client> client, llm_knowledge_document_enricher_config config = {})
       : client_(std::move(client)), config_(std::move(config)) {
     if (!client_) {
       throw std::invalid_argument("llm_knowledge_document_enricher requires llm_client");
@@ -56,13 +56,13 @@ public:
       input.resize(config_.max_input_chars);
     }
 
-    auto request =
-      ::wuwe::make_message()
-      << ("system" < ::wuwe::says > config_.system_prompt)
-      << ("user" < ::wuwe::says >
-            ("Title: " + document.title + "\nSource: " + document.source_uri +
-             "\n\nDocument excerpt:\n" + input));
+    auto request = ::wuwe::make_message()
+                   << ("system" < ::wuwe::says > config_.system_prompt)
+                   << ("user" < ::wuwe::says >
+                        ("Title: " + document.title + "\nSource: " + document.source_uri +
+                          "\n\nDocument excerpt:\n" + input));
     request.model = config_.model;
+    request.provider = config_.provider;
     request.temperature = config_.temperature;
 
     auto response = client_->complete(request);
@@ -73,6 +73,9 @@ public:
     document.metadata[config_.metadata_key] = std::move(response.content);
     if (!config_.model.empty()) {
       document.metadata["summary_model"] = config_.model;
+    }
+    if (!config_.provider.empty()) {
+      document.metadata["summary_provider"] = config_.provider;
     }
   }
 

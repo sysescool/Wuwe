@@ -58,14 +58,12 @@ struct controlled_process_backend_config {
 
 class controlled_process_backend final : public execution_backend {
 public:
-  explicit controlled_process_backend(
-    controlled_process_backend_config config = {});
+  explicit controlled_process_backend(controlled_process_backend_config config = {});
 
   [[nodiscard]] sandbox::sandbox_backend_info info() const override;
 
   [[nodiscard]] execution_result run(
-    const execution_request& request,
-    std::stop_token stop_token) override;
+    const execution_request& request, std::stop_token stop_token) override;
 
 private:
   [[nodiscard]] std::optional<execution_result> validate_python_interpreter(

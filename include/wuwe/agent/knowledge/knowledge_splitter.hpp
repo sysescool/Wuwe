@@ -110,8 +110,8 @@ private:
     while (!title.empty() && (title.front() == ' ' || title.front() == '\t')) {
       title.erase(title.begin());
     }
-    while (!title.empty() && (title.back() == '\r' || title.back() == ' ' ||
-                               title.back() == '\t')) {
+    while (
+      !title.empty() && (title.back() == '\r' || title.back() == ' ' || title.back() == '\t')) {
       title.pop_back();
     }
     return !title.empty();
@@ -142,15 +142,14 @@ private:
     if (extension == document.metadata.end()) {
       return false;
     }
-    return extension->second == ".c" || extension->second == ".cc" ||
-           extension->second == ".cpp" || extension->second == ".cxx" ||
-           extension->second == ".h" || extension->second == ".hpp" ||
-           extension->second == ".hh" || extension->second == ".hxx" ||
-           extension->second == ".js" || extension->second == ".ts" ||
-           extension->second == ".jsx" || extension->second == ".tsx" ||
-           extension->second == ".py" || extension->second == ".java" ||
-           extension->second == ".cs" || extension->second == ".go" ||
-           extension->second == ".rs";
+    return extension->second == ".c" || extension->second == ".cc" || extension->second == ".cpp" ||
+           extension->second == ".cxx" || extension->second == ".h" ||
+           extension->second == ".hpp" || extension->second == ".hh" ||
+           extension->second == ".hxx" || extension->second == ".js" ||
+           extension->second == ".ts" || extension->second == ".jsx" ||
+           extension->second == ".tsx" || extension->second == ".py" ||
+           extension->second == ".java" || extension->second == ".cs" ||
+           extension->second == ".go" || extension->second == ".rs";
   }
 
   static bool line_starts_with_keyword(std::string_view line, std::string_view keyword) {
@@ -168,18 +167,14 @@ private:
     while (!line.empty() && std::isspace(static_cast<unsigned char>(line.front()))) {
       line.remove_prefix(1);
     }
-    if (line.empty() || line.starts_with("//") || line.starts_with("/*") ||
-        line.starts_with("*") || line.starts_with("#include") || line.starts_with("import ")) {
+    if (line.empty() || line.starts_with("//") || line.starts_with("/*") || line.starts_with("*") ||
+        line.starts_with("#include") || line.starts_with("import ")) {
       return false;
     }
-    if (line_starts_with_keyword(line, "class") ||
-        line_starts_with_keyword(line, "struct") ||
-        line_starts_with_keyword(line, "enum") ||
-        line_starts_with_keyword(line, "interface") ||
-        line_starts_with_keyword(line, "namespace") ||
-        line_starts_with_keyword(line, "def") ||
-        line_starts_with_keyword(line, "fn") ||
-        line_starts_with_keyword(line, "func") ||
+    if (line_starts_with_keyword(line, "class") || line_starts_with_keyword(line, "struct") ||
+        line_starts_with_keyword(line, "enum") || line_starts_with_keyword(line, "interface") ||
+        line_starts_with_keyword(line, "namespace") || line_starts_with_keyword(line, "def") ||
+        line_starts_with_keyword(line, "fn") || line_starts_with_keyword(line, "func") ||
         line_starts_with_keyword(line, "function")) {
       return true;
     }
@@ -238,8 +233,8 @@ private:
     if (line.empty() || line.size() > 120) {
       return false;
     }
-    if (line.starts_with("Chapter ") || line.starts_with("CHAPTER ") ||
-        line.starts_with("Part ") || line.starts_with("PART ")) {
+    if (line.starts_with("Chapter ") || line.starts_with("CHAPTER ") || line.starts_with("Part ") ||
+        line.starts_with("PART ")) {
       return true;
     }
     if (std::isdigit(static_cast<unsigned char>(line.front()))) {
@@ -268,8 +263,8 @@ private:
     if (line.find("http") != std::string_view::npos) {
       return false;
     }
-    if (line.starts_with("Chapter ") || line.starts_with("CHAPTER ") ||
-        line.starts_with("Part ") || line.starts_with("PART ")) {
+    if (line.starts_with("Chapter ") || line.starts_with("CHAPTER ") || line.starts_with("Part ") ||
+        line.starts_with("PART ")) {
       return true;
     }
     if (line.find("Pattern") != std::string_view::npos ||
@@ -301,8 +296,7 @@ private:
         line.find("Patterns") != std::string_view::npos) {
       return true;
     }
-    if (line.find("RAG") != std::string_view::npos ||
-        line.find("MCP") != std::string_view::npos) {
+    if (line.find("RAG") != std::string_view::npos || line.find("MCP") != std::string_view::npos) {
       return line.find("Pattern") != std::string_view::npos;
     }
     return false;
@@ -331,8 +325,7 @@ private:
   }
 
   static std::string infer_plain_text_section(
-    const knowledge_document& document,
-    std::size_t offset) {
+    const knowledge_document& document, std::size_t offset) {
     if (!is_tika_document(document)) {
       return {};
     }
@@ -364,8 +357,8 @@ private:
       const auto newline = content.find('\n', line_start);
       const std::size_t line_end = newline == std::string::npos ? content.size() : newline;
       std::string title;
-      if (is_markdown_heading(std::string_view(content).substr(line_start, line_end - line_start),
-            title)) {
+      if (is_markdown_heading(
+            std::string_view(content).substr(line_start, line_end - line_start), title)) {
         if (!sections.empty()) {
           sections.back().end = line_start;
         }
@@ -386,14 +379,11 @@ private:
   }
 
   static std::vector<token_span> token_spans(
-    const std::string& content,
-    std::size_t range_start,
-    std::size_t range_end) {
+    const std::string& content, std::size_t range_start, std::size_t range_end) {
     std::vector<token_span> tokens;
     std::size_t index = range_start;
     while (index < range_end) {
-      while (index < range_end &&
-             std::isspace(static_cast<unsigned char>(content[index]))) {
+      while (index < range_end && std::isspace(static_cast<unsigned char>(content[index]))) {
         ++index;
       }
       if (index >= range_end) {
@@ -401,8 +391,7 @@ private:
       }
 
       const auto start = index;
-      while (index < range_end &&
-             !std::isspace(static_cast<unsigned char>(content[index]))) {
+      while (index < range_end && !std::isspace(static_cast<unsigned char>(content[index]))) {
         ++index;
       }
       tokens.push_back({
@@ -414,9 +403,7 @@ private:
   }
 
   static std::optional<std::size_t> open_code_fence_start_before(
-    const std::string& content,
-    std::size_t range_start,
-    std::size_t offset) {
+    const std::string& content, std::size_t range_start, std::size_t offset) {
     bool open = false;
     std::size_t open_start = 0;
     std::size_t line_start = range_start;
@@ -424,11 +411,9 @@ private:
 
     while (line_start < end) {
       const auto newline = content.find('\n', line_start);
-      const std::size_t line_end =
-        newline == std::string::npos ? content.size() : newline;
-      if (line_start < end &&
-          is_markdown_code_fence(
-            std::string_view(content).substr(line_start, line_end - line_start))) {
+      const std::size_t line_end = newline == std::string::npos ? content.size() : newline;
+      if (line_start < end && is_markdown_code_fence(std::string_view(content).substr(
+                                line_start, line_end - line_start))) {
         open = !open;
         open_start = line_start;
       }
@@ -445,9 +430,7 @@ private:
   }
 
   static std::optional<std::size_t> closing_code_fence_end_after(
-    const std::string& content,
-    std::size_t offset,
-    std::size_t range_end) {
+    const std::string& content, std::size_t offset, std::size_t range_end) {
     std::size_t line_start = offset;
     while (line_start < range_end) {
       const auto newline = content.find('\n', line_start);
@@ -466,9 +449,7 @@ private:
   }
 
   std::size_t choose_chunk_end(
-    const std::string& content,
-    std::size_t start,
-    std::size_t range_end) const {
+    const std::string& content, std::size_t start, std::size_t range_end) const {
     const std::size_t hard_end = (std::min)(range_end, start + policy_.max_chars);
     if (!policy_.prefer_paragraph_boundaries || hard_end == range_end) {
       return hard_end;
@@ -501,11 +482,8 @@ private:
     return hard_end;
   }
 
-  std::size_t choose_next_chunk_start(
-    const std::string& content,
-    std::size_t current_start,
-    std::size_t current_end,
-    std::size_t range_end) const {
+  std::size_t choose_next_chunk_start(const std::string& content, std::size_t current_start,
+    std::size_t current_end, std::size_t range_end) const {
     if (policy_.overlap_chars == 0 || current_end >= range_end) {
       return current_end;
     }
@@ -527,19 +505,18 @@ private:
     }
 
     auto next_word = overlap_start;
-    while (next_word < current_end &&
-           !std::isspace(static_cast<unsigned char>(content[next_word]))) {
+    while (
+      next_word < current_end && !std::isspace(static_cast<unsigned char>(content[next_word]))) {
       ++next_word;
     }
-    while (next_word < current_end &&
-           std::isspace(static_cast<unsigned char>(content[next_word]))) {
+    while (
+      next_word < current_end && std::isspace(static_cast<unsigned char>(content[next_word]))) {
       ++next_word;
     }
     return next_word < current_end ? next_word : overlap_start;
   }
 
-  std::vector<knowledge_chunk> split_markdown_sections(
-    const knowledge_document& document) const {
+  std::vector<knowledge_chunk> split_markdown_sections(const knowledge_document& document) const {
     std::vector<knowledge_chunk> chunks;
     for (const auto& section : markdown_sections(document.content)) {
       if (section.end <= section.start) {
@@ -589,11 +566,8 @@ private:
     return chunks;
   }
 
-  void append_range_chunks(
-    const knowledge_document& document,
-    std::size_t range_start,
-    std::size_t range_end,
-    std::map<std::string, std::string> metadata,
+  void append_range_chunks(const knowledge_document& document, std::size_t range_start,
+    std::size_t range_end, std::map<std::string, std::string> metadata,
     std::vector<knowledge_chunk>& chunks) const {
     if (policy_.max_tokens != 0) {
       append_token_range_chunks(document, range_start, range_end, std::move(metadata), chunks);
@@ -626,11 +600,8 @@ private:
     }
   }
 
-  void append_token_range_chunks(
-    const knowledge_document& document,
-    std::size_t range_start,
-    std::size_t range_end,
-    std::map<std::string, std::string> metadata,
+  void append_token_range_chunks(const knowledge_document& document, std::size_t range_start,
+    std::size_t range_end, std::map<std::string, std::string> metadata,
     std::vector<knowledge_chunk>& chunks) const {
     const auto tokens = token_spans(document.content, range_start, range_end);
     if (tokens.empty()) {
@@ -674,7 +645,8 @@ private:
     while (line_start < document.content.size() && toc_lines.size() < 80) {
       const auto newline = document.content.find('\n', line_start);
       const auto line_end = newline == std::string::npos ? document.content.size() : newline;
-      const auto line = std::string_view(document.content).substr(line_start, line_end - line_start);
+      const auto line =
+        std::string_view(document.content).substr(line_start, line_end - line_start);
       if (looks_like_toc_pattern_line(line)) {
         auto cleaned = clean_toc_line(text_detail::trim_copy(line));
         if (!cleaned.empty() &&
@@ -691,8 +663,7 @@ private:
   }
 
   static document_summary collect_document_summary_lines(
-    const knowledge_document& document,
-    std::size_t max_chars) {
+    const knowledge_document& document, std::size_t max_chars) {
     std::ostringstream output;
     if (!document.title.empty()) {
       output << "Title: " << document.title << "\n";
@@ -716,10 +687,12 @@ private:
     std::size_t collected = 0;
     bool wrote_heading = false;
     std::size_t line_start = 0;
-    while (line_start < document.content.size() && output.tellp() < static_cast<std::streampos>(max_chars)) {
+    while (line_start < document.content.size() &&
+           output.tellp() < static_cast<std::streampos>(max_chars)) {
       const auto newline = document.content.find('\n', line_start);
       const auto line_end = newline == std::string::npos ? document.content.size() : newline;
-      const auto line = std::string_view(document.content).substr(line_start, line_end - line_start);
+      const auto line =
+        std::string_view(document.content).substr(line_start, line_end - line_start);
       if (looks_like_document_summary_line(line)) {
         if (!wrote_heading) {
           output << "\nLikely sections and patterns:\n";
@@ -760,8 +733,7 @@ private:
   }
 
   void prepend_document_summary_chunk(
-    const knowledge_document& document,
-    std::vector<knowledge_chunk>& chunks) const {
+    const knowledge_document& document, std::vector<knowledge_chunk>& chunks) const {
     if (!policy_.include_document_summary_chunk || chunks.empty()) {
       return;
     }
@@ -790,11 +762,12 @@ private:
   }
 
   static void apply_plain_text_metadata(
-    const knowledge_document& document,
-    knowledge_chunk& chunk) {
+    const knowledge_document& document, knowledge_chunk& chunk) {
     if (has_page_breaks(document)) {
-      chunk.metadata["page_start"] = std::to_string(page_for_offset(document.content, chunk.start_offset));
-      chunk.metadata["page_end"] = std::to_string(page_for_offset(document.content, chunk.end_offset));
+      chunk.metadata["page_start"] =
+        std::to_string(page_for_offset(document.content, chunk.start_offset));
+      chunk.metadata["page_end"] =
+        std::to_string(page_for_offset(document.content, chunk.end_offset));
     }
     if (!chunk.metadata.contains("section")) {
       const auto section = infer_plain_text_section(document, chunk.start_offset);

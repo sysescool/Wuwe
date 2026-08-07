@@ -39,8 +39,7 @@ public:
   }
 
 private:
-  html_text_extractor(const std::string& html, html_text_mode mode)
-      : html_(html), mode_(mode) {
+  html_text_extractor(const std::string& html, html_text_mode mode) : html_(html), mode_(mode) {
   }
 
   std::string extract() {
@@ -180,9 +179,7 @@ private:
   }
 
   static bool starts_with_case_insensitive(
-    const std::string& text,
-    std::size_t offset,
-    std::string_view prefix) {
+    const std::string& text, std::size_t offset, std::string_view prefix) {
     if (offset + prefix.size() > text.size()) {
       return false;
     }

@@ -19,20 +19,6 @@ enum class llm_provider_protocol {
   ollama_chat,
 };
 
-struct llm_provider_capabilities {
-  bool streaming { false };
-  bool tools { false };
-  bool tool_choice { false };
-  bool json_response_format { false };
-  bool reasoning_summary { false };
-  bool streaming_reasoning_summary { false };
-  llm_reasoning_language_control reasoning_language_control {
-    llm_reasoning_language_control::unsupported
-  };
-  bool multimodal_input { false };
-  bool local_runtime { false };
-};
-
 struct llm_provider_info {
   std::string id;
   std::string display_name;
@@ -57,12 +43,10 @@ std::optional<llm_client_config> make_default_llm_config(std::string_view provid
 llm_client_config make_default_llm_config(const llm_provider_info& provider);
 
 std::optional<llm_client_config> normalize_llm_client_config(
-  std::string_view provider_id,
-  llm_client_config config);
+  std::string_view provider_id, llm_client_config config);
 
 llm_client_config normalize_llm_client_config(
-  const llm_provider_info& provider,
-  llm_client_config config);
+  const llm_provider_info& provider, llm_client_config config);
 
 WUWE_NAMESPACE_END
 

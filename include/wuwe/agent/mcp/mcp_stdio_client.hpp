@@ -17,8 +17,7 @@ namespace wuwe::agent::mcp {
 
 class mcp_stdio_client {
 public:
-  mcp_stdio_client(std::istream& input, std::ostream& output)
-      : input_(input), output_(output) {
+  mcp_stdio_client(std::istream& input, std::ostream& output) : input_(input), output_(output) {
   }
 
   json request(std::string method, json params = json::object()) {
@@ -34,11 +33,15 @@ public:
   }
 
   void notify(std::string method, json params = json::object()) {
-    mcp_stdio_transport::write_framed_message(output_, make_notification(
-      std::move(method), std::move(params)));
+    mcp_stdio_transport::write_framed_message(
+      output_, make_notification(std::move(method), std::move(params)));
   }
 
-  json initialize(mcp_client_info info = {}, json capabilities = json::object()) {
+  json initialize(mcp_client_info info = {}, json capabilities = json::object(),
+    std::string protocol_version = std::string(default_protocol_version)) {
+    if (!supports_protocol_version(protocol_version)) {
+      throw std::invalid_argument("unsupported MCP protocol version: " + protocol_version);
+    }
     json client_info = json::object();
     if (!info.name.empty()) {
       client_info["name"] = std::move(info.name);
@@ -47,11 +50,12 @@ public:
       client_info["version"] = std::move(info.version);
     }
 
-    return request("initialize", {
-      { "protocolVersion", std::string(default_protocol_version) },
-      { "clientInfo", std::move(client_info) },
-      { "capabilities", std::move(capabilities) },
-    });
+    return request("initialize",
+      {
+        { "protocolVersion", std::move(protocol_version) },
+        { "clientInfo", std::move(client_info) },
+        { "capabilities", std::move(capabilities) },
+      });
   }
 
   json list_tools(json params = json::object()) {
@@ -63,10 +67,11 @@ public:
   }
 
   json call_tool(std::string name, json arguments = json::object()) {
-    return request("tools/call", {
-      { "name", std::move(name) },
-      { "arguments", std::move(arguments) },
-    });
+    return request("tools/call",
+      {
+        { "name", std::move(name) },
+        { "arguments", std::move(arguments) },
+      });
   }
 
   json list_resources(json params = json::object()) {
@@ -98,10 +103,11 @@ public:
   }
 
   json get_prompt(std::string name, json arguments = json::object()) {
-    return request("prompts/get", {
-      { "name", std::move(name) },
-      { "arguments", std::move(arguments) },
-    });
+    return request("prompts/get",
+      {
+        { "name", std::move(name) },
+        { "arguments", std::move(arguments) },
+      });
   }
 
   const std::vector<json>& notifications() const noexcept {

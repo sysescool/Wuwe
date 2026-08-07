@@ -9,8 +9,7 @@ namespace wuwe::agent::execution {
 namespace {
 
 bool contains_language(
-  const std::vector<execution_language>& languages,
-  execution_language language) {
+  const std::vector<execution_language>& languages, execution_language language) {
   return std::find(languages.begin(), languages.end(), language) != languages.end();
 }
 
@@ -37,23 +36,20 @@ std::string capability_summary(execution_language language) {
   return "Run " + to_string(language) + " code";
 }
 
-capability::capability_request make_capability(
-  std::string name,
-  capability::capability_risk_level risk,
-  std::string summary,
-  const execution_request& request,
+capability::capability_request make_capability(std::string name,
+  capability::capability_risk_level risk, std::string summary, const execution_request& request,
   const std::string& execution_id) {
   return {
     .name = std::move(name),
     .risk = risk,
     .summary = std::move(summary),
-    .tool_name = request.metadata.contains("tool_name")
-                   ? request.metadata.at("tool_name")
-                   : std::string(),
-    .trace_id = request.metadata.contains("trace_id")
-                  ? request.metadata.at("trace_id")
-                  : std::string(),
+    .resources = {},
+    .tool_name =
+      request.metadata.contains("tool_name") ? request.metadata.at("tool_name") : std::string(),
+    .trace_id =
+      request.metadata.contains("trace_id") ? request.metadata.at("trace_id") : std::string(),
     .subject_id = execution_id,
+    .metadata = {},
   };
 }
 
@@ -84,26 +80,21 @@ void clamp_limits(execution_limits& limits, const execution_limits& max_limits) 
     limits.max_total_input_bytes = max_limits.max_total_input_bytes;
   }
   if (max_limits.max_process_count > 0 &&
-      (limits.max_process_count == 0 ||
-        limits.max_process_count > max_limits.max_process_count)) {
+      (limits.max_process_count == 0 || limits.max_process_count > max_limits.max_process_count)) {
     limits.max_process_count = max_limits.max_process_count;
   }
   if (max_limits.max_memory_bytes > 0 &&
-      (limits.max_memory_bytes == 0 ||
-        limits.max_memory_bytes > max_limits.max_memory_bytes)) {
+      (limits.max_memory_bytes == 0 || limits.max_memory_bytes > max_limits.max_memory_bytes)) {
     limits.max_memory_bytes = max_limits.max_memory_bytes;
   }
   if (max_limits.max_cpu_time.count() > 0 &&
-      (limits.max_cpu_time.count() <= 0 ||
-        limits.max_cpu_time > max_limits.max_cpu_time)) {
+      (limits.max_cpu_time.count() <= 0 || limits.max_cpu_time > max_limits.max_cpu_time)) {
     limits.max_cpu_time = max_limits.max_cpu_time;
   }
 }
 
 bool exceeds_total_input_limit(
-  std::size_t code_bytes,
-  std::size_t stdin_bytes,
-  std::size_t max_total_input_bytes) {
+  std::size_t code_bytes, std::size_t stdin_bytes, std::size_t max_total_input_bytes) {
   if (max_total_input_bytes == 0) {
     return false;
   }
@@ -114,27 +105,22 @@ bool exceeds_total_input_limit(
 }
 
 void add_input_limit_metadata(
-  capability::capability_policy_result& result,
-  const execution_request& request) {
+  capability::capability_policy_result& result, const execution_request& request) {
   result.metadata["denial_kind"] = "input_limit";
   result.metadata["code_bytes"] = std::to_string(request.code.size());
   result.metadata["stdin_bytes"] = std::to_string(request.stdin_text.size());
   result.metadata["max_code_bytes"] = std::to_string(request.limits.max_code_bytes);
   result.metadata["max_stdin_bytes"] = std::to_string(request.limits.max_stdin_bytes);
-  result.metadata["max_total_input_bytes"] =
-    std::to_string(request.limits.max_total_input_bytes);
+  result.metadata["max_total_input_bytes"] = std::to_string(request.limits.max_total_input_bytes);
 }
 
 } // namespace
 
 execution_policy_evaluation evaluate_execution_policy(
-  execution_request request,
-  const execution_policy& policy,
-  std::string execution_id) {
+  execution_request request, const execution_policy& policy, std::string execution_id) {
   if (execution_id.empty()) {
-    execution_id = request.metadata.contains("execution_id")
-                     ? request.metadata.at("execution_id")
-                     : std::string();
+    execution_id = request.metadata.contains("execution_id") ? request.metadata.at("execution_id")
+                                                             : std::string();
   }
 
   request.metadata["execution_id"] = execution_id;
@@ -147,32 +133,28 @@ execution_policy_evaluation evaluate_execution_policy(
   const auto environment_error = validate_environment(request.env);
 
   std::vector<capability::capability_request> capabilities;
-  capabilities.push_back(make_capability(
-    capability::names::process_python,
+  capabilities.push_back(make_capability(capability::names::process_python,
     capability::capability_risk_level::medium,
     capability_summary(request.language),
     request,
     execution_id));
 
   if (request.use_shell) {
-    capabilities.push_back(make_capability(
-      capability::names::process_shell,
+    capabilities.push_back(make_capability(capability::names::process_shell,
       capability::capability_risk_level::critical,
       "Run code through a system shell",
       request,
       execution_id));
   }
   if (policy.allow_network) {
-    capabilities.push_back(make_capability(
-      capability::names::network_outbound,
+    capabilities.push_back(make_capability(capability::names::network_outbound,
       capability::capability_risk_level::high,
       "Allow outbound network access during execution",
       request,
       execution_id));
   }
   if (policy.allow_file_write) {
-    capabilities.push_back(make_capability(
-      capability::names::filesystem_write,
+    capabilities.push_back(make_capability(capability::names::filesystem_write,
       capability::capability_risk_level::high,
       "Allow file writes during execution",
       request,
@@ -181,7 +163,9 @@ execution_policy_evaluation evaluate_execution_policy(
 
   capability::capability_policy_result result {
     .decision = capability::capability_policy_decision::allow,
+    .reason = {},
     .capabilities = capabilities,
+    .metadata = {},
   };
 
   if (!contains_language(policy.allowed_languages, request.language)) {
@@ -195,33 +179,29 @@ execution_policy_evaluation evaluate_execution_policy(
   else if (request.limits.max_code_bytes > 0 &&
            request.code.size() > request.limits.max_code_bytes) {
     result.decision = capability::capability_policy_decision::deny;
-    result.reason = "Execution denied: code is too large. code_bytes=" +
-                    std::to_string(request.code.size()) +
-                    " max_code_bytes=" +
-                    std::to_string(request.limits.max_code_bytes) +
-                    ". Use stdin_text for bulk input, or reduce the script.";
+    result.reason =
+      "Execution denied: code is too large. code_bytes=" + std::to_string(request.code.size()) +
+      " max_code_bytes=" + std::to_string(request.limits.max_code_bytes) +
+      ". Use stdin_text for bulk input, or reduce the script.";
   }
   else if (request.limits.max_stdin_bytes > 0 &&
            request.stdin_text.size() > request.limits.max_stdin_bytes) {
     result.decision = capability::capability_policy_decision::deny;
     result.reason = "Execution denied: stdin_text is too large. stdin_bytes=" +
                     std::to_string(request.stdin_text.size()) +
-                    " max_stdin_bytes=" +
-                    std::to_string(request.limits.max_stdin_bytes) +
+                    " max_stdin_bytes=" + std::to_string(request.limits.max_stdin_bytes) +
                     ". Pass a smaller selected input or use a heavier approved workflow.";
   }
-  else if (exceeds_total_input_limit(
-             request.code.size(),
+  else if (exceeds_total_input_limit(request.code.size(),
              request.stdin_text.size(),
              request.limits.max_total_input_bytes)) {
     result.decision = capability::capability_policy_decision::deny;
-    result.reason = "Execution denied: total input is too large. code_bytes=" +
-                    std::to_string(request.code.size()) +
-                    " stdin_bytes=" +
-                    std::to_string(request.stdin_text.size()) +
-                    " max_total_input_bytes=" +
-                    std::to_string(request.limits.max_total_input_bytes) +
-                    ". Reduce the script or selected input.";
+    result.reason =
+      "Execution denied: total input is too large. code_bytes=" +
+      std::to_string(request.code.size()) +
+      " stdin_bytes=" + std::to_string(request.stdin_text.size()) +
+      " max_total_input_bytes=" + std::to_string(request.limits.max_total_input_bytes) +
+      ". Reduce the script or selected input.";
   }
   else if (request.use_shell && !policy.allow_shell) {
     result.decision = capability::capability_policy_decision::deny;
@@ -260,8 +240,7 @@ execution_policy_evaluation evaluate_execution_policy(
   }
   if (requested_limits.timeout != request.limits.timeout) {
     result.metadata["timeout_clamped"] = "true";
-    result.metadata["requested_timeout_ms"] =
-      std::to_string(requested_limits.timeout.count());
+    result.metadata["requested_timeout_ms"] = std::to_string(requested_limits.timeout.count());
   }
   if (requested_limits.max_stdout_bytes != request.limits.max_stdout_bytes) {
     result.metadata["max_stdout_bytes_clamped"] = "true";
@@ -275,16 +254,13 @@ execution_policy_evaluation evaluate_execution_policy(
   }
   if (requested_limits.max_code_bytes != request.limits.max_code_bytes) {
     result.metadata["max_code_bytes_clamped"] = "true";
-    result.metadata["requested_max_code_bytes"] =
-      std::to_string(requested_limits.max_code_bytes);
+    result.metadata["requested_max_code_bytes"] = std::to_string(requested_limits.max_code_bytes);
   }
   if (requested_limits.max_stdin_bytes != request.limits.max_stdin_bytes) {
     result.metadata["max_stdin_bytes_clamped"] = "true";
-    result.metadata["requested_max_stdin_bytes"] =
-      std::to_string(requested_limits.max_stdin_bytes);
+    result.metadata["requested_max_stdin_bytes"] = std::to_string(requested_limits.max_stdin_bytes);
   }
-  if (requested_limits.max_total_input_bytes !=
-      request.limits.max_total_input_bytes) {
+  if (requested_limits.max_total_input_bytes != request.limits.max_total_input_bytes) {
     result.metadata["max_total_input_bytes_clamped"] = "true";
     result.metadata["requested_max_total_input_bytes"] =
       std::to_string(requested_limits.max_total_input_bytes);

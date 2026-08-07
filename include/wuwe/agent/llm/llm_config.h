@@ -7,6 +7,7 @@
 
 #include <gmp/macro/platform.hpp>
 
+#include <wuwe/agent/llm/llm_types.h>
 #include <wuwe/common/wuwe_fwd.h>
 
 WUWE_NAMESPACE_BEGIN
@@ -93,8 +94,13 @@ struct llm_client_config {
   llm_stream_timeout_options stream_timeouts;
   int max_retries { 2 };
   int retry_backoff_ms { 600 };
+  int retry_max_backoff_ms { 30000 };
+  int retry_max_server_delay_ms { 60000 };
+  double retry_jitter_ratio { 0.2 };
+  bool respect_retry_after { true };
   std::optional<std::string> referer_url;
   std::optional<std::string> app_title;
+  std::optional<llm_provider_capabilities> capabilities_override;
 };
 
 using llm_config = llm_client_config;

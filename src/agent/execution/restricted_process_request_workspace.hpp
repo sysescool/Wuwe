@@ -2,11 +2,16 @@
 #define WUWE_AGENT_EXECUTION_RESTRICTED_PROCESS_REQUEST_WORKSPACE_HPP
 
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <system_error>
 
 namespace wuwe::agent::execution::detail {
+
+#ifdef _WIN32
+class restricted_windows_locked_path;
+#endif
 
 enum class restricted_request_workspace_status {
   ok,
@@ -15,6 +20,7 @@ enum class restricted_request_workspace_status {
   invalid_script_filename,
   create_root_failed,
   create_request_directory_failed,
+  reparse_point_not_allowed,
   write_script_failed,
 };
 
@@ -34,12 +40,10 @@ public:
   ~restricted_request_workspace();
 
   restricted_request_workspace(const restricted_request_workspace&) = delete;
-  restricted_request_workspace& operator=(const restricted_request_workspace&) =
-    delete;
+  restricted_request_workspace& operator=(const restricted_request_workspace&) = delete;
 
   restricted_request_workspace(restricted_request_workspace&& other) noexcept;
-  restricted_request_workspace& operator=(
-    restricted_request_workspace&& other) noexcept;
+  restricted_request_workspace& operator=(restricted_request_workspace&& other) noexcept;
 
   [[nodiscard]] const std::filesystem::path& root() const noexcept {
     return root_;
@@ -57,6 +61,8 @@ public:
     cleanup_on_destroy_ = false;
   }
 
+  void close_security_locks() noexcept;
+
 private:
   friend struct restricted_request_workspace_result;
   friend restricted_request_workspace_result create_restricted_request_workspace(
@@ -67,22 +73,22 @@ private:
   std::filesystem::path root_;
   std::filesystem::path script_path_;
   bool cleanup_on_destroy_ { true };
+#ifdef _WIN32
+  std::unique_ptr<restricted_windows_locked_path> root_lock_;
+  std::unique_ptr<restricted_windows_locked_path> script_lock_;
+#endif
 };
 
 struct restricted_request_workspace_result {
-  restricted_request_workspace_status status {
-    restricted_request_workspace_status::ok
-  };
+  restricted_request_workspace_status status { restricted_request_workspace_status::ok };
   std::optional<restricted_request_workspace> workspace;
   std::error_code system_error;
   std::string detail;
 };
 
-[[nodiscard]] const char* to_string(
-  restricted_request_workspace_status status) noexcept;
+[[nodiscard]] const char* to_string(restricted_request_workspace_status status) noexcept;
 
-[[nodiscard]] restricted_request_workspace_result
-create_restricted_request_workspace(
+[[nodiscard]] restricted_request_workspace_result create_restricted_request_workspace(
   const restricted_request_workspace_request& request);
 
 } // namespace wuwe::agent::execution::detail

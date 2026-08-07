@@ -27,9 +27,8 @@ public:
 class file_knowledge_document_parser final : public knowledge_document_parser {
 public:
   explicit file_knowledge_document_parser(
-    std::vector<std::string> extensions = {
-      ".csv", ".htm", ".html", ".json", ".md", ".markdown", ".rtf", ".txt"
-    },
+    std::vector<std::string>
+      extensions = { ".csv", ".htm", ".html", ".json", ".md", ".markdown", ".rtf", ".txt" },
     file_knowledge_loader loader = {})
       : extensions_(std::move(extensions)), loader_(std::move(loader)) {
     normalize_extensions();
@@ -67,11 +66,9 @@ private:
 
 class tika_knowledge_document_parser final : public knowledge_document_parser {
 public:
-  explicit tika_knowledge_document_parser(
-    tika_knowledge_loader loader,
-    std::vector<std::string> extensions = {
-      ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"
-    })
+  explicit tika_knowledge_document_parser(tika_knowledge_loader loader,
+    std::vector<std::string>
+      extensions = { ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx" })
       : loader_(std::move(loader)), extensions_(std::move(extensions)) {
     for (auto& extension : extensions_) {
       std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char ch) {

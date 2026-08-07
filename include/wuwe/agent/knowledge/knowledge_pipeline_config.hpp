@@ -20,6 +20,20 @@
 
 namespace wuwe::agent::knowledge {
 
+inline knowledge_acl_mode knowledge_acl_mode_from_string(const std::string& value) {
+  if (value == "permissive")
+    return knowledge_acl_mode::permissive;
+  if (value == "public_only")
+    return knowledge_acl_mode::public_only;
+  if (value == "tenant_required")
+    return knowledge_acl_mode::tenant_required;
+  if (value == "user_required")
+    return knowledge_acl_mode::user_required;
+  if (value == "deny_if_unlabeled")
+    return knowledge_acl_mode::deny_if_unlabeled;
+  throw std::invalid_argument("invalid knowledge ACL mode: " + value);
+}
+
 inline chunking_policy chunking_policy_from_json(const nlohmann::json& json) {
   chunking_policy policy;
   if (!json.is_object()) {
@@ -35,8 +49,7 @@ inline chunking_policy chunking_policy_from_json(const nlohmann::json& json) {
     json.value("prefer_paragraph_boundaries", policy.prefer_paragraph_boundaries);
   policy.protect_markdown_code_fences =
     json.value("protect_markdown_code_fences", policy.protect_markdown_code_fences);
-  policy.respect_code_symbols =
-    json.value("respect_code_symbols", policy.respect_code_symbols);
+  policy.respect_code_symbols = json.value("respect_code_symbols", policy.respect_code_symbols);
   policy.include_document_summary_chunk =
     json.value("include_document_summary_chunk", policy.include_document_summary_chunk);
   policy.document_summary_chars =
@@ -55,6 +68,11 @@ inline knowledge_policy knowledge_policy_from_json(const nlohmann::json& json) {
   policy.include_citations = json.value("include_citations", policy.include_citations);
   policy.inject_as_system_message =
     json.value("inject_as_system_message", policy.inject_as_system_message);
+  policy.allow_untrusted_system_message =
+    json.value("allow_untrusted_system_message", policy.allow_untrusted_system_message);
+  if (json.contains("acl_mode")) {
+    policy.access.mode = knowledge_acl_mode_from_string(json.at("acl_mode").get<std::string>());
+  }
   policy.surrounding_chunks_before =
     json.value("surrounding_chunks_before", policy.surrounding_chunks_before);
   policy.surrounding_chunks_after =
@@ -81,8 +99,7 @@ inline qdrant_knowledge_index_config qdrant_config_from_json(const nlohmann::jso
 }
 
 inline remote_vector_knowledge_index_config remote_vector_config_from_json(
-  const nlohmann::json& json,
-  std::string provider) {
+  const nlohmann::json& json, std::string provider) {
   remote_vector_knowledge_index_config config;
   config.base_url = json.value("base_url", config.base_url);
   config.namespace_name = json.value("namespace", config.namespace_name);
@@ -92,8 +109,7 @@ inline remote_vector_knowledge_index_config remote_vector_config_from_json(
   return config;
 }
 
-inline knowledge_pipeline build_knowledge_pipeline_from_json(
-  const nlohmann::json& config,
+inline knowledge_pipeline build_knowledge_pipeline_from_json(const nlohmann::json& config,
   std::shared_ptr<::wuwe::agent::memory::embedding_model> embedding_model) {
   if (!config.is_object()) {
     throw std::invalid_argument("knowledge pipeline config must be a JSON object");
@@ -126,13 +142,11 @@ inline knowledge_pipeline build_knowledge_pipeline_from_json(
   else if (backend == "qdrant") {
     const auto store_path = config.value("store_path", std::string("knowledge-store.jsonl"));
     builder.qdrant_index(
-      store_path,
-      qdrant_config_from_json(config.value("qdrant", nlohmann::json::object())));
+      store_path, qdrant_config_from_json(config.value("qdrant", nlohmann::json::object())));
   }
   else if (backend == "pgvector" || backend == "opensearch" || backend == "milvus") {
     auto remote_config = remote_vector_config_from_json(
-      config.value("remote_vector", nlohmann::json::object()),
-      backend);
+      config.value("remote_vector", nlohmann::json::object()), backend);
     std::shared_ptr<knowledge_index> index;
     if (backend == "pgvector") {
       index = std::make_shared<pgvector_knowledge_index>(std::move(remote_config));
@@ -181,13 +195,12 @@ inline knowledge_pipeline build_knowledge_pipeline_from_json(
     const auto endpoint = rewrite.value("endpoint_url", std::string {});
     if (!endpoint.empty()) {
       pipeline.retriever().set_query_rewriter(
-        std::make_shared<http_knowledge_query_rewriter>(
-          http_knowledge_query_rewriter_config {
-            .endpoint_url = endpoint,
-            .api_key = rewrite.value("api_key", std::string {}),
-            .timeout_ms = rewrite.value("timeout_ms", 30000),
-            .max_rewrites = rewrite.value("max_rewrites", std::size_t { 4 }),
-          }));
+        std::make_shared<http_knowledge_query_rewriter>(http_knowledge_query_rewriter_config {
+          .endpoint_url = endpoint,
+          .api_key = rewrite.value("api_key", std::string {}),
+          .timeout_ms = rewrite.value("timeout_ms", 30000),
+          .max_rewrites = rewrite.value("max_rewrites", std::size_t { 4 }),
+        }));
     }
   }
 

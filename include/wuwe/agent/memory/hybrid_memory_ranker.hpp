@@ -29,8 +29,7 @@ public:
   }
 
   std::vector<memory_record> rank(
-    const memory_query& query,
-    std::vector<memory_record> candidates) const override {
+    const memory_query& query, std::vector<memory_record> candidates) const override {
     const auto now = std::chrono::system_clock::now();
 
     std::erase_if(candidates, [&](const memory_record& record) {
@@ -60,9 +59,7 @@ public:
   }
 
 private:
-  double final_score(
-    const memory_query& query,
-    const memory_record& record,
+  double final_score(const memory_query& query, const memory_record& record,
     std::chrono::system_clock::time_point now) const {
     return policy_.vector_weight * vector_score(record) +
            policy_.lexical_weight * lexical_score(query, record) +
@@ -98,8 +95,7 @@ private:
   }
 
   double recency_score(
-    const memory_record& record,
-    std::chrono::system_clock::time_point now) const {
+    const memory_record& record, std::chrono::system_clock::time_point now) const {
     if (record.updated_at == std::chrono::system_clock::time_point {}) {
       return 0.0;
     }
@@ -108,8 +104,7 @@ private:
     }
 
     const auto age = now > record.updated_at ? now - record.updated_at : std::chrono::seconds(0);
-    const auto age_seconds =
-      std::chrono::duration_cast<std::chrono::duration<double>>(age).count();
+    const auto age_seconds = std::chrono::duration_cast<std::chrono::duration<double>>(age).count();
     const auto half_life_seconds =
       std::chrono::duration_cast<std::chrono::duration<double>>(policy_.recency_half_life).count();
     return std::pow(0.5, age_seconds / half_life_seconds);

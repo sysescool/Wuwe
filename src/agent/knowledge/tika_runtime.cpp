@@ -191,9 +191,9 @@ struct tika_runtime_process::impl {
     startup.cb = sizeof(startup);
     PROCESS_INFORMATION info {};
     auto command_line = build_windows_command_line(config);
-    const auto working_directory = config.runtime_dir.empty() ? std::string {} : config.runtime_dir.string();
-    const auto created = CreateProcessA(
-      nullptr,
+    const auto working_directory =
+      config.runtime_dir.empty() ? std::string {} : config.runtime_dir.string();
+    const auto created = CreateProcessA(nullptr,
       command_line.data(),
       nullptr,
       nullptr,
@@ -215,8 +215,7 @@ struct tika_runtime_process::impl {
       throw std::runtime_error("failed to fork bundled Tika runtime");
     }
     if (child == 0) {
-      if (!config.runtime_dir.empty() &&
-          chdir(config.runtime_dir.string().c_str()) != 0) {
+      if (!config.runtime_dir.empty() && chdir(config.runtime_dir.string().c_str()) != 0) {
         _exit(127);
       }
       std::vector<std::string> args {
@@ -339,9 +338,7 @@ tika_runtime_discovery tika_runtime_process::discover(tika_runtime_config config
 }
 
 bool tika_runtime_process::service_available(
-  const std::string& base_url,
-  int timeout_ms,
-  std::shared_ptr<::wuwe::http_client> http) {
+  const std::string& base_url, int timeout_ms, std::shared_ptr<::wuwe::http_client> http) {
   if (!http) {
     http = std::make_shared<::wuwe::default_http_client>();
   }

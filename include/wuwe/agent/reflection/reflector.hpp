@@ -49,10 +49,14 @@ public:
     };
 
     if (options_.reject_empty_output && request.candidate_output.empty()) {
-      add_issue(reflection_severity::error, "empty_output", "candidate output is empty", "retry generation");
+      add_issue(reflection_severity::error,
+        "empty_output",
+        "candidate output is empty",
+        "retry generation");
     }
 
-    if (options_.min_output_chars != 0 && request.candidate_output.size() < options_.min_output_chars) {
+    if (options_.min_output_chars != 0 &&
+        request.candidate_output.size() < options_.min_output_chars) {
       add_issue(reflection_severity::warning,
         "short_output",
         "candidate output is shorter than the minimum length",
@@ -91,18 +95,18 @@ public:
     double score = 1.0;
     for (const auto& issue : issues) {
       switch (issue.severity) {
-      case reflection_severity::info:
-        score -= 0.05;
-        break;
-      case reflection_severity::warning:
-        score -= 0.20;
-        break;
-      case reflection_severity::error:
-        score -= 0.45;
-        break;
-      case reflection_severity::critical:
-        score -= 0.80;
-        break;
+        case reflection_severity::info:
+          score -= 0.05;
+          break;
+        case reflection_severity::warning:
+          score -= 0.20;
+          break;
+        case reflection_severity::error:
+          score -= 0.45;
+          break;
+        case reflection_severity::critical:
+          score -= 0.80;
+          break;
       }
     }
     return (std::max)(0.0, score);
@@ -159,6 +163,7 @@ private:
 struct llm_reflector_options {
   std::string model;
   double temperature { 0.0 };
+  std::string provider;
 };
 
 class llm_reflector final : public reflector {
@@ -170,6 +175,7 @@ public:
   reflection_result reflect(const reflection_request& request) override {
     llm_request llm_request;
     llm_request.model = options_.model;
+    llm_request.provider = options_.provider;
     llm_request.temperature = options_.temperature;
     llm_request.response_format = "json_object";
     llm_request.messages.push_back({
@@ -195,14 +201,18 @@ public:
 private:
   static std::string prompt(const reflection_request& request) {
     std::ostringstream out;
-    out << "Task:\n" << request.task << "\n\n"
+    out << "Task:\n"
+        << request.task << "\n\n"
         << "Subject type: " << request.subject_type << "\n\n"
-        << "Original input:\n" << request.original_input << "\n\n"
-        << "Candidate output:\n" << request.candidate_output << "\n\n";
+        << "Original input:\n"
+        << request.original_input << "\n\n"
+        << "Candidate output:\n"
+        << request.candidate_output << "\n\n";
     if (!request.context.empty()) {
       out << "Context:\n" << request.context << "\n\n";
     }
-    out << "Rubric:\n" << reflection_codec::rubric_to_json(request.rubric).dump() << "\n\n"
+    out << "Rubric:\n"
+        << reflection_codec::rubric_to_json(request.rubric).dump() << "\n\n"
         << "Return schema:\n"
         << "{\"passed\":true,\"score\":1.0,\"recommended_action\":\"pass\","
            "\"issues\":[{\"severity\":\"warning\",\"code\":\"...\",\"message\":\"...\","

@@ -10,6 +10,7 @@
 #include <type_traits>
 #include <utility>
 
+#include <wuwe/agent/orchestration/fan_out.hpp>
 #include <wuwe/agent/orchestration/flow.hpp>
 
 WUWE_NAMESPACE_BEGIN
@@ -227,7 +228,8 @@ auto route(Cases&&... cases) {
   auto tuple = std::make_tuple(std::forward<Cases>(cases)...);
   return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
     return route_step(std::get<last_index>(tuple), std::get<Is>(tuple)...);
-  }(std::make_index_sequence<last_index> {});
+  }
+  (std::make_index_sequence<last_index> {});
 }
 
 template<typename Func>
