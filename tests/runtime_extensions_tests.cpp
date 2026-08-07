@@ -190,6 +190,7 @@ void test_context_budget() {
       .context_window_tokens = 80,
       .reserved_output_tokens = 10,
       .limits = { .tool_results = 1 },
+      .minimum_recent_tool_exchanges = 0,
     });
   require(static_cast<bool>(exchange_result) && exchange_result.request.messages.size() == 1 &&
             exchange_result.request.messages.front().role == "user",
@@ -211,11 +212,74 @@ void test_context_budget() {
       .context_window_tokens = 80,
       .reserved_output_tokens = 10,
       .limits = { .tool_results = 1 },
+      .minimum_recent_tool_exchanges = 0,
     });
   require(static_cast<bool>(multiple_exchange_result) &&
             multiple_exchange_result.report.dropped_messages == 4 &&
             multiple_exchange_result.request.messages.size() == 1,
     "multiple tool exchanges must be removed without double counting");
+
+  const auto structured_latest = nlohmann::json({
+                                                  { "ok", false },
+                                                  { "error",
+                                                    {
+                                                      { "category", "timeout" },
+                                                      { "code", 110 },
+                                                      { "retryable", true },
+                                                    } },
+                                                })
+                                   .dump();
+  llm_request protected_tool_exchange;
+  protected_tool_exchange.messages = {
+    {
+      .role = "assistant",
+      .tool_calls = { { .id = "old-tool", .name = "lookup", .arguments_json = "{}" } },
+    },
+    {
+      .role = "tool",
+      .content = std::string(300, 'o'),
+      .tool_call_id = "old-tool",
+    },
+    {
+      .role = "assistant",
+      .tool_calls = { { .id = "latest-tool", .name = "lookup", .arguments_json = "{}" } },
+    },
+    {
+      .role = "tool",
+      .content = structured_latest,
+      .tool_call_id = "latest-tool",
+    },
+    { .role = "user", .content = "continue" },
+  };
+  auto protected_exchange_result = manager.fit(protected_tool_exchange,
+    {
+      .context_window_tokens = 512,
+      .reserved_output_tokens = 10,
+      .limits = { .tool_results = 160 },
+    });
+  require(
+    protected_exchange_result && protected_exchange_result.report.dropped_messages == 2 &&
+      protected_exchange_result.report.truncated_messages == 0 &&
+      protected_exchange_result.request.messages.size() == 3 &&
+      protected_exchange_result.request.messages.front().tool_calls.front().id == "latest-tool" &&
+      protected_exchange_result.request.messages[1].content == structured_latest &&
+      nlohmann::json::parse(protected_exchange_result.request.messages[1].content)
+          .at("error")
+          .at("category") == "timeout",
+    "context budgeting must drop old tool exchanges atomically while preserving the newest "
+    "structured projection byte-for-byte");
+
+  const auto impossible_exchange_result = manager.fit(protected_tool_exchange,
+    {
+      .context_window_tokens = 512,
+      .reserved_output_tokens = 10,
+      .limits = { .tool_results = 1 },
+    });
+  require(!impossible_exchange_result &&
+            impossible_exchange_result.report.truncated_messages == 0 &&
+            impossible_exchange_result.request.messages[3].content == structured_latest,
+    "a protected recent Tool exchange must fail a contradictory component limit instead of "
+    "corrupting its model-facing projection");
 }
 
 void test_context_budget_runner_integration() {

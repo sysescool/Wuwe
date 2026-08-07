@@ -30,6 +30,7 @@
 #include <wuwe/agent/learning/learning.hpp>
 #include <wuwe/agent/llm/anthropic_llm_client.h>
 #include <wuwe/agent/llm/context_budget.hpp>
+#include <wuwe/agent/llm/context_token_estimator.hpp>
 #include <wuwe/agent/llm/dispatching_llm_client.hpp>
 #include <wuwe/agent/llm/gemini_llm_client.h>
 #include <wuwe/agent/llm/llm_agent_runner.h>
@@ -43,6 +44,9 @@
 #include <wuwe/agent/llm/openrouter_llm_client.h>
 #include <wuwe/agent/llm/resilient_llm_client.hpp>
 #include <wuwe/agent/llm/scripted_llm_client.hpp>
+#include <wuwe/agent/llm/text_token_estimator.hpp>
+#include <wuwe/agent/llm/tool_output_projection.hpp>
+#include <wuwe/agent/llm/tool_output_projection_types.hpp>
 #include <wuwe/agent/mcp/mcp.hpp>
 #include <wuwe/agent/mcp/skills_adapter.hpp>
 #include <wuwe/agent/memory/memory.hpp>

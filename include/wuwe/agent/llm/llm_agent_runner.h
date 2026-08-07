@@ -28,10 +28,12 @@
 #include <wuwe/agent/llm/llm_client.h>
 #include <wuwe/agent/llm/llm_error.h>
 #include <wuwe/agent/llm/llm_usage.hpp>
+#include <wuwe/agent/llm/tool_output_projection.hpp>
 #include <wuwe/agent/memory/memory_context.hpp>
 #include <wuwe/agent/runtime/runtime.hpp>
 #include <wuwe/agent/tools/json_schema.hpp>
 #include <wuwe/agent/tools/tool.hpp>
+#include <wuwe/common/sha256.hpp>
 #include <wuwe/common/wuwe_fwd.h>
 
 WUWE_NAMESPACE_BEGIN
@@ -53,6 +55,7 @@ enum class llm_agent_event_type {
   agent_completed,
   agent_failed,
   agent_cancelled,
+  tool_output_truncated,
 };
 
 enum class llm_tool_authorization_kind {
@@ -76,6 +79,7 @@ struct llm_agent_event {
   const llm_tool_call* tool_call {};
   const llm_tool_result* tool_result {};
   const llm_response* response {};
+  const agent::llm::tool_output_projection_report* tool_output_projection {};
 };
 
 struct llm_agent_callbacks {
@@ -99,6 +103,8 @@ struct llm_agent_callbacks {
   std::function<void(const llm_request&, const llm_response&)> on_model_result;
   std::function<void(const agent::llm::context_budget_report&)> on_context_budget;
   std::function<llm_tool_authorization(const agent::tools::tool_invocation&)> authorize_tool_call;
+  std::function<void(const llm_tool_call&, const agent::llm::tool_output_projection_report&)>
+    on_tool_output_projection;
 };
 
 struct llm_agent_run_options {
@@ -116,6 +122,7 @@ struct llm_agent_run_options {
   bool persist_request_messages { true };
   bool persist_assistant_messages { true };
   bool persist_tool_messages { true };
+  std::optional<agent::llm::tool_output_projection_policy> tool_output_projection;
 };
 
 class llm_agent_run {
@@ -257,6 +264,12 @@ public:
     if (!options.pricing) {
       options.pricing = continuation.pricing;
     }
+    if (options.tool_output_projection) {
+      continuation.tool_output_projection = agent::llm::tighten_tool_output_projection_policy(
+        continuation.tool_output_projection, *options.tool_output_projection);
+    }
+    options.tool_output_projection = continuation.tool_output_projection;
+    validate_run_options(options);
     const auto claim =
       options.runtime->claim_approved_continuation(run_id, expected_revision, continuation_token);
     if (!claim) {
@@ -415,6 +428,9 @@ private:
 
   llm_response complete_impl(llm_request request, llm_agent_run_options options,
     std::stop_token client_stop_token, const std::function<bool()>& is_cancelled) const {
+    if (!options.tool_output_projection) {
+      options.tool_output_projection = agent::llm::tool_output_projection_policy {};
+    }
     validate_run_options(options);
     if (tools_) {
       request.tools = tools_();
@@ -546,7 +562,7 @@ private:
     llm_usage accumulated_usage, llm_agent_run_options options, std::stop_token client_stop_token,
     const std::function<bool()>& is_cancelled, durable_run_state& durable) const {
     llm_tool_call last_tool_call;
-    llm_tool_result last_tool_result;
+    std::string last_tool_projection;
     std::set<std::string> seen_tool_call_ids;
     const bool use_streaming = should_stream(options.callbacks);
 
@@ -580,7 +596,7 @@ private:
         response.metadata["last_tool_call"] = last_tool_call.name;
         response.metadata["last_tool_call_id"] = last_tool_call.id;
         response.metadata["last_tool_arguments"] = last_tool_call.arguments_json;
-        response.metadata["last_tool_result"] = last_tool_result.content;
+        response.metadata["last_tool_result"] = last_tool_projection;
         response.metadata["last_model_response"] = response.content;
         response.content = "Agent tool round budget exceeded before producing a final answer.";
         emit_error(options.callbacks, response);
@@ -659,7 +675,7 @@ private:
             is_cancelled,
             durable,
             &last_tool_call,
-            &last_tool_result)) {
+            &last_tool_projection)) {
         terminal->usage = accumulated_usage;
         return finalize_durable_run(std::move(*terminal), durable);
       }
@@ -690,7 +706,7 @@ private:
     const std::vector<std::string>& approved_tool_call_ids, const llm_agent_run_options& options,
     std::stop_token client_stop_token, const std::function<bool()>& is_cancelled,
     durable_run_state& durable, llm_tool_call* last_tool_call = nullptr,
-    llm_tool_result* last_tool_result = nullptr) const {
+    std::string* last_tool_projection = nullptr) const {
     if (durable.runtime && !assistant_already_in_request) {
       const auto record = durable.runtime->get(durable.run_id);
       if (!record) {
@@ -711,6 +727,15 @@ private:
       const auto descriptor = descriptor_for(call.name, request);
       if (!descriptor) {
         return denied_tool_response(call, "tool is not registered in the active tool contract");
+      }
+      const auto projection_policy = agent::llm::effective_tool_output_projection_policy(
+        *options.tool_output_projection, descriptor->model_output_projection);
+      const auto projection_validation = agent::llm::check_tool_output_projection_policy(
+        projection_policy, tool_output_estimator(options));
+      if (!projection_validation) {
+        auto failed = tool_output_projection_failure_response(call, projection_validation.error);
+        emit_error(options.callbacks, failed);
+        return failed;
       }
       const agent::tools::tool_invocation invocation {
         .call_id = call.id,
@@ -757,6 +782,7 @@ private:
             .assistant_persisted = assistant_persisted,
             .accumulated_usage = accumulated_usage,
             .pricing = durable.pricing,
+            .tool_output_projection = *options.tool_output_projection,
           }),
           .metadata = authorization.metadata,
         };
@@ -886,13 +912,38 @@ private:
       if (last_tool_call) {
         *last_tool_call = call;
       }
-      if (last_tool_result) {
-        *last_tool_result = tool_result;
-      }
       emit_tool_result(options.callbacks, call, tool_result);
+      const auto projection_policy = agent::llm::effective_tool_output_projection_policy(
+        *options.tool_output_projection, descriptor->model_output_projection);
+      auto projection_result = agent::llm::try_project_tool_output_for_model(
+        tool_result, projection_policy, tool_output_estimator(options));
+      if (!projection_result) {
+        auto failed = tool_output_projection_failure_response(call, projection_result.error);
+        emit_error(options.callbacks, failed);
+        return failed;
+      }
+      auto projection = std::move(projection_result.projection);
+      if (durable.runtime) {
+        auto recording = durable.runtime->record_tool_output_projection(durable.run_id,
+          durable.revision,
+          {
+            .tool_call_id = call.id,
+            .tool_name = call.name,
+            .projected_content_sha256 = common::sha256_hex(projection.content),
+            .report = projection.report,
+          });
+        if (!recording) {
+          return run_state_conflict_response(durable.run_id, recording.revision);
+        }
+        durable.revision = recording.revision;
+      }
+      if (last_tool_projection) {
+        *last_tool_projection = projection.content;
+      }
+      emit_tool_output_projection(options.callbacks, call, projection.report);
       chat_message tool_message {
         .role = "tool",
-        .content = tool_result_for_model(tool_result),
+        .content = projection.content,
         .name = call.name,
         .tool_call_id = call.id,
         .context_source = llm_context_source::tool_result,
@@ -1539,6 +1590,24 @@ private:
     if (options.pricing && !agent::llm::valid_llm_pricing(*options.pricing)) {
       throw std::invalid_argument("agent run pricing is invalid");
     }
+    if (options.tool_output_projection) {
+      const auto validation = agent::llm::check_tool_output_projection_policy(
+        *options.tool_output_projection, tool_output_estimator(options));
+      if (!validation) {
+        throw std::invalid_argument(validation.message.empty()
+                                      ? "agent run tool output projection policy is invalid"
+                                      : validation.message);
+      }
+    }
+  }
+
+  [[nodiscard]] static const agent::llm::context_token_estimator& tool_output_estimator(
+    const llm_agent_run_options& options) {
+    if (options.token_estimator) {
+      return *options.token_estimator;
+    }
+    static const agent::llm::heuristic_context_token_estimator fallback;
+    return fallback;
   }
 
   llm_tool_authorization authorize_tool(
@@ -1638,33 +1707,6 @@ private:
     }
   }
 
-  static std::string tool_result_for_model(const llm_tool_result& result) {
-    if (result.error_code || result.error_category != agent::tools::tool_error_category::none) {
-      return nlohmann::json(
-        {
-          { "ok", false },
-          { "error",
-            {
-              { "category", agent::tools::to_string(result.error_category) },
-              { "code", result.error_code.value() },
-              { "message", result.content.empty() ? result.error_code.message() : result.content },
-              { "retryable", result.retryable },
-            } },
-        })
-        .dump();
-    }
-    if (!result.data.is_null() && !result.data.empty()) {
-      return nlohmann::json({
-                              { "ok", true },
-                              { "message", result.content },
-                              { "data", result.data },
-                              { "artifacts", result.artifacts },
-                            })
-        .dump();
-    }
-    return result.content;
-  }
-
   static llm_response denied_tool_response(const llm_tool_call& call, std::string reason) {
     llm_response response {
       .content = reason.empty() ? "Tool call denied." : std::move(reason),
@@ -1673,6 +1715,19 @@ private:
     };
     response.metadata["tool_call_id"] = call.id;
     response.metadata["tool_name"] = call.name;
+    return response;
+  }
+
+  static llm_response tool_output_projection_failure_response(
+    const llm_tool_call& call, agent::llm::tool_output_projection_error error) {
+    llm_response response {
+      .content = "Tool output could not be projected within the configured model-visible limits.",
+      .error_code = agent::make_error_code(agent::llm_error_code::tool_output_projection_failed),
+      .stop_reason = "tool_output_projection_failed",
+    };
+    response.metadata["tool_call_id"] = call.id;
+    response.metadata["tool_name"] = call.name;
+    response.metadata["tool_output_projection_error"] = std::string(agent::llm::to_string(error));
     return response;
   }
 
@@ -1950,6 +2005,23 @@ private:
     if (callbacks.on_tool_result) {
       callbacks.on_tool_result(call, result);
     }
+  }
+
+  static void emit_tool_output_projection(const llm_agent_callbacks& callbacks,
+    const llm_tool_call& call, const agent::llm::tool_output_projection_report& report) {
+    if (callbacks.on_tool_output_projection) {
+      callbacks.on_tool_output_projection(call, report);
+    }
+    if (!report.truncated) {
+      return;
+    }
+    emit_agent_event(callbacks,
+      {
+        .type = llm_agent_event_type::tool_output_truncated,
+        .message = std::string(agent::llm::to_string(report.limiting_factor)),
+        .tool_call = &call,
+        .tool_output_projection = &report,
+      });
   }
 
   static void emit_done(const llm_agent_callbacks& callbacks, const llm_response& response) {

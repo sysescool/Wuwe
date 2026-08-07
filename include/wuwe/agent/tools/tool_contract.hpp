@@ -21,6 +21,7 @@
 #include <wuwe/agent/capability/capability.hpp>
 #include <wuwe/agent/core/execution_context.hpp>
 #include <wuwe/agent/llm/llm_types.h>
+#include <wuwe/agent/llm/tool_output_projection_types.hpp>
 
 namespace wuwe::agent::tools {
 
@@ -213,6 +214,7 @@ struct tool_descriptor {
   tool_heartbeat_policy heartbeat;
   std::vector<tool_capability_requirement> capabilities;
   std::map<std::string, std::string> metadata;
+  agent::llm::tool_output_projection_constraints model_output_projection;
 
   [[nodiscard]] llm_tool model_tool() const {
     validate_tool_descriptor(*this);
@@ -284,6 +286,16 @@ inline void validate_tool_descriptor(const tool_descriptor& value) {
   if (value.heartbeat.timeout < std::chrono::milliseconds::zero() ||
       value.heartbeat.minimum_interval < std::chrono::milliseconds::zero()) {
     throw std::invalid_argument("tool heartbeat policy is invalid");
+  }
+  if (value.model_output_projection.max_bytes &&
+      *value.model_output_projection.max_bytes <
+        agent::llm::minimum_tool_output_projection_max_bytes) {
+    throw std::invalid_argument("tool model-output byte limit is below the supported minimum");
+  }
+  if (value.model_output_projection.max_tokens &&
+      *value.model_output_projection.max_tokens <
+        agent::llm::minimum_tool_output_projection_max_tokens) {
+    throw std::invalid_argument("tool model-output token limit is below the supported minimum");
   }
   std::set<std::string> capability_names;
   for (const auto& requirement : value.capabilities) {
@@ -380,7 +392,7 @@ inline nlohmann::json tool_descriptor_to_json(const tool_descriptor& value) {
     retryable_categories.push_back(to_string(category));
   }
   return {
-    { "schema_version", 2 },
+    { "schema_version", 3 },
     { "name", value.name },
     { "version", value.version },
     { "description", value.description },
@@ -418,6 +430,17 @@ inline nlohmann::json tool_descriptor_to_json(const tool_descriptor& value) {
         { "minimum_interval_ms", value.heartbeat.minimum_interval.count() },
       } },
     { "capabilities", std::move(capabilities) },
+    { "model_output_projection",
+      {
+        { "max_bytes",
+          value.model_output_projection.max_bytes
+            ? nlohmann::json(*value.model_output_projection.max_bytes)
+            : nlohmann::json(nullptr) },
+        { "max_tokens",
+          value.model_output_projection.max_tokens
+            ? nlohmann::json(*value.model_output_projection.max_tokens)
+            : nlohmann::json(nullptr) },
+      } },
     { "metadata", value.metadata },
   };
 }

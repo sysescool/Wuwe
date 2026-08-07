@@ -69,6 +69,8 @@ public:
         return "Invalid LLM request";
       case llm_error_code::unsupported_capability:
         return "LLM provider does not support a requested capability";
+      case llm_error_code::tool_output_projection_failed:
+        return "Tool output projection failed";
       default:
         return "Unknown LLM error";
     }

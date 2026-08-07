@@ -79,6 +79,19 @@ const auto response = runner.complete("Inspect the input.", std::move(options));
 
 The callback surface includes normalized stream events, content deltas, provider-supplied reasoning summaries, tool lifecycle events, completion, errors, and cancellation. `prepare_model_request`, `prepare_tool_call`, and `prepare_tool_result` provide explicit transformation or rejection points before a request or result advances through the loop; `on_model_result` observes every completed provider call without forcing streaming. Wuwe does not invent reasoning text when a provider does not supply it.
 
+`on_tool_result` observes the complete validated tool outcome. The separate
+`on_tool_output_projection` callback reports the bounded payload constructed for
+the model, and `tool_output_truncated` is emitted on the native event stream only
+when a hard byte or estimated-token ceiling was exceeded. Projection happens
+after host preparation, output-schema validation, resource-version extraction,
+and durable admission, so it cannot erase data required by those boundaries.
+Global and per-tool projection policies are preflighted before tool dispatch. If
+an estimator or serializer nevertheless fails on a specific admitted result, the
+runner returns `llm_error_code::tool_output_projection_failed`, emits the normal
+error callback, and does not issue another model request. Arbitrary estimator
+exception text is not copied into model-visible content or durable response
+metadata.
+
 `llm_agent_run_options::persist_request_messages`, `persist_assistant_messages`, and `persist_tool_messages` default to `true`. Disable the relevant writes when a higher-level boundary must validate or select an execution before committing it to Memory. Reasoning does this automatically for isolated Best-of-N candidates, and Guarded Reasoning delays assistant persistence until the accepted or modified final output is available.
 
 `run_async()` returns an `llm_agent_run` with `request_stop()`, `wait()`, and `get()`. Cancellation is cooperative across the runner, HTTP transport, and tools that honor the supplied stop token.
@@ -176,6 +189,14 @@ timeout. Store writes require an expected revision. Every applied mutation advan
 the revision and appends one event with the same monotonic sequence, so a host can
 resume event delivery with `list_events(run_id, after_sequence)`.
 
+Durable Tool handling keeps the admitted raw `tool_outcome` separate from the
+model-facing projection audit. `tool_output_projections` stores one idempotent
+record per Tool call containing the projected-content SHA-256, projection report,
+effective byte/token ceilings, and timestamp. It does not duplicate the projected
+body. The `tool_output_projection_recorded` event exposes the same digest and
+counts, allowing hosts to link raw execution evidence to the bounded representation
+without creating another sensitive-content copy.
+
 ```cpp
 namespace runtime = wuwe::agent::runtime;
 
@@ -203,6 +224,9 @@ usage accumulated across every model call in the tool loop. Terminal durable
 results persist the five usage counters and the full cost breakdown. Approval
 continuations also persist accumulated usage and pricing, so a resumed process does
 not lose accounting state when the host omits pricing from the resume options.
+They also persist the resolved Tool-output projection policy. A resume override
+may tighten either ceiling but cannot widen the policy that governed the original
+run.
 
 ## Cross-request approval continuation
 
@@ -244,7 +268,9 @@ the supplied idempotency key because a remote side effect can race with takeover
 Tool outcomes are admitted to the run before the loop advances. Re-admitting the
 same call ID and idempotency key returns the original outcome without a second
 event, including when the retry carries an old revision. On recovery, the runner
-reuses admitted outcomes. This prevents duplicate result submission; it does not
+reuses admitted outcomes. Durable admission stores the complete outcome; the
+model-visible projection is derived afterward and is not substituted into the
+audit/idempotency record. This prevents duplicate result submission; it does not
 make an arbitrary external side effect exactly-once across a crash between the
 effect and admission. Effectful providers should honor
 `tool_invocation::idempotency_key` or implement their own transactional boundary.

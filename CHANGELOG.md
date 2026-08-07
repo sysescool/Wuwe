@@ -18,6 +18,11 @@ Wuwe 1.0.0 is the first stable public release. It replaces the unreleased
   independent context-budget accounting.
 - Durable agent runs with persistence, recovery, approval, cancellation,
   scheduling, lifecycle events, and host integration.
+- Hard byte and estimated-token ceilings for model-visible Tool output, with
+  UTF-8-safe previews, structured error preservation, per-tool tightening,
+  typed preflight/failure results, lightweight estimator and projection headers,
+  observability, Memory isolation, atomic Context Budget handling for Tool
+  exchanges, digest-only durable projection audits, and durable continuation policy.
 - Resource-aware LLM routing with capability checks, token budgets, cost
   budgets, usage accounting, and provider dispatch.
 - Planning, reflection, guarded Best-of-N reasoning, typed orchestration,

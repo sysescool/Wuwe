@@ -10,6 +10,7 @@
 
 #include <wuwe/agent/llm/llm_capabilities.hpp>
 #include <wuwe/agent/llm/llm_usage.hpp>
+#include <wuwe/agent/llm/tool_output_projection.hpp>
 
 namespace wuwe::agent::runtime {
 
@@ -21,6 +22,7 @@ struct llm_tool_continuation {
   bool assistant_persisted { false };
   llm_usage accumulated_usage;
   std::optional<agent::llm::llm_pricing> pricing;
+  agent::llm::tool_output_projection_policy tool_output_projection;
 };
 
 namespace llm_codec {
@@ -191,6 +193,7 @@ inline nlohmann::json request_to_json(const llm_request& value) {
       { "reserved_output_tokens", value.context_budget->reserved_output_tokens },
       { "minimum_recent_conversation_messages",
         value.context_budget->minimum_recent_conversation_messages },
+      { "minimum_recent_tool_exchanges", value.context_budget->minimum_recent_tool_exchanges },
       { "overflow", std::string(to_string(value.context_budget->overflow)) },
       { "allow_system_truncation", value.context_budget->allow_system_truncation },
       { "limits",
@@ -286,6 +289,8 @@ inline llm_request request_from_json(const nlohmann::json& value) {
       },
       .overflow = overflow,
       .allow_system_truncation = encoded.value("allow_system_truncation", false),
+      .minimum_recent_tool_exchanges =
+        encoded.value("minimum_recent_tool_exchanges", std::size_t { 1 }),
     };
   }
   if (value.contains("tool_choice") && !value.at("tool_choice").is_null()) {
@@ -384,6 +389,25 @@ inline agent::llm::llm_pricing pricing_from_json(const nlohmann::json& value) {
   return pricing;
 }
 
+inline nlohmann::json tool_output_projection_to_json(
+  const agent::llm::tool_output_projection_policy& value) {
+  agent::llm::validate_tool_output_projection_policy(value);
+  return {
+    { "max_bytes", value.max_bytes },
+    { "max_tokens", value.max_tokens },
+  };
+}
+
+inline agent::llm::tool_output_projection_policy tool_output_projection_from_json(
+  const nlohmann::json& value) {
+  agent::llm::tool_output_projection_policy policy {
+    .max_bytes = value.value("max_bytes", agent::llm::default_tool_output_projection_max_bytes),
+    .max_tokens = value.value("max_tokens", agent::llm::default_tool_output_projection_max_tokens),
+  };
+  agent::llm::validate_tool_output_projection_policy(policy);
+  return policy;
+}
+
 } // namespace llm_codec
 
 inline nlohmann::json llm_continuation_to_json(const llm_tool_continuation& value) {
@@ -392,7 +416,7 @@ inline nlohmann::json llm_continuation_to_json(const llm_tool_continuation& valu
     pending.push_back(llm_codec::tool_call_to_json(call));
   }
   nlohmann::json output {
-    { "schema_version", 1 },
+    { "schema_version", 2 },
     { "kind", "llm_tool_loop" },
     { "request", llm_codec::request_to_json(value.request) },
     { "pending_calls", std::move(pending) },
@@ -403,11 +427,14 @@ inline nlohmann::json llm_continuation_to_json(const llm_tool_continuation& valu
   };
   output["pricing"] =
     value.pricing ? llm_codec::pricing_to_json(*value.pricing) : nlohmann::json(nullptr);
+  output["tool_output_projection"] =
+    llm_codec::tool_output_projection_to_json(value.tool_output_projection);
   return output;
 }
 
 inline llm_tool_continuation llm_continuation_from_json(const nlohmann::json& value) {
-  if (value.value("schema_version", 0) != 1 ||
+  const auto schema_version = value.value("schema_version", 0);
+  if ((schema_version != 1 && schema_version != 2) ||
       value.value("kind", std::string {}) != "llm_tool_loop") {
     throw std::invalid_argument("unsupported LLM continuation payload");
   }
@@ -425,6 +452,11 @@ inline llm_tool_continuation llm_continuation_from_json(const nlohmann::json& va
     llm_codec::usage_from_json(value.value("accumulated_usage", nlohmann::json::object()));
   if (value.contains("pricing") && !value.at("pricing").is_null()) {
     continuation.pricing = llm_codec::pricing_from_json(value.at("pricing"));
+  }
+  if (schema_version >= 2 && value.contains("tool_output_projection") &&
+      !value.at("tool_output_projection").is_null()) {
+    continuation.tool_output_projection =
+      llm_codec::tool_output_projection_from_json(value.at("tool_output_projection"));
   }
   if (continuation.used_tool_rounds < 0) {
     throw std::invalid_argument("persisted LLM continuation has negative tool rounds");

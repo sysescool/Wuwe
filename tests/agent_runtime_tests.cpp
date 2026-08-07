@@ -16,6 +16,7 @@
 #include <wuwe/agent/llm/openrouter_llm_client.h>
 #include <wuwe/agent/tools/tool.hpp>
 #include <wuwe/common/print.h>
+#include <wuwe/common/sha256.hpp>
 #include <wuwe/net/http_client.h>
 #include <wuwe/net/http_status_code.h>
 #include <wuwe/net/sse_event_parser.h>
@@ -62,7 +63,56 @@ struct shout_text {
   }
 };
 
+inline std::string large_output_payload() {
+  return "HEAD-" + std::string(5'000, 'x') + "-TAIL";
+}
+
+struct large_output {
+  static constexpr std::string_view description = "Return a deliberately large result.";
+
+  std::string invoke() const {
+    return large_output_payload();
+  }
+};
+
+struct invalid_large_output {
+  static constexpr std::string_view description = "Return a contract-invalid large result.";
+
+  std::string invoke() const {
+    return std::string(5'000, 'x');
+  }
+};
+
 } // namespace agent_runtime_test_tools
+
+namespace wuwe {
+
+template<>
+struct tool_contract<agent_runtime_test_tools::large_output> {
+  static agent::tools::tool_descriptor descriptor() {
+    auto value = agent::tools::descriptor_from_llm_tool(
+      make_llm_tool<agent_runtime_test_tools::large_output>());
+    value.model_output_projection = { .max_bytes = 256, .max_tokens = 1'000 };
+    return value;
+  }
+};
+
+template<>
+struct tool_contract<agent_runtime_test_tools::invalid_large_output> {
+  static agent::tools::tool_descriptor descriptor() {
+    auto value = agent::tools::descriptor_from_llm_tool(
+      make_llm_tool<agent_runtime_test_tools::invalid_large_output>());
+    value.output_schema = {
+      { "type", "object" },
+      { "required", { "result" } },
+      { "properties", { { "result", { { "type", "string" } } } } },
+    };
+    value.model_output_projection = { .max_bytes = 256, .max_tokens = 1'000 };
+    return value;
+  }
+};
+
+} // namespace wuwe
 
 namespace {
 
@@ -112,6 +162,65 @@ public:
   int calls { 0 };
   bool saw_stop_possible { false };
   std::vector<llm_request> requests;
+};
+
+class named_tool_call_client final : public llm_client {
+public:
+  explicit named_tool_call_client(std::string tool_name) : tool_name_(std::move(tool_name)) {
+  }
+
+  llm_response complete(const llm_request& request) override {
+    requests.push_back(request);
+    if (requests.size() == 1) {
+      return {
+        .tool_calls = { {
+          .id = "projection-call",
+          .name = tool_name_,
+          .arguments_json = "{}",
+        } },
+      };
+    }
+    return { .content = "projection observed" };
+  }
+
+  std::vector<llm_request> requests;
+
+private:
+  std::string tool_name_;
+};
+
+class result_selective_throwing_estimator final : public agent::llm::context_token_estimator {
+public:
+  std::size_t estimate_text(std::string_view text) const override {
+    if (text.find("from tool") != std::string_view::npos) {
+      throw std::runtime_error("tool-result tokenizer unavailable");
+    }
+    return fallback_.estimate_text(text);
+  }
+
+  std::string truncate_text(
+    std::string_view text, std::size_t token_limit, bool keep_tail) const override {
+    return fallback_.truncate_text(text, token_limit, keep_tail);
+  }
+
+private:
+  agent::llm::heuristic_context_token_estimator fallback_;
+};
+
+class byte_count_context_estimator final : public agent::llm::context_token_estimator {
+public:
+  std::size_t estimate_text(std::string_view text) const override {
+    return text.size();
+  }
+
+  std::string truncate_text(
+    std::string_view text, std::size_t token_limit, bool keep_tail) const override {
+    if (text.size() <= token_limit) {
+      return std::string(text);
+    }
+    return keep_tail ? std::string(text.substr(text.size() - token_limit))
+                     : std::string(text.substr(0, token_limit));
+  }
 };
 
 class model_callback_client final : public llm_client {
@@ -513,6 +622,193 @@ void test_runner_can_isolate_all_memory_persistence() {
     "memory isolation should not alter tool-loop execution");
   require(memory.list().empty(),
     "request, assistant, and tool persistence can be disabled as one isolation boundary");
+}
+
+void test_runner_projects_tool_output_only_at_the_model_boundary() {
+  named_tool_call_client client("large_output");
+  auto provider = std::make_shared<tool_provider<large_output>>();
+  agent::memory::memory_context memory;
+  memory.set_scope({ .conversation_id = "projected-tool-output" });
+  llm_agent_runner runner(client, provider, &memory);
+  auto store = std::make_shared<agent::runtime::in_memory_agent_run_store>();
+  auto durable = std::make_shared<agent::runtime::agent_run_runtime>(store);
+
+  std::string raw_callback_content;
+  agent::llm::tool_output_projection_report projection_report;
+  int projection_callbacks = 0;
+  int truncation_events = 0;
+  llm_agent_run_options options;
+  options.context.run_id = "projected-tool-output-run";
+  options.runtime = durable;
+  options.tool_output_projection =
+    agent::llm::tool_output_projection_policy { .max_bytes = 1'024, .max_tokens = 1'000 };
+  options.callbacks.on_tool_result = [&](const llm_tool_call&, const llm_tool_result& result) {
+    raw_callback_content = result.content;
+  };
+  options.callbacks.on_tool_output_projection =
+    [&](const llm_tool_call&, const agent::llm::tool_output_projection_report& report) {
+      ++projection_callbacks;
+      projection_report = report;
+    };
+  options.callbacks.on_event = [&](const llm_agent_event& event) {
+    if (event.type == llm_agent_event_type::tool_output_truncated) {
+      ++truncation_events;
+      require(event.tool_output_projection && event.tool_output_projection->truncated,
+        "truncation events must carry their projection report during the callback");
+    }
+  };
+
+  const auto response = runner.complete("return the large output", std::move(options));
+  require(!response.error_code && response.content == "projection observed",
+    "tool projection must not disturb the normal agent loop");
+  require(raw_callback_content == large_output_payload(),
+    "raw tool-result callbacks must retain the full unprojected outcome");
+  require(projection_callbacks == 1 && truncation_events == 1 && projection_report.truncated &&
+            projection_report.max_bytes == 256,
+    "the tool descriptor must tighten the runner ceiling and emit one observable truncation");
+  require(client.requests.size() == 2,
+    "the model must receive a follow-up request after the projected result");
+  const auto tool_message = std::find_if(client.requests[1].messages.begin(),
+    client.requests[1].messages.end(),
+    [](const chat_message& message) { return message.role == "tool"; });
+  require(tool_message != client.requests[1].messages.end() &&
+            tool_message->content.size() <= 256 &&
+            tool_message->content.find("Warning: tool output truncated") != std::string::npos &&
+            tool_message->content != raw_callback_content,
+    "only the bounded projection may cross the model-facing Tool-message boundary");
+
+  const auto records = memory.list();
+  const auto memory_tool_result =
+    std::find_if(records.begin(), records.end(), [](const auto& record) {
+      const auto role = record.metadata.find("message_role");
+      return role != record.metadata.end() && role->second == "tool";
+    });
+  require(
+    memory_tool_result != records.end() && memory_tool_result->content == tool_message->content,
+    "Memory must observe the exact projected Tool message");
+  const auto durable_record = durable->get("projected-tool-output-run");
+  require(
+    durable_record &&
+      durable_record->admitted_tool_results.at("projection-call").outcome.content ==
+        large_output_payload() &&
+      durable_record->tool_output_projections.at("projection-call").projected_content_sha256 ==
+        common::sha256_hex(tool_message->content) &&
+      durable_record->tool_output_projections.at("projection-call").report.max_bytes == 256,
+    "durable state must link the complete raw outcome to a digest-only model projection audit");
+}
+
+void test_runner_reports_unchanged_projection_without_a_truncation_event() {
+  tool_call_client client;
+  auto provider = std::make_shared<tool_provider<echo_text>>();
+  llm_agent_runner runner(client, provider);
+
+  int projection_callbacks = 0;
+  int truncation_events = 0;
+  llm_agent_run_options options;
+  options.callbacks.on_tool_output_projection =
+    [&](const llm_tool_call&, const agent::llm::tool_output_projection_report& report) {
+      ++projection_callbacks;
+      require(!report.truncated &&
+                report.limiting_factor == agent::llm::tool_output_projection_limit::none,
+        "unchanged outputs must be reported as unchanged");
+    };
+  options.callbacks.on_event = [&](const llm_agent_event& event) {
+    if (event.type == llm_agent_event_type::tool_output_truncated) {
+      ++truncation_events;
+    }
+  };
+
+  const auto response = runner.complete("use the small tool", std::move(options));
+  require(!response.error_code && projection_callbacks == 1 && truncation_events == 0,
+    "every tool result should be observable, but unchanged output must not emit truncation events");
+}
+
+void test_output_schema_validation_precedes_projection() {
+  named_tool_call_client client("invalid_large_output");
+  auto provider = std::make_shared<tool_provider<invalid_large_output>>();
+  llm_agent_runner runner(client, provider);
+
+  llm_tool_result observed_raw_result;
+  llm_agent_run_options options;
+  options.callbacks.prepare_tool_result = [](const llm_tool_call&, llm_tool_result result) {
+    result.data = "not-an-object";
+    return std::optional<llm_tool_result>(std::move(result));
+  };
+  options.callbacks.on_tool_result = [&](const llm_tool_call&, const llm_tool_result& result) {
+    observed_raw_result = result;
+  };
+
+  const auto response = runner.complete("return invalid output", std::move(options));
+  require(!response.error_code && observed_raw_result.error_code == std::errc::protocol_error &&
+            observed_raw_result.error_category == agent::tools::tool_error_category::internal &&
+            observed_raw_result.content == "tool result does not satisfy its output schema",
+    "strict output-schema validation must transform invalid raw outcomes before projection");
+  const auto& follow_up = client.requests.at(1);
+  const auto tool_message = std::find_if(follow_up.messages.begin(),
+    follow_up.messages.end(),
+    [](const chat_message& message) { return message.role == "tool"; });
+  require(tool_message != follow_up.messages.end(),
+    "the validated tool failure must still be returned to the model");
+  const auto projected_error = nlohmann::json::parse(tool_message->content);
+  require(!projected_error.at("ok").get<bool>() &&
+            projected_error.at("error").at("category") == "internal",
+    "projection must encode the post-validation error rather than the invalid success payload");
+}
+
+void test_projection_failure_after_tool_completion_is_a_stable_runner_error() {
+  tool_call_client client;
+  auto provider = std::make_shared<tool_provider<echo_text>>();
+  llm_agent_runner runner(client, provider);
+  auto store = std::make_shared<agent::runtime::in_memory_agent_run_store>();
+  auto durable = std::make_shared<agent::runtime::agent_run_runtime>(store);
+
+  std::string raw_result;
+  std::error_code callback_error;
+  llm_agent_run_options options;
+  options.context.run_id = "projection-failure-run";
+  options.runtime = durable;
+  options.token_estimator = std::make_shared<result_selective_throwing_estimator>();
+  options.callbacks.on_tool_result = [&](const llm_tool_call&, const llm_tool_result& result) {
+    raw_result = result.content;
+  };
+  options.callbacks.on_error = [&](std::error_code error, std::string_view) {
+    callback_error = error;
+  };
+
+  const auto response = runner.complete("use the tool", std::move(options));
+  require(response.error_code == agent::llm_error_code::tool_output_projection_failed &&
+            response.stop_reason == "tool_output_projection_failed" &&
+            response.metadata.at("tool_output_projection_error") == "estimator_failure",
+    "post-tool projection failures must become a stable runner response instead of an exception");
+  require(raw_result == "from tool" && client.calls == 1,
+    "the complete raw result must remain observable without sending an invalid follow-up request");
+  const auto record = durable->get("projection-failure-run");
+  require(record && record->admitted_tool_results.at("call-1").outcome.content == "from tool",
+    "durable admission must retain the raw result before projection failure is finalized");
+  require(record->tool_output_projections.empty(),
+    "failed projections must not create a model-visible projection audit record");
+  require(callback_error == agent::llm_error_code::tool_output_projection_failed,
+    "projection failures must reach the normal runner error callback");
+}
+
+void test_projection_policy_is_preflighted_before_model_and_tool_execution() {
+  tool_call_client client;
+  auto provider = std::make_shared<tool_provider<echo_text>>();
+  llm_agent_runner runner(client, provider);
+
+  llm_agent_run_options options;
+  options.token_estimator = std::make_shared<byte_count_context_estimator>();
+  options.tool_output_projection =
+    agent::llm::tool_output_projection_policy { .max_bytes = 256, .max_tokens = 64 };
+  bool rejected = false;
+  try {
+    (void)runner.complete("do not start", std::move(options));
+  }
+  catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected && client.calls == 0,
+    "projection policies incompatible with the estimator must fail before model or tool work");
 }
 
 void test_runner_reports_tool_round_budget_exhaustion_with_stable_error() {
@@ -1312,6 +1608,16 @@ int main() {
       test_runner_can_defer_assistant_memory_persistence);
     run(
       "runner can isolate all memory persistence", test_runner_can_isolate_all_memory_persistence);
+    run("runner projects tool output at model boundary",
+      test_runner_projects_tool_output_only_at_the_model_boundary);
+    run("runner observes unchanged tool projections",
+      test_runner_reports_unchanged_projection_without_a_truncation_event);
+    run("tool output validation precedes projection",
+      test_output_schema_validation_precedes_projection);
+    run("projection failure is a stable runner error",
+      test_projection_failure_after_tool_completion_is_a_stable_runner_error);
+    run("projection policy preflight precedes execution",
+      test_projection_policy_is_preflighted_before_model_and_tool_execution);
     run("runner reports tool round budget exhaustion with stable error",
       test_runner_reports_tool_round_budget_exhaustion_with_stable_error);
     run("runner pre-cancelled request does not call model",

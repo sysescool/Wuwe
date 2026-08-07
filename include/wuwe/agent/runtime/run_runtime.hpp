@@ -34,6 +34,17 @@ struct tool_result_admission {
   }
 };
 
+struct tool_output_projection_recording {
+  run_store_write_status status { run_store_write_status::not_found };
+  std::uint64_t revision { 0 };
+  bool duplicate { false };
+  std::optional<tool_output_projection_audit> projection;
+
+  [[nodiscard]] explicit operator bool() const noexcept {
+    return status == run_store_write_status::applied && projection.has_value();
+  }
+};
+
 class agent_run_runtime {
 public:
   explicit agent_run_runtime(std::shared_ptr<agent_run_store> store) : store_(std::move(store)) {
@@ -404,6 +415,68 @@ public:
     };
   }
 
+  tool_output_projection_recording record_tool_output_projection(const std::string& run_id,
+    std::uint64_t expected_revision, tool_output_projection_audit projection) {
+    auto record = store_->load(run_id);
+    if (!record) {
+      return { .status = run_store_write_status::not_found };
+    }
+    if (projection.tool_call_id.empty() || projection.tool_name.empty() ||
+        !detail::canonical_sha256(projection.projected_content_sha256)) {
+      throw std::invalid_argument("tool output projection audit has invalid identity fields");
+    }
+    if (!detail::valid_tool_output_projection_report(projection.report)) {
+      throw std::invalid_argument("tool output projection audit has an invalid report");
+    }
+    const auto admitted = record->admitted_tool_results.find(projection.tool_call_id);
+    if (admitted == record->admitted_tool_results.end()) {
+      throw std::logic_error("tool output projection requires an admitted raw result");
+    }
+    if (admitted->second.tool_name != projection.tool_name) {
+      throw std::logic_error("tool output projection names a different admitted tool");
+    }
+    const auto existing = record->tool_output_projections.find(projection.tool_call_id);
+    if (existing != record->tool_output_projections.end()) {
+      if (!same_tool_output_projection(existing->second, projection)) {
+        throw std::logic_error(
+          "tool output projection was already recorded with different audit data");
+      }
+      return {
+        .status = run_store_write_status::applied,
+        .revision = record->revision,
+        .duplicate = true,
+        .projection = existing->second,
+      };
+    }
+    if (record->status != agent_run_status::running) {
+      throw std::logic_error("new tool output projections require a running agent run");
+    }
+    if (record->revision != expected_revision) {
+      return {
+        .status = run_store_write_status::conflict,
+        .revision = record->revision,
+      };
+    }
+    projection.recorded_at = std::chrono::system_clock::now();
+    record->tool_output_projections[projection.tool_call_id] = projection;
+    record->updated_at = projection.recorded_at;
+    const auto write = store_->update(expected_revision, std::move(*record), {
+      .type = "tool_output_projection_recorded",
+      .tool_call_id = projection.tool_call_id,
+      .data = {
+        { "tool_name", projection.tool_name },
+        { "projected_content_sha256", projection.projected_content_sha256 },
+        { "report", detail::tool_output_projection_report_to_json(projection.report) },
+      },
+    });
+    return {
+      .status = write.status,
+      .revision = write.revision,
+      .projection =
+        write ? std::optional<tool_output_projection_audit>(std::move(projection)) : std::nullopt,
+    };
+  }
+
   [[nodiscard]] static std::string make_identifier(const std::string& prefix) {
     return prefix + "-" + random_hex(16);
   }
@@ -413,6 +486,20 @@ public:
   }
 
 private:
+  [[nodiscard]] static bool same_tool_output_projection(
+    const tool_output_projection_audit& lhs, const tool_output_projection_audit& rhs) noexcept {
+    const auto& left = lhs.report;
+    const auto& right = rhs.report;
+    return lhs.tool_call_id == rhs.tool_call_id && lhs.tool_name == rhs.tool_name &&
+           lhs.projected_content_sha256 == rhs.projected_content_sha256 &&
+           left.truncated == right.truncated && left.original_bytes == right.original_bytes &&
+           left.projected_bytes == right.projected_bytes &&
+           left.original_estimated_tokens == right.original_estimated_tokens &&
+           left.projected_estimated_tokens == right.projected_estimated_tokens &&
+           left.max_bytes == right.max_bytes && left.max_tokens == right.max_tokens &&
+           left.limiting_factor == right.limiting_factor;
+  }
+
   [[nodiscard]] static bool valid_transition(agent_run_status from, agent_run_status to) noexcept {
     if (from == to) {
       return !terminal(from);

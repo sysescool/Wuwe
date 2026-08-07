@@ -28,6 +28,7 @@ request.context_budget = wuwe::llm_context_budget {
     .tool_schemas = 12000,
     .tool_results = 16000,
   },
+  .minimum_recent_tool_exchanges = 1,
 };
 
 const auto response = runner.complete(std::move(request));
@@ -42,10 +43,14 @@ request.
 The default policy preserves system messages and complete tool schemas. It first
 reduces Memory, Knowledge, Skills, old tool exchanges, old conversation, and other
 context. The configured number of newest conversation messages is neither
-dropped nor truncated. Assistant tool-call messages and their matching tool
-results are removed as one exchange, so trimming cannot create an invalid chat
-history. Set `allow_system_truncation` only when the host has explicitly designed
-its system prompt to tolerate truncation.
+dropped nor truncated. Tool calls and their matching results are budgeted as
+atomic exchanges rather than individual strings. The configured number of newest
+tool exchanges is preserved byte-for-byte; older exchanges can only be removed as
+a whole. This prevents context fitting from creating orphan calls, invalidating a
+structured Tool projection, or losing its error identity. Set
+`minimum_recent_tool_exchanges` to zero only when the host explicitly permits all
+Tool history to be removed. Set `allow_system_truncation` only when the host has
+designed its system prompt to tolerate truncation.
 
 Skill adapters set `chat_message::context_source` to
 `llm_context_source::skill`. This keeps reusable instructions visible in
@@ -58,10 +63,22 @@ dropped and truncated message counts, and a stable failure reason.
 `llm_agent_callbacks::on_context_budget` observes the successful report for every
 model round without changing the request.
 
+New tool results pass through the runner's `tool_output_projection_policy` before
+they enter the next model request. That policy is a per-result hard ceiling and
+preserves the full outcome outside the model boundary. Context budgeting runs later
+over the complete request and may still remove older Tool exchanges atomically to
+fit the shared window. It never applies generic string truncation to a Tool result.
+Use projection to prevent one Tool result from dominating a round; use the context
+budget to allocate space across all context components.
+
 Tokenization is injectable through `context_token_estimator`. Wuwe's default
 estimator is a conservative UTF-8-aware heuristic suitable for portable fallback
 behavior. Production integrations with provider tokenizers should inject an exact
 model-specific estimator through `llm_agent_run_options::token_estimator`.
+`context_token_estimator` extends the lightweight `text_token_estimator` interface
+with message and Tool-schema accounting; model-output projection depends only on
+the text interface and does not pull Context Budget or message types into its
+public declaration header.
 
 All component aggregation is saturating. A custom estimator that reports values
 near `std::numeric_limits<std::size_t>::max()` therefore produces a conservative

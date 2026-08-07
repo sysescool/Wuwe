@@ -6,129 +6,12 @@
 #include <limits>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
-#include <wuwe/agent/llm/llm_types.h>
+#include <wuwe/agent/llm/context_token_estimator.hpp>
 
 namespace wuwe::agent::llm {
-
-namespace detail {
-
-inline void saturating_context_token_add(std::size_t& target, std::size_t value) noexcept {
-  const auto maximum = (std::numeric_limits<std::size_t>::max)();
-  target = value > maximum - target ? maximum : target + value;
-}
-
-[[nodiscard]] inline std::size_t saturating_context_token_sum(
-  std::size_t lhs, std::size_t rhs) noexcept {
-  saturating_context_token_add(lhs, rhs);
-  return lhs;
-}
-
-} // namespace detail
-
-class context_token_estimator {
-public:
-  virtual ~context_token_estimator() = default;
-  [[nodiscard]] virtual std::size_t estimate_text(std::string_view text) const = 0;
-  [[nodiscard]] virtual std::string truncate_text(
-    std::string_view text, std::size_t token_limit, bool keep_tail) const = 0;
-
-  [[nodiscard]] virtual std::size_t estimate_message(const ::wuwe::chat_message& message) const {
-    std::size_t tokens = 4;
-    detail::saturating_context_token_add(tokens, estimate_text(message.role));
-    detail::saturating_context_token_add(tokens, estimate_text(message.content));
-    if (message.name) {
-      detail::saturating_context_token_add(tokens, estimate_text(*message.name));
-    }
-    if (message.tool_call_id) {
-      detail::saturating_context_token_add(tokens, estimate_text(*message.tool_call_id));
-    }
-    for (const auto& call : message.tool_calls) {
-      detail::saturating_context_token_add(tokens, 4);
-      detail::saturating_context_token_add(tokens, estimate_text(call.id));
-      detail::saturating_context_token_add(tokens, estimate_text(call.name));
-      detail::saturating_context_token_add(tokens, estimate_text(call.arguments_json));
-    }
-    return tokens;
-  }
-
-  [[nodiscard]] virtual std::size_t estimate_tool(const ::wuwe::llm_tool& tool) const {
-    std::size_t tokens = 8;
-    detail::saturating_context_token_add(tokens, estimate_text(tool.name));
-    detail::saturating_context_token_add(tokens, estimate_text(tool.description));
-    detail::saturating_context_token_add(tokens, estimate_text(tool.parameters_json_schema));
-    return tokens;
-  }
-};
-
-class heuristic_context_token_estimator final : public context_token_estimator {
-public:
-  [[nodiscard]] std::size_t estimate_text(std::string_view text) const override {
-    std::size_t ascii = 0;
-    std::size_t non_ascii_codepoints = 0;
-    for (std::size_t index = 0; index < text.size();) {
-      const auto byte = static_cast<unsigned char>(text[index]);
-      if (byte < 0x80) {
-        ++ascii;
-        ++index;
-      }
-      else {
-        ++non_ascii_codepoints;
-        if ((byte & 0xe0) == 0xc0)
-          index += 2;
-        else if ((byte & 0xf0) == 0xe0)
-          index += 3;
-        else if ((byte & 0xf8) == 0xf0)
-          index += 4;
-        else
-          ++index;
-        index = (std::min)(index, text.size());
-      }
-    }
-    return (ascii + 3) / 4 + non_ascii_codepoints;
-  }
-
-  [[nodiscard]] std::string truncate_text(
-    std::string_view text, std::size_t token_limit, bool keep_tail) const override {
-    if (estimate_text(text) <= token_limit)
-      return std::string(text);
-    if (token_limit == 0)
-      return {};
-    std::size_t low = 0;
-    std::size_t high = text.size();
-    while (low < high) {
-      const auto length = low + (high - low + 1) / 2;
-      const auto candidate = keep_tail ? valid_tail(text, length) : valid_prefix(text, length);
-      if (estimate_text(candidate) <= token_limit)
-        low = length;
-      else
-        high = length - 1;
-    }
-    return std::string(keep_tail ? valid_tail(text, low) : valid_prefix(text, low));
-  }
-
-private:
-  [[nodiscard]] static std::string_view valid_prefix(std::string_view text, std::size_t length) {
-    length = (std::min)(length, text.size());
-    while (length > 0 && length < text.size() &&
-           (static_cast<unsigned char>(text[length]) & 0xc0) == 0x80) {
-      --length;
-    }
-    return text.substr(0, length);
-  }
-
-  [[nodiscard]] static std::string_view valid_tail(std::string_view text, std::size_t length) {
-    length = (std::min)(length, text.size());
-    auto start = text.size() - length;
-    while (start < text.size() && (static_cast<unsigned char>(text[start]) & 0xc0) == 0x80) {
-      ++start;
-    }
-    return text.substr(start);
-  }
-};
 
 struct context_budget_usage {
   std::size_t system { 0 };
@@ -256,9 +139,10 @@ public:
       const auto current = component(result.report.after, source);
       const auto excess = result.report.after.input_total() - input_limit;
       const auto target = current > excess ? current - excess : 0;
-      const auto preserve = source == llm_context_source::conversation
-                              ? budget.minimum_recent_conversation_messages
-                              : 0;
+      const auto preserve =
+        source == llm_context_source::conversation  ? budget.minimum_recent_conversation_messages
+        : source == llm_context_source::tool_result ? budget.minimum_recent_tool_exchanges
+                                                    : 0;
       (void)reduce(result, removed, source, target, true, preserve);
       result.report.after = usage(result.request, removed, reserved_output);
     }
@@ -299,7 +183,10 @@ private:
       { llm_context_source::memory, budget.limits.memory, true, 0 },
       { llm_context_source::knowledge, budget.limits.knowledge, true, 0 },
       { llm_context_source::skill, budget.limits.skills, true, 0 },
-      { llm_context_source::tool_result, budget.limits.tool_results, true, 0 },
+      { llm_context_source::tool_result,
+        budget.limits.tool_results,
+        true,
+        budget.minimum_recent_tool_exchanges },
       { llm_context_source::conversation,
         budget.limits.conversation,
         true,
@@ -346,6 +233,9 @@ private:
       result.report.error = "protected context component exceeds its limit";
       return false;
     }
+    if (source == llm_context_source::tool_result) {
+      return reduce_tool_exchanges(result, removed, limit, preserve_recent);
+    }
 
     std::vector<std::size_t> candidates;
     for (std::size_t index = 0; index < result.request.messages.size(); ++index) {
@@ -366,10 +256,7 @@ private:
       if (protected_recent) {
         continue;
       }
-      if (source == llm_context_source::tool_result && !message.tool_calls.empty()) {
-        remove_tool_exchange(result, removed, index);
-      }
-      else if (current - (std::min)(current, tokens) >= limit || !can_truncate(message)) {
+      if (current - (std::min)(current, tokens) >= limit || !can_truncate(message)) {
         removed[index] = true;
         ++result.report.dropped_messages;
       }
@@ -384,30 +271,66 @@ private:
     return current <= limit;
   }
 
-  static void remove_tool_exchange(
-    context_budget_result& result, std::vector<bool>& removed, std::size_t assistant_index) {
-    std::vector<std::string> call_ids;
-    for (const auto& call : result.request.messages[assistant_index].tool_calls) {
-      call_ids.push_back(call.id);
+  struct tool_exchange_group {
+    std::vector<std::size_t> message_indices;
+  };
+
+  [[nodiscard]] static std::vector<tool_exchange_group> tool_exchange_groups(
+    const ::wuwe::llm_request& request, const std::vector<bool>& removed) {
+    std::vector<tool_exchange_group> groups;
+    std::vector<bool> grouped(request.messages.size(), false);
+    for (std::size_t index = 0; index < request.messages.size(); ++index) {
+      if (removed[index] || grouped[index] ||
+          resolved_context_source(request.messages[index]) != llm_context_source::tool_result) {
+        continue;
+      }
+
+      tool_exchange_group group { .message_indices = { index } };
+      grouped[index] = true;
+      const auto& message = request.messages[index];
+      if (!message.tool_calls.empty()) {
+        std::vector<std::string> call_ids;
+        call_ids.reserve(message.tool_calls.size());
+        for (const auto& call : message.tool_calls) {
+          call_ids.push_back(call.id);
+        }
+        for (std::size_t next = index + 1; next < request.messages.size(); ++next) {
+          if (removed[next]) {
+            continue;
+          }
+          const auto& candidate = request.messages[next];
+          if (resolved_context_source(candidate) != llm_context_source::tool_result ||
+              !candidate.tool_call_id ||
+              std::find(call_ids.begin(), call_ids.end(), *candidate.tool_call_id) ==
+                call_ids.end()) {
+            break;
+          }
+          group.message_indices.push_back(next);
+          grouped[next] = true;
+        }
+      }
+      groups.push_back(std::move(group));
     }
-    const auto remove = [&](std::size_t index) {
-      if (!removed[index]) {
-        removed[index] = true;
-        ++result.report.dropped_messages;
+    return groups;
+  }
+
+  [[nodiscard]] bool reduce_tool_exchanges(context_budget_result& result,
+    std::vector<bool>& removed, std::size_t limit, std::size_t preserve_recent) const {
+    auto current = component(usage(result.request, removed, result.report.before.reserved_output),
+      llm_context_source::tool_result);
+    const auto groups = tool_exchange_groups(result.request, removed);
+    const auto removable = groups.size() > preserve_recent ? groups.size() - preserve_recent : 0;
+    for (std::size_t position = 0; position < removable && current > limit; ++position) {
+      for (const auto index : groups[position].message_indices) {
+        if (!removed[index]) {
+          removed[index] = true;
+          ++result.report.dropped_messages;
+        }
       }
-    };
-    remove(assistant_index);
-    for (std::size_t index = assistant_index + 1; index < result.request.messages.size(); ++index) {
-      const auto& message = result.request.messages[index];
-      if (resolved_context_source(message) != llm_context_source::tool_result) {
-        break;
-      }
-      if (!message.tool_call_id ||
-          std::find(call_ids.begin(), call_ids.end(), *message.tool_call_id) == call_ids.end()) {
-        break;
-      }
-      remove(index);
+      current = component(usage(result.request, removed, result.report.before.reserved_output),
+        llm_context_source::tool_result);
     }
+    return current <= limit;
   }
 
   [[nodiscard]] static bool can_truncate(const ::wuwe::chat_message& message) {

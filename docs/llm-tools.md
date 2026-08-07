@@ -67,7 +67,8 @@ Framework and host policy use the richer `agent::tools::tool_descriptor`:
 - bounded retry policy with backoff, jitter, and semantic error categories;
 - optimistic resource-version preconditions and returned versions;
 - explicit compensation and long-running heartbeat policies;
-- capability requirements and host metadata.
+- capability requirements and host metadata;
+- optional per-tool model-output projection ceilings.
 
 Specialize `wuwe::tool_contract<T>` without changing the reflected tool type:
 
@@ -142,6 +143,66 @@ Operational retries finish before `prepare_tool_result` and output validation.
 Schema failures are not automatically retried, because repeating a tool after a
 malformed success could duplicate an external effect. A host that can prove such a
 retry safe should express that recovery inside its tool implementation.
+
+## Model-visible output projection
+
+Tool outcomes often need to remain complete for validation, audit, durable
+idempotency, compensation, and application callbacks while being too large to send
+back to the model. `llm_agent_runner` therefore applies a separate hard projection
+boundary only when it constructs the model-facing Tool message.
+
+```cpp
+wuwe::llm_agent_run_options options;
+options.tool_output_projection =
+  wuwe::agent::llm::tool_output_projection_policy {
+    .max_bytes = 64 * 1024,
+    .max_tokens = 10'000,
+  };
+```
+
+Both ceilings apply. Bytes are exact; tokens use the run's injected
+`context_token_estimator`, or Wuwe's UTF-8-aware fallback estimator. The defaults
+are 64 KiB and 10,000 estimated tokens. Policies below 256 bytes or 64 estimated
+tokens are rejected. Before model or tool execution, the runner also validates
+that the effective policy can contain every truncation envelope under the injected
+estimator.
+
+A tool contract can tighten, but never widen, the run-level policy:
+
+```cpp
+descriptor.model_output_projection = {
+  .max_bytes = 8 * 1024,
+  .max_tokens = 2'000,
+};
+```
+
+Output below both limits is byte-for-byte compatible with the established Tool
+message payload. Truncated plain text contains an explicit warning and a
+UTF-8-safe head/tail preview. Truncated structured successes and failures remain
+valid JSON; failures preserve their semantic category, standard error code, and
+retryability. The complete `tool_outcome` still reaches `on_tool_result` and
+durable admission. Only the projected Tool message is sent to the model and
+recorded as the tool conversation message in Memory.
+
+`on_tool_output_projection` observes every projection report.
+`llm_agent_event_type::tool_output_truncated` is emitted only when content was
+actually truncated. The report includes original and projected byte/token counts,
+the effective ceilings, and the dimension that triggered projection.
+
+For durable runs, every successful projection is linked to its admitted raw result
+through `agent_run_record::tool_output_projections`. The audit stores the Tool call
+identity, projected-content SHA-256, report, and timestamp, but not another copy of
+the projected content. Replaying the same record is idempotent; rebinding a Tool
+call ID to different projection data is rejected.
+
+Standalone integrations can depend on the lightweight `text_token_estimator`
+interface and call `check_tool_output_projection_policy()` during configuration.
+`try_project_tool_output_for_model()` returns a typed
+`tool_output_projection_result` for invalid policy, envelope, estimator, or JSON
+serialization failures. The exception-based `project_tool_output_for_model()`
+wrapper remains available for compatibility. The runner uses the typed-result API;
+a result-specific failure after durable admission becomes
+`llm_error_code::tool_output_projection_failed` and is never sent to the model.
 
 Set `resource_version.require_expected_version` to require an optimistic version
 at the configured argument JSON Pointer before invocation. A returned scalar at

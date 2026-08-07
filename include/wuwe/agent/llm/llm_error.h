@@ -29,7 +29,8 @@ enum class llm_error_code {
   rate_limit_wait_exceeded,
   context_budget_exceeded,
   invalid_request,
-  unsupported_capability
+  unsupported_capability,
+  tool_output_projection_failed,
 };
 
 [[nodiscard]] const ::std::error_category& llm_category() noexcept;

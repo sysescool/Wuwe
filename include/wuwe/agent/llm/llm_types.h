@@ -109,6 +109,7 @@ struct llm_context_budget {
   llm_context_component_limits limits;
   llm_context_overflow_policy overflow { llm_context_overflow_policy::trim_low_priority };
   bool allow_system_truncation { false };
+  std::size_t minimum_recent_tool_exchanges { 1 };
 };
 
 enum class llm_reasoning_language_control {

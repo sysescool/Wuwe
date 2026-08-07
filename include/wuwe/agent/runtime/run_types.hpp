@@ -1,6 +1,7 @@
 #ifndef WUWE_AGENT_RUNTIME_RUN_TYPES_HPP
 #define WUWE_AGENT_RUNTIME_RUN_TYPES_HPP
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <map>
@@ -109,6 +110,14 @@ struct admitted_tool_result {
   std::chrono::system_clock::time_point admitted_at { std::chrono::system_clock::now() };
 };
 
+struct tool_output_projection_audit {
+  std::string tool_call_id;
+  std::string tool_name;
+  std::string projected_content_sha256;
+  agent::llm::tool_output_projection_report report;
+  std::chrono::system_clock::time_point recorded_at { std::chrono::system_clock::now() };
+};
+
 struct agent_run_record {
   std::string id;
   std::uint64_t revision { 0 };
@@ -120,6 +129,7 @@ struct agent_run_record {
   std::optional<agent_run_suspension> suspension;
   std::optional<agent_run_suspension> active_continuation;
   std::map<std::string, admitted_tool_result> admitted_tool_results;
+  std::map<std::string, tool_output_projection_audit> tool_output_projections;
   nlohmann::json result;
   std::string error;
   std::map<std::string, std::string> metadata;
@@ -184,6 +194,80 @@ inline tools::tool_error_category tool_error_category_from_string(const std::str
   if (value == "internal")
     return internal;
   throw std::invalid_argument("invalid tool error category: " + value);
+}
+
+inline agent::llm::tool_output_projection_limit tool_output_projection_limit_from_string(
+  const std::string& value) {
+  using enum agent::llm::tool_output_projection_limit;
+  if (value == "none")
+    return none;
+  if (value == "bytes")
+    return bytes;
+  if (value == "tokens")
+    return tokens;
+  if (value == "bytes_and_tokens")
+    return bytes_and_tokens;
+  throw std::invalid_argument("invalid tool output projection limit: " + value);
+}
+
+inline nlohmann::json tool_output_projection_report_to_json(
+  const agent::llm::tool_output_projection_report& value) {
+  return {
+    { "truncated", value.truncated },
+    { "original_bytes", value.original_bytes },
+    { "projected_bytes", value.projected_bytes },
+    { "original_estimated_tokens", value.original_estimated_tokens },
+    { "projected_estimated_tokens", value.projected_estimated_tokens },
+    { "max_bytes", value.max_bytes },
+    { "max_tokens", value.max_tokens },
+    { "limiting_factor", agent::llm::to_string(value.limiting_factor) },
+  };
+}
+
+inline agent::llm::tool_output_projection_report tool_output_projection_report_from_json(
+  const nlohmann::json& value) {
+  return {
+    .truncated = value.value("truncated", false),
+    .original_bytes = value.value("original_bytes", std::size_t {}),
+    .projected_bytes = value.value("projected_bytes", std::size_t {}),
+    .original_estimated_tokens = value.value("original_estimated_tokens", std::size_t {}),
+    .projected_estimated_tokens = value.value("projected_estimated_tokens", std::size_t {}),
+    .max_bytes = value.value("max_bytes", std::size_t {}),
+    .max_tokens = value.value("max_tokens", std::size_t {}),
+    .limiting_factor =
+      tool_output_projection_limit_from_string(value.value("limiting_factor", std::string("none"))),
+  };
+}
+
+inline bool canonical_sha256(const std::string& value) noexcept {
+  return value.size() == 64 && std::all_of(value.begin(), value.end(), [](unsigned char ch) {
+    return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f');
+  });
+}
+
+inline bool valid_tool_output_projection_report(
+  const agent::llm::tool_output_projection_report& value) noexcept {
+  if (value.max_bytes < agent::llm::minimum_tool_output_projection_max_bytes ||
+      value.max_tokens < agent::llm::minimum_tool_output_projection_max_tokens ||
+      value.projected_bytes > value.max_bytes ||
+      value.projected_estimated_tokens > value.max_tokens) {
+    return false;
+  }
+
+  if (!value.truncated) {
+    return value.original_bytes == value.projected_bytes &&
+           value.original_estimated_tokens == value.projected_estimated_tokens &&
+           value.limiting_factor == agent::llm::tool_output_projection_limit::none;
+  }
+
+  const bool byte_limited = value.original_bytes > value.max_bytes;
+  const bool token_limited = value.original_estimated_tokens > value.max_tokens;
+  using enum agent::llm::tool_output_projection_limit;
+  const auto expected = byte_limited && token_limited ? bytes_and_tokens
+                        : byte_limited                ? bytes
+                        : token_limited               ? tokens
+                                                      : none;
+  return value.limiting_factor == expected && expected != none;
 }
 
 inline nlohmann::json tool_outcome_to_json(const tools::tool_outcome& value) {
@@ -299,8 +383,18 @@ inline nlohmann::json agent_run_record_to_json(const agent_run_record& value) {
       { "admitted_at_unix_ms", detail::to_unix_millis(result.admitted_at) },
     };
   }
+  nlohmann::json projections = nlohmann::json::object();
+  for (const auto& [call_id, projection] : value.tool_output_projections) {
+    projections[call_id] = {
+      { "tool_call_id", projection.tool_call_id },
+      { "tool_name", projection.tool_name },
+      { "projected_content_sha256", projection.projected_content_sha256 },
+      { "report", detail::tool_output_projection_report_to_json(projection.report) },
+      { "recorded_at_unix_ms", detail::to_unix_millis(projection.recorded_at) },
+    };
+  }
   nlohmann::json output {
-    { "schema_version", 1 },
+    { "schema_version", 2 },
     { "id", value.id },
     { "revision", value.revision },
     { "status", to_string(value.status) },
@@ -308,6 +402,7 @@ inline nlohmann::json agent_run_record_to_json(const agent_run_record& value) {
     { "created_at_unix_ms", detail::to_unix_millis(value.created_at) },
     { "updated_at_unix_ms", detail::to_unix_millis(value.updated_at) },
     { "admitted_tool_results", std::move(admitted) },
+    { "tool_output_projections", std::move(projections) },
     { "result", value.result },
     { "error", value.error },
     { "metadata", value.metadata },
@@ -324,7 +419,8 @@ inline nlohmann::json agent_run_record_to_json(const agent_run_record& value) {
 }
 
 inline agent_run_record agent_run_record_from_json(const nlohmann::json& value) {
-  if (value.value("schema_version", 0) != 1) {
+  const auto schema_version = value.value("schema_version", 0);
+  if (schema_version != 1 && schema_version != 2) {
     throw std::invalid_argument("unsupported agent run record schema version");
   }
   agent_run_record record;
@@ -364,6 +460,20 @@ inline agent_run_record agent_run_record_from_json(const nlohmann::json& value) 
       record.admitted_tool_results[call_id] = std::move(result);
     }
   }
+  if (schema_version >= 2 && value.contains("tool_output_projections") &&
+      value.at("tool_output_projections").is_object()) {
+    for (const auto& [call_id, item] : value.at("tool_output_projections").items()) {
+      tool_output_projection_audit projection {
+        .tool_call_id = item.value("tool_call_id", call_id),
+        .tool_name = item.value("tool_name", std::string {}),
+        .projected_content_sha256 = item.value("projected_content_sha256", std::string {}),
+        .report = detail::tool_output_projection_report_from_json(
+          item.value("report", nlohmann::json::object())),
+        .recorded_at = detail::from_unix_millis(item.value("recorded_at_unix_ms", std::int64_t {})),
+      };
+      record.tool_output_projections[call_id] = std::move(projection);
+    }
+  }
   record.result = value.value("result", nlohmann::json {});
   record.error = value.value("error", std::string {});
   record.metadata = value.value("metadata", std::map<std::string, std::string> {});
@@ -391,6 +501,21 @@ inline agent_run_record agent_run_record_from_json(const nlohmann::json& value) 
   for (const auto& [call_id, result] : record.admitted_tool_results) {
     if (call_id.empty() || result.tool_call_id != call_id) {
       throw std::invalid_argument("persisted admitted tool result has an inconsistent call id");
+    }
+  }
+  for (const auto& [call_id, projection] : record.tool_output_projections) {
+    if (call_id.empty() || projection.tool_call_id != call_id || projection.tool_name.empty() ||
+        !detail::canonical_sha256(projection.projected_content_sha256)) {
+      throw std::invalid_argument("persisted tool output projection has invalid audit fields");
+    }
+    const auto admitted = record.admitted_tool_results.find(call_id);
+    if (admitted == record.admitted_tool_results.end() ||
+        admitted->second.tool_name != projection.tool_name) {
+      throw std::invalid_argument(
+        "persisted tool output projection does not match an admitted tool result");
+    }
+    if (!detail::valid_tool_output_projection_report(projection.report)) {
+      throw std::invalid_argument("persisted tool output projection has an invalid report");
     }
   }
   return record;

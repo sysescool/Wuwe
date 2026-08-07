@@ -14,6 +14,7 @@
 #include <wuwe/agent/runtime/runtime.hpp>
 #include <wuwe/agent/tools/tool.hpp>
 #include <wuwe/common/print.h>
+#include <wuwe/common/sha256.hpp>
 
 namespace runtime_test_tools {
 
@@ -344,6 +345,7 @@ void run_store_enforces_optimistic_concurrency_and_idempotency() {
 }
 
 void persisted_run_payloads_validate_schema_and_error_codes() {
+  const std::string full_durable_tool_output(5'000, 'r');
   runtime::agent_run_record record {
     .id = "serialized-run",
     .admitted_tool_results = { {
@@ -352,22 +354,64 @@ void persisted_run_payloads_validate_schema_and_error_codes() {
         .tool_call_id = "call-1",
         .tool_name = "read",
         .outcome = {
-          .content = "timed out",
+          .content = full_durable_tool_output,
           .error_code = std::make_error_code(std::errc::timed_out),
           .error_category = tools::tool_error_category::timeout,
           .retryable = true,
         },
       },
     } },
+    .tool_output_projections = { {
+      "call-1",
+      {
+        .tool_call_id = "call-1",
+        .tool_name = "read",
+        .projected_content_sha256 = common::sha256_hex("bounded projection"),
+        .report = {
+          .truncated = true,
+          .original_bytes = full_durable_tool_output.size(),
+          .projected_bytes = 18,
+          .original_estimated_tokens = 1'250,
+          .projected_estimated_tokens = 5,
+          .max_bytes = 256,
+          .max_tokens = 64,
+          .limiting_factor = agent::llm::tool_output_projection_limit::bytes_and_tokens,
+        },
+      },
+    } },
   };
   const auto restored =
     runtime::agent_run_record_from_json(runtime::agent_run_record_to_json(record));
-  require(restored.admitted_tool_results.at("call-1").outcome.error_code == std::errc::timed_out,
-    "standard tool error codes should survive durable round trips");
+  require(
+    restored.admitted_tool_results.at("call-1").outcome.error_code == std::errc::timed_out &&
+      restored.admitted_tool_results.at("call-1").outcome.content == full_durable_tool_output &&
+      restored.tool_output_projections.at("call-1").projected_content_sha256 ==
+        common::sha256_hex("bounded projection") &&
+      restored.tool_output_projections.at("call-1").report.limiting_factor ==
+        agent::llm::tool_output_projection_limit::bytes_and_tokens,
+    "durable records must preserve full raw outcomes and lightweight projection audits");
+
+  auto legacy_record = runtime::agent_run_record_to_json(record);
+  legacy_record["schema_version"] = 1;
+  legacy_record.erase("tool_output_projections");
+  require(runtime::agent_run_record_from_json(legacy_record).tool_output_projections.empty(),
+    "schema-v1 durable records must load without projection audit state");
+
+  auto invalid_projection_report = runtime::agent_run_record_to_json(record);
+  invalid_projection_report["tool_output_projections"]["call-1"]["report"]["limiting_factor"] =
+    "tokens";
+  bool rejected = false;
+  try {
+    (void)runtime::agent_run_record_from_json(invalid_projection_report);
+  }
+  catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected, "persisted projection audits must reject internally inconsistent reports");
 
   auto unsupported = runtime::agent_run_record_to_json(record);
   unsupported["schema_version"] = 99;
-  bool rejected = false;
+  rejected = false;
   try {
     (void)runtime::agent_run_record_from_json(unsupported);
   }
@@ -431,15 +475,33 @@ void persisted_run_payloads_validate_schema_and_error_codes() {
     .schema = { { "type", "object" } },
   };
   advanced_continuation.request.cache_mode = wuwe::llm_cache_mode::enabled;
+  advanced_continuation.request.context_budget = llm_context_budget {
+    .context_window_tokens = 4'096,
+    .minimum_recent_tool_exchanges = 3,
+  };
+  advanced_continuation.tool_output_projection = { .max_bytes = 2'048, .max_tokens = 256 };
   const auto restored_continuation =
     runtime::llm_continuation_from_json(runtime::llm_continuation_to_json(advanced_continuation));
   require(restored_continuation.request.provider == "premium-provider" &&
             restored_continuation.request.stop_sequences == std::vector<std::string> { "END" } &&
+            restored_continuation.request.context_budget &&
+            restored_continuation.request.context_budget->minimum_recent_tool_exchanges == 3 &&
             restored_continuation.request.seed == 77 &&
             restored_continuation.request.json_schema_output &&
             restored_continuation.request.json_schema_output->name == "result" &&
-            restored_continuation.request.cache_mode == wuwe::llm_cache_mode::enabled,
-    "durable continuations should preserve advanced generation controls");
+            restored_continuation.request.cache_mode == wuwe::llm_cache_mode::enabled &&
+            restored_continuation.tool_output_projection.max_bytes == 2'048 &&
+            restored_continuation.tool_output_projection.max_tokens == 256,
+    "durable continuations should preserve advanced controls and projection policy");
+
+  auto legacy_continuation = runtime::llm_continuation_to_json(advanced_continuation);
+  legacy_continuation["schema_version"] = 1;
+  const auto restored_legacy = runtime::llm_continuation_from_json(legacy_continuation);
+  require(restored_legacy.tool_output_projection.max_bytes ==
+              agent::llm::default_tool_output_projection_max_bytes &&
+            restored_legacy.tool_output_projection.max_tokens ==
+              agent::llm::default_tool_output_projection_max_tokens,
+    "schema-v1 continuations must resume with safe projection defaults");
 
   auto invalid_continuation = runtime::llm_continuation_to_json({
     .pending_calls = { {
@@ -471,6 +533,71 @@ void persisted_run_payloads_validate_schema_and_error_codes() {
     rejected = true;
   }
   require(rejected, "durable continuations should reject invalid pricing");
+}
+
+void run_runtime_records_tool_output_projections_idempotently() {
+  auto store = std::make_shared<runtime::in_memory_agent_run_store>();
+  runtime::agent_run_runtime runtime(store);
+  auto record = runtime.start({ .run_id = "projection-audit-run" });
+  const auto running = runtime.transition(
+    record.id, record.revision, runtime::agent_run_status::running, "run_started");
+  const auto admitted = runtime.admit_tool_result(record.id,
+    running.revision,
+    {
+      .tool_call_id = "call-1",
+      .idempotency_key = "key-1",
+      .tool_name = "lookup",
+      .outcome = { .content = std::string(5'000, 'r') },
+    });
+  const runtime::tool_output_projection_audit audit {
+    .tool_call_id = "call-1",
+    .tool_name = "lookup",
+    .projected_content_sha256 = common::sha256_hex("bounded projection"),
+    .report = {
+      .truncated = true,
+      .original_bytes = 5'000,
+      .projected_bytes = 18,
+      .original_estimated_tokens = 1'250,
+      .projected_estimated_tokens = 5,
+      .max_bytes = 256,
+      .max_tokens = 64,
+      .limiting_factor = agent::llm::tool_output_projection_limit::bytes_and_tokens,
+    },
+  };
+  const auto recorded = runtime.record_tool_output_projection(record.id, admitted.revision, audit);
+  require(recorded && !recorded.duplicate && recorded.revision == admitted.revision + 1,
+    "recording a model-visible projection should atomically advance durable state");
+  const auto duplicate = runtime.record_tool_output_projection(record.id, admitted.revision, audit);
+  require(duplicate && duplicate.duplicate && duplicate.revision == recorded.revision,
+    "replaying the same projection audit must be idempotent without another event");
+  const auto persisted = runtime.get(record.id);
+  const auto events = runtime.list_events(record.id);
+  require(persisted && persisted->tool_output_projections.size() == 1 && events.size() == 4 &&
+            events.back().type == "tool_output_projection_recorded" &&
+            !events.back().data.contains("content"),
+    "projection auditing must store one digest-only record and one replayable event");
+
+  auto conflicting = audit;
+  conflicting.projected_content_sha256 = common::sha256_hex("different projection");
+  bool rejected = false;
+  try {
+    (void)runtime.record_tool_output_projection(record.id, recorded.revision, conflicting);
+  }
+  catch (const std::logic_error&) {
+    rejected = true;
+  }
+  require(rejected, "a call id must not be rebound to different model-visible projection data");
+
+  auto inconsistent = audit;
+  inconsistent.report.limiting_factor = agent::llm::tool_output_projection_limit::tokens;
+  rejected = false;
+  try {
+    (void)runtime.record_tool_output_projection(record.id, recorded.revision, inconsistent);
+  }
+  catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected, "projection audits must reject reports whose limiting factor is inconsistent");
 }
 
 void tool_contracts_reject_invalid_descriptors() {
@@ -612,6 +739,8 @@ void runner_suspends_and_resumes_exact_tool_call_once() {
     .input_per_million_tokens_usd = 1.0,
     .output_per_million_tokens_usd = 2.0,
   };
+  options.tool_output_projection =
+    agent::llm::tool_output_projection_policy { .max_bytes = 1'024, .max_tokens = 128 };
 
   const auto suspended = runner.complete("enable strict mode", options);
   require(suspended.error_code == agent::llm_error_code::approval_required,
@@ -631,6 +760,11 @@ void runner_suspends_and_resumes_exact_tool_call_once() {
   require(waiting && waiting->status == runtime::agent_run_status::waiting_for_approval &&
             waiting->suspension && waiting->suspension->tool_call_id == "write-1",
     "durable runtime should persist the exact pending tool call");
+  const auto persisted_continuation =
+    runtime::llm_continuation_from_json(waiting->suspension->continuation);
+  require(persisted_continuation.tool_output_projection.max_bytes == 1'024 &&
+            persisted_continuation.tool_output_projection.max_tokens == 128,
+    "approval suspension must persist the resolved projection policy");
 
   const auto approved = durable_runtime->resolve_approval(run_id,
     waiting->revision,
@@ -650,6 +784,13 @@ void runner_suspends_and_resumes_exact_tool_call_once() {
 
   options.context = {};
   options.pricing.reset();
+  options.tool_output_projection =
+    agent::llm::tool_output_projection_policy { .max_bytes = 2'048, .max_tokens = 64 };
+  agent::llm::tool_output_projection_report resumed_projection;
+  options.callbacks.on_tool_output_projection =
+    [&](const llm_tool_call&, const agent::llm::tool_output_projection_report& report) {
+      resumed_projection = report;
+    };
   const auto completed = runner.resume(run_id, claimed_before_crash.revision, token, options);
   require(!completed.error_code && completed.content == "Update completed.",
     "approved continuation should resume the original model/tool loop");
@@ -657,6 +798,8 @@ void runner_suspends_and_resumes_exact_tool_call_once() {
     "durable continuation should preserve accounting configuration across resume");
   require(executions == 1 && client.requests.size() == 2,
     "resumption should execute the approved side effect exactly once");
+  require(resumed_projection.max_bytes == 1'024 && resumed_projection.max_tokens == 64,
+    "resume overrides may tighten persisted projection limits but must never widen them");
 
   const auto final = durable_runtime->get(run_id);
   require(final && final->status == runtime::agent_run_status::completed &&
@@ -757,6 +900,7 @@ int main() {
     run("run store concurrency and idempotency",
       run_store_enforces_optimistic_concurrency_and_idempotency);
     run("persisted run payload validation", persisted_run_payloads_validate_schema_and_error_codes);
+    run("tool output projection audit", run_runtime_records_tool_output_projections_idempotently);
     run("tool contract validation", tool_contracts_reject_invalid_descriptors);
     run("runner rejects unregistered and reused tool calls",
       runner_rejects_unregistered_and_reused_tool_calls);

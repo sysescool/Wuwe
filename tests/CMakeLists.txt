@@ -33,6 +33,15 @@ wuwe_copy_runtime_dlls(agent_runtime_tests)
 
 add_test(NAME agent_runtime_tests COMMAND agent_runtime_tests)
 
+add_executable(tool_output_projection_tests
+    tool_output_projection_tests.cpp
+)
+
+target_link_libraries(tool_output_projection_tests PRIVATE wuwe)
+wuwe_copy_runtime_dlls(tool_output_projection_tests)
+
+add_test(NAME tool_output_projection_tests COMMAND tool_output_projection_tests)
+
 add_executable(runtime_tests
     runtime_tests.cpp
 )
@@ -220,8 +229,12 @@ add_executable(header_independence_tests
     header_independence/multi_agent_header.cpp
     header_independence/a2a_header.cpp
     header_independence/content_header.cpp
+    header_independence/context_token_estimator_header.cpp
     header_independence/execution_context_header.cpp
     header_independence/tool_contract_header.cpp
+    header_independence/text_token_estimator_header.cpp
+    header_independence/tool_output_projection_header.cpp
+    header_independence/tool_output_projection_types_header.cpp
     header_independence/runtime_header.cpp
     header_independence/runtime_extensions_header.cpp
     header_independence/p1_header.cpp
