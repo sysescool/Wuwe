@@ -1,6 +1,7 @@
 #ifndef WUWE_AGENT_SKILLS_SKILL_REGISTRY_HPP
 #define WUWE_AGENT_SKILLS_SKILL_REGISTRY_HPP
 
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
@@ -71,8 +72,17 @@ public:
   [[nodiscard]] skill_registry_snapshot snapshot() const noexcept;
 
 private:
+  using package_map_ptr = std::shared_ptr<const skill_registry_snapshot::package_map>;
+
+  [[nodiscard]] package_map_ptr load_packages() const noexcept;
+  void store_packages(package_map_ptr packages) noexcept;
+
   mutable std::mutex write_mutex_;
-  std::shared_ptr<const skill_registry_snapshot::package_map> packages_;
+#if defined(__cpp_lib_atomic_shared_ptr) && __cpp_lib_atomic_shared_ptr >= 201711L
+  std::atomic<package_map_ptr> packages_;
+#else
+  package_map_ptr packages_;
+#endif
 };
 
 } // namespace wuwe::agent::skills
