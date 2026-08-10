@@ -44,11 +44,29 @@ jobs:
           $version = (Get-Content -LiteralPath VERSION).Trim()
           "WUWE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Stage Python outside runner reparse points
+        shell: pwsh
+        run: |
+          $sourcePython = (Get-Command python.exe -ErrorAction Stop).Source
+          $sourceHome = Split-Path -Parent $sourcePython
+          $stagedHome = Join-Path $env:GITHUB_WORKSPACE ".ci-python"
+          New-Item -ItemType Directory -Path $stagedHome -Force | Out-Null
+          Get-ChildItem -LiteralPath $sourceHome -Force |
+            Copy-Item -Destination $stagedHome -Recurse -Force
+          $stagedPython = Join-Path $stagedHome "python.exe"
+          & $stagedPython -c "import os, sys; print(os.path.realpath(sys.executable))"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Staged Python failed to start: $stagedPython"
+          }
+          "WUWE_CI_PYTHON=$stagedPython" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Configure
-        run: >-
-          cmake --preset windows-vcpkg
-          -DWUWE_HTTP_BACKEND=${{ matrix.backend }}
-          -DWUWE_ENABLE_STRICT_WARNINGS=ON
+        shell: pwsh
+        run: |
+          cmake --preset windows-vcpkg `
+            -DWUWE_HTTP_BACKEND=${{ matrix.backend }} `
+            -DWUWE_ENABLE_STRICT_WARNINGS=ON `
+            "-DPython3_EXECUTABLE=$env:WUWE_CI_PYTHON"
 
       - name: Build
         run: cmake --build --preset windows-vcpkg-release -- /m:1

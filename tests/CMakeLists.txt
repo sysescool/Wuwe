@@ -316,8 +316,9 @@ if(WIN32)
 endif()
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
+    file(TO_CMAKE_PATH "${Python3_EXECUTABLE}" WUWE_EXECUTION_TEST_PYTHON_PATH)
     target_compile_definitions(execution_tests PRIVATE
-        WUWE_EXECUTION_TEST_PYTHON="${Python3_EXECUTABLE}"
+        WUWE_EXECUTION_TEST_PYTHON="${WUWE_EXECUTION_TEST_PYTHON_PATH}"
     )
 endif()
 wuwe_copy_runtime_dlls(execution_tests)
