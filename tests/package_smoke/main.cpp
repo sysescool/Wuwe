@@ -21,8 +21,7 @@ int main() {
       wuwe::agent::skills::compare_precedence(linux_build, windows_build) !=
         std::strong_ordering::equal ||
       std::string(wuwe::agent::skills::to_string(
-        wuwe::agent::skills::skill_error_code::registration_conflict)) !=
-        "registration_conflict") {
+        wuwe::agent::skills::skill_error_code::registration_conflict)) != "registration_conflict") {
     return 1;
   }
 
@@ -121,8 +120,7 @@ int main() {
     return 1;
   }
 #if defined(_WIN32) || defined(__APPLE__)
-  if (!explicit_restricted->available ||
-      explicit_restricted_backend == nullptr) {
+  if (!explicit_restricted->available || explicit_restricted_backend == nullptr) {
     return 1;
   }
 #else
@@ -136,8 +134,7 @@ int main() {
     "try:\n open('/etc/passwd', 'rb').read(1)\n print('escaped')\nexcept OSError:\n "
     "print('isolated')";
   const auto restricted_result = explicit_restricted_backend->run(restricted_request, {});
-  const auto bootstrap_environment =
-    restricted_result.metadata.find("bootstrap_environment");
+  const auto bootstrap_environment = restricted_result.metadata.find("bootstrap_environment");
   if (restricted_result.exit_code != 0 || restricted_result.stdout_text != "isolated\n" ||
       bootstrap_environment == restricted_result.metadata.end() ||
       bootstrap_environment->second != "empty") {

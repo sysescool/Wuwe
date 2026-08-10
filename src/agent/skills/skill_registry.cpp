@@ -116,7 +116,7 @@ skill_registration_result skill_registry::register_package(
   const auto version = descriptor.version;
 
   std::lock_guard lock(write_mutex_);
-  const auto current = std::atomic_load_explicit(&packages_, std::memory_order_acquire);
+  const auto current = packages_.load(std::memory_order_acquire);
   const auto current_id = current->find(id);
   skill_package_ptr existing;
   if (current_id != current->end()) {
@@ -125,9 +125,8 @@ skill_registration_result skill_registry::register_package(
       existing = found->second;
     }
   }
-  if (existing &&
-      (existing == package ||
-        existing->provenance().content_sha256 == package->provenance().content_sha256)) {
+  if (existing && (existing == package || existing->provenance().content_sha256 ==
+                                            package->provenance().content_sha256)) {
     return {
       .status = skill_registration_status::unchanged,
       .package = std::move(existing),
@@ -150,12 +149,10 @@ skill_registration_result skill_registry::register_package(
   auto& versions = (*next)[id];
   versions[version] = std::move(package);
   const auto registered = versions.at(version);
-  std::atomic_store_explicit(&packages_,
-    std::shared_ptr<const skill_registry_snapshot::package_map>(std::move(next)),
+  packages_.store(std::shared_ptr<const skill_registry_snapshot::package_map>(std::move(next)),
     std::memory_order_release);
   return {
-    .status = existing ? skill_registration_status::replaced
-                       : skill_registration_status::inserted,
+    .status = existing ? skill_registration_status::replaced : skill_registration_status::inserted,
     .package = registered,
     .previous = existing,
   };
@@ -163,7 +160,7 @@ skill_registration_result skill_registry::register_package(
 
 bool skill_registry::unregister_package(const std::string& id, const semantic_version& version) {
   std::lock_guard lock(write_mutex_);
-  const auto current = std::atomic_load_explicit(&packages_, std::memory_order_acquire);
+  const auto current = packages_.load(std::memory_order_acquire);
   const auto current_id = current->find(id);
   if (current_id == current->end() || !current_id->second.contains(version)) {
     return false;
@@ -174,15 +171,13 @@ bool skill_registry::unregister_package(const std::string& id, const semantic_ve
   if (versions.empty()) {
     next->erase(id);
   }
-  std::atomic_store_explicit(&packages_,
-    std::shared_ptr<const skill_registry_snapshot::package_map>(std::move(next)),
+  packages_.store(std::shared_ptr<const skill_registry_snapshot::package_map>(std::move(next)),
     std::memory_order_release);
   return true;
 }
 
 skill_registry_snapshot skill_registry::snapshot() const noexcept {
-  return skill_registry_snapshot(
-    std::atomic_load_explicit(&packages_, std::memory_order_acquire));
+  return skill_registry_snapshot(packages_.load(std::memory_order_acquire));
 }
 
 } // namespace wuwe::agent::skills

@@ -647,8 +647,8 @@ skill_load_result directory_skill_loader::load(const std::filesystem::path& rela
         { "manifest_sha256", raw_manifest.digest },
       },
     };
-    auto created = skill_package::create(
-      std::move(manifest), std::move(provenance), std::move(resources));
+    auto created =
+      skill_package::create(std::move(manifest), std::move(provenance), std::move(resources));
     if (!created) {
       fail(skill_load_error_code::package_invalid, created.error.message);
     }

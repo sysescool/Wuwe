@@ -171,8 +171,7 @@ sandbox_policy_validation validate_sandbox_policy(sandbox_policy policy) {
   }
   for (std::size_t index = 0; index < result.normalized.network.rules.size(); ++index) {
     const auto& rule = result.normalized.network.rules[index];
-    if (!valid_host_pattern(rule.host_pattern) ||
-        (rule.port.has_value() && *rule.port == 0)) {
+    if (!valid_host_pattern(rule.host_pattern) || (rule.port.has_value() && *rule.port == 0)) {
       add_issue(result,
         sandbox_policy_error::invalid_network_rule,
         "network.rules[" + std::to_string(index) + "]",

@@ -76,10 +76,11 @@ void semver_is_strict_and_follows_precedence_rules() {
     require(semantic_version::parse(ordered[index - 1]) < semantic_version::parse(ordered[index]),
       "SemVer prerelease precedence follows the normative ordering");
   }
-  const auto linux = semantic_version::parse("1.2.3+linux");
-  const auto windows = semantic_version::parse("1.2.3+windows");
-  require(linux != windows, "SemVer build metadata participates in complete version identity");
-  require(compare_precedence(linux, windows) == std::strong_ordering::equal,
+  const auto linux_version = semantic_version::parse("1.2.3+linux");
+  const auto windows_version = semantic_version::parse("1.2.3+windows");
+  require(linux_version != windows_version,
+    "SemVer build metadata participates in complete version identity");
+  require(compare_precedence(linux_version, windows_version) == std::strong_ordering::equal,
     "SemVer build metadata does not affect precedence");
   require(semantic_version::parse("1.2.3-alpha.9").string() == "1.2.3-alpha.9",
     "SemVer round-trips through its canonical representation");

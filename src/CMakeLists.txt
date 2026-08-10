@@ -147,6 +147,12 @@ if(WUWE_ENABLE_STRICT_WARNINGS)
             # aggregate warning treats that API style as an error even though the
             # omitted members are deterministically initialized.
             -Wno-missing-field-initializers)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND WUWE_ENABLE_ADDRESS_SANITIZER)
+            # GCC can report maybe-uninitialized from optimized std::regex internals
+            # under ASAN. Keep the diagnostic visible without failing the build.
+            target_compile_options(${PROJECT_NAME} PRIVATE
+                -Wno-error=maybe-uninitialized)
+        endif()
     endif()
 endif()
 
@@ -184,6 +190,11 @@ set(WUWE_HTTPLIB_HTTPS_AVAILABLE OFF)
 if(WUWE_ENABLE_HTTPLIB_SSL AND WUWE_OPENSSL_AVAILABLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE CPPHTTPLIB_OPENSSL_SUPPORT=1)
     target_link_libraries(${PROJECT_NAME} PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    if(APPLE)
+        target_link_libraries(${PROJECT_NAME} PUBLIC
+            "-framework CoreFoundation"
+            "-framework Security")
+    endif()
     set(WUWE_HTTPLIB_HTTPS_AVAILABLE ON)
     message(STATUS "cpp-httplib HTTPS support enabled")
 elseif(WUWE_ENABLE_HTTPLIB_SSL)

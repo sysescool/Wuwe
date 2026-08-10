@@ -15,8 +15,8 @@
 #endif
 #include <windows.h>
 #elif defined(__APPLE__)
-#include <mach-o/dyld.h>
 #include <csignal>
+#include <mach-o/dyld.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -62,7 +62,8 @@ std::optional<std::filesystem::path> executable_directory() {
   std::uint32_t size = 0;
   _NSGetExecutablePath(nullptr, &size);
   std::string buffer(size, '\0');
-  if (_NSGetExecutablePath(buffer.data(), &size) != 0) return std::nullopt;
+  if (_NSGetExecutablePath(buffer.data(), &size) != 0)
+    return std::nullopt;
   std::error_code error;
   auto executable = std::filesystem::canonical(buffer.c_str(), error);
   return error ? std::nullopt : std::optional(executable.parent_path());

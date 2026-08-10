@@ -15,11 +15,15 @@ class macos_restricted_process_sandbox_plan final : public sandbox::sandbox_plan
 public:
   static constexpr std::uint32_t current_format_version = 4;
 
-  [[nodiscard]] std::uint32_t format_version() const noexcept { return format_version_; }
+  [[nodiscard]] std::uint32_t format_version() const noexcept {
+    return format_version_;
+  }
   [[nodiscard]] const restricted_process_backend_config& runtime_config() const noexcept {
     return runtime_config_;
   }
-  [[nodiscard]] const std::string& seatbelt_profile() const noexcept { return seatbelt_profile_; }
+  [[nodiscard]] const std::string& seatbelt_profile() const noexcept {
+    return seatbelt_profile_;
+  }
 
 private:
   friend sandbox::sandbox_compile_result compile_macos_restricted_process_sandbox_policy(

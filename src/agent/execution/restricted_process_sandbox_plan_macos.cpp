@@ -22,7 +22,8 @@ std::string seatbelt_string(const std::filesystem::path& path) {
   result.reserve(value.size() + 2);
   result.push_back('"');
   for (const auto ch : value) {
-    if (ch == '\\' || ch == '"') result.push_back('\\');
+    if (ch == '\\' || ch == '"')
+      result.push_back('\\');
     result.push_back(ch);
   }
   result.push_back('"');
@@ -30,14 +31,15 @@ std::string seatbelt_string(const std::filesystem::path& path) {
 }
 
 std::filesystem::path resolve_executable(const std::filesystem::path& configured) {
-  if (configured.empty()) return {};
+  if (configured.empty())
+    return {};
   if (configured.is_absolute() || configured.has_parent_path()) {
-    return ::access(configured.c_str(), X_OK) == 0
-             ? std::filesystem::canonical(configured)
-             : std::filesystem::path {};
+    return ::access(configured.c_str(), X_OK) == 0 ? std::filesystem::canonical(configured)
+                                                   : std::filesystem::path {};
   }
   const char* path_value = std::getenv("PATH");
-  if (!path_value) return {};
+  if (!path_value)
+    return {};
   std::stringstream paths(path_value);
   std::string directory;
   while (std::getline(paths, directory, ':')) {
@@ -45,27 +47,31 @@ std::filesystem::path resolve_executable(const std::filesystem::path& configured
     if (::access(candidate.c_str(), X_OK) == 0) {
       if (candidate == "/usr/bin/python3") {
         std::error_code developer_error;
-        auto developer = std::filesystem::read_symlink(
-          "/var/select/developer_dir", developer_error);
+        auto developer =
+          std::filesystem::read_symlink("/var/select/developer_dir", developer_error);
         if (!developer_error) {
           auto toolchain_python = developer / "usr/bin/python3";
           auto resolved = std::filesystem::canonical(toolchain_python, developer_error);
-          if (!developer_error && ::access(resolved.c_str(), X_OK) == 0) return resolved;
+          if (!developer_error && ::access(resolved.c_str(), X_OK) == 0)
+            return resolved;
         }
       }
       std::error_code error;
       auto resolved = std::filesystem::canonical(candidate, error);
-      if (!error) return resolved;
+      if (!error)
+        return resolved;
     }
   }
   return {};
 }
 
 bool validate_bound_path(const std::filesystem::path& path) {
-  if (contains_control(path.string())) return false;
+  if (contains_control(path.string()))
+    return false;
   std::error_code error;
   const auto canonical = std::filesystem::canonical(path, error);
-  if (error || canonical != path) return false;
+  if (error || canonical != path)
+    return false;
   struct stat info {};
   return ::lstat(path.c_str(), &info) == 0 && !S_ISLNK(info.st_mode);
 }
@@ -73,16 +79,16 @@ bool validate_bound_path(const std::filesystem::path& path) {
 void append_subpath_rules(std::ostringstream& profile, std::string_view operation,
   const std::vector<std::filesystem::path>& paths) {
   for (const auto& path : paths) {
-    profile << "(allow " << operation << " (literal " << seatbelt_string(path)
-            << ") (subpath " << seatbelt_string(path) << "))\n";
+    profile << "(allow " << operation << " (literal " << seatbelt_string(path) << ") (subpath "
+            << seatbelt_string(path) << "))\n";
   }
 }
 
 void append_subpath_denials(std::ostringstream& profile, std::string_view operation,
   const std::vector<std::filesystem::path>& paths) {
   for (const auto& path : paths) {
-    profile << "(deny " << operation << " (literal " << seatbelt_string(path)
-            << ") (subpath " << seatbelt_string(path) << "))\n";
+    profile << "(deny " << operation << " (literal " << seatbelt_string(path) << ") (subpath "
+            << seatbelt_string(path) << "))\n";
   }
 }
 
@@ -98,10 +104,9 @@ std::string build_profile(const sandbox::sandbox_policy& policy) {
              "(allow file-read-metadata (subpath \"/\"))\n";
 
   if (policy.filesystem.include_platform_defaults) {
-    for (const auto* root : { "/System", "/usr", "/Library/Apple", "/Library/Developer",
-           "/private/var/db/dyld" }) {
-      profile << "(allow file-read* (literal \"" << root << "\") (subpath \"" << root
-              << "\"))\n";
+    for (const auto* root :
+      { "/System", "/usr", "/Library/Apple", "/Library/Developer", "/private/var/db/dyld" }) {
+      profile << "(allow file-read* (literal \"" << root << "\") (subpath \"" << root << "\"))\n";
     }
     profile << "(allow file-read* (literal \"/dev/null\") (literal \"/dev/urandom\") "
                "(literal \"/dev/random\"))\n";
@@ -110,8 +115,7 @@ std::string build_profile(const sandbox::sandbox_policy& policy) {
   append_subpath_rules(profile, "file-read*", policy.filesystem.writable_roots);
   append_subpath_rules(profile, "file-write*", policy.filesystem.writable_roots);
   append_subpath_rules(profile, "file-read*", policy.filesystem.protected_read_only_paths);
-  append_subpath_denials(
-    profile, "file-write*", policy.filesystem.protected_read_only_paths);
+  append_subpath_denials(profile, "file-write*", policy.filesystem.protected_read_only_paths);
   append_subpath_denials(profile, "file-read*", policy.filesystem.denied_paths);
   append_subpath_denials(profile, "file-write*", policy.filesystem.denied_paths);
   if (policy.network.mode == sandbox::sandbox_network_mode::unrestricted) {
@@ -131,14 +135,16 @@ macos_restricted_process_sandbox_plan::macos_restricted_process_sandbox_plan(
           { "plan_format_version", std::to_string(current_format_version) },
           { "filesystem_platform_defaults", "macos_runtime_read_only" },
           { "launcher", "apple_sandbox_exec" } }),
-      runtime_config_(std::move(config)), seatbelt_profile_(std::move(profile)) {}
+      runtime_config_(std::move(config)), seatbelt_profile_(std::move(profile)) {
+}
 
 sandbox::sandbox_compile_result compile_macos_restricted_process_sandbox_policy(
   const sandbox::sandbox_policy& policy, const sandbox::sandbox_backend_info& backend,
   restricted_process_backend_config config) {
-  auto generic = sandbox::compile_sandbox_policy(
-    policy, backend, sandbox::sandbox_platform::host_macos);
-  if (!generic) return generic;
+  auto generic =
+    sandbox::compile_sandbox_policy(policy, backend, sandbox::sandbox_platform::host_macos);
+  if (!generic)
+    return generic;
 
   auto normalized = generic.plan->policy();
   std::vector<std::string> blockers;
@@ -150,7 +156,8 @@ sandbox::sandbox_compile_result compile_macos_restricted_process_sandbox_policy(
     blockers.emplace_back("network_filter_unsupported");
   if (normalized.network.allow_local_binding)
     blockers.emplace_back("local_binding_unsupported");
-  if (!config.use_process_group) blockers.emplace_back("process_group_required");
+  if (!config.use_process_group)
+    blockers.emplace_back("process_group_required");
   if (normalized.environment.inherit_parent)
     blockers.emplace_back("parent_environment_inheritance_unsupported");
 
@@ -158,7 +165,8 @@ sandbox::sandbox_compile_result compile_macos_restricted_process_sandbox_policy(
   if (config.seatbelt_executable != "/usr/bin/sandbox-exec")
     blockers.emplace_back("system_seatbelt_launcher_required");
   config.python_interpreter = resolve_executable(config.python_interpreter);
-  if (config.python_interpreter.empty()) blockers.emplace_back("python_interpreter_unavailable");
+  if (config.python_interpreter.empty())
+    blockers.emplace_back("python_interpreter_unavailable");
 
   if (config.fallback_workdir.empty())
     config.fallback_workdir = std::filesystem::temp_directory_path() / "wuwe-restricted";
@@ -168,18 +176,18 @@ sandbox::sandbox_compile_result compile_macos_restricted_process_sandbox_policy(
   if (error || !validate_bound_path(config.fallback_workdir))
     blockers.emplace_back("fallback_workdir_unavailable");
 
-  auto validate_paths = [&](const std::vector<std::filesystem::path>& paths,
-                          std::string_view field) {
+  auto validate_paths = [&](
+                          const std::vector<std::filesystem::path>& paths, std::string_view field) {
     for (std::size_t index = 0; index < paths.size(); ++index) {
       if (!validate_bound_path(paths[index]))
-        blockers.emplace_back(std::string(field) + "[" + std::to_string(index) +
-                              "]:noncanonical_or_symlink_path");
+        blockers.emplace_back(
+          std::string(field) + "[" + std::to_string(index) + "]:noncanonical_or_symlink_path");
     }
   };
   validate_paths(normalized.filesystem.readable_roots, "filesystem.readable_roots");
   validate_paths(normalized.filesystem.writable_roots, "filesystem.writable_roots");
-  validate_paths(normalized.filesystem.protected_read_only_paths,
-    "filesystem.protected_read_only_paths");
+  validate_paths(
+    normalized.filesystem.protected_read_only_paths, "filesystem.protected_read_only_paths");
   validate_paths(normalized.filesystem.denied_paths, "filesystem.denied_paths");
   if (!blockers.empty()) {
     return { .error = sandbox::sandbox_compile_error::unsupported_policy,
@@ -188,7 +196,8 @@ sandbox::sandbox_compile_result compile_macos_restricted_process_sandbox_policy(
   }
 
   auto add_unique = [](auto& paths, const auto& path) {
-    if (std::find(paths.begin(), paths.end(), path) == paths.end()) paths.push_back(path);
+    if (std::find(paths.begin(), paths.end(), path) == paths.end())
+      paths.push_back(path);
   };
   add_unique(normalized.filesystem.readable_roots, config.python_interpreter);
   add_unique(normalized.filesystem.writable_roots, config.fallback_workdir);
@@ -198,9 +207,10 @@ sandbox::sandbox_compile_result compile_macos_restricted_process_sandbox_policy(
   config.inherit_parent_environment = normalized.environment.inherit_parent;
 
   auto profile = build_profile(normalized);
-  return { .plan = std::shared_ptr<const sandbox::sandbox_plan>(
-             new macos_restricted_process_sandbox_plan(std::move(normalized),
-               backend.enforcement, std::move(config), std::move(profile))) };
+  return {
+    .plan = std::shared_ptr<const sandbox::sandbox_plan>(new macos_restricted_process_sandbox_plan(
+      std::move(normalized), backend.enforcement, std::move(config), std::move(profile)))
+  };
 }
 
 std::shared_ptr<const macos_restricted_process_sandbox_plan>

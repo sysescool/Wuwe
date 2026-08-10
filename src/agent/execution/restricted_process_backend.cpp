@@ -360,7 +360,8 @@ restricted_process_backend_creation create_restricted_process_backend(
   if (native->format_version() !=
       detail::macos_restricted_process_sandbox_plan::current_format_version) {
     return { .error = restricted_process_backend_creation_error::stale_plan,
-      .message = "sandbox plan format is stale", .blockers = { "stale_sandbox_plan" } };
+      .message = "sandbox plan format is stale",
+      .blockers = { "stale_sandbox_plan" } };
   }
   return { .backend = std::make_unique<restricted_process_backend>(std::move(native)) };
 #else

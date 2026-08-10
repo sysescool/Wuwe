@@ -6,8 +6,8 @@
 #include <cerrno>
 #include <climits>
 #include <cstring>
-#include <map>
 #include <limits>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
@@ -26,8 +26,8 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <pthread.h>
-#include <sys/types.h>
 #include <sys/resource.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 extern char** environ;
@@ -698,7 +698,8 @@ process_result run_posix(const process_request& request, const local_process_bac
     ::close(stderr_pipe[0]);
     ::close(launch_pipe[0]);
     const auto set_limit = [&](int resource, std::uint64_t value) {
-      if (value == 0) return true;
+      if (value == 0)
+        return true;
       const auto maximum = static_cast<std::uint64_t>((std::numeric_limits<rlim_t>::max)());
       if (value > maximum) {
         errno = EOVERFLOW;
@@ -708,13 +709,11 @@ process_result run_posix(const process_request& request, const local_process_bac
       return ::setrlimit(resource, &limit) == 0;
     };
     const auto cpu_ms = request.limits.max_cpu_time.count();
-    const auto cpu_seconds = cpu_ms > 0
-                               ? static_cast<std::uint64_t>(cpu_ms / 1000) +
-                                   (cpu_ms % 1000 == 0 ? 0U : 1U)
-                               : 0;
-    if ((config.use_process_tree && ::setsid() < 0) ||
-        !set_limit(RLIMIT_CPU, cpu_seconds) || ::dup2(stdin_pipe[0], STDIN_FILENO) < 0 ||
-        ::dup2(stdout_pipe[1], STDOUT_FILENO) < 0 || ::dup2(stderr_pipe[1], STDERR_FILENO) < 0 ||
+    const auto cpu_seconds =
+      cpu_ms > 0 ? static_cast<std::uint64_t>(cpu_ms / 1000) + (cpu_ms % 1000 == 0 ? 0U : 1U) : 0;
+    if ((config.use_process_tree && ::setsid() < 0) || !set_limit(RLIMIT_CPU, cpu_seconds) ||
+        ::dup2(stdin_pipe[0], STDIN_FILENO) < 0 || ::dup2(stdout_pipe[1], STDOUT_FILENO) < 0 ||
+        ::dup2(stderr_pipe[1], STDERR_FILENO) < 0 ||
         (!request.workdir.empty() && ::chdir(request.workdir.c_str()) != 0)) {
       report_launch_error_and_exit(launch_pipe[1], errno);
     }
@@ -724,7 +723,8 @@ process_result run_posix(const process_request& request, const local_process_bac
     const auto descriptor_limit = ::sysconf(_SC_OPEN_MAX);
     const auto close_until = descriptor_limit > 0 ? descriptor_limit : 1024;
     for (long descriptor = STDERR_FILENO + 1; descriptor < close_until; ++descriptor) {
-      if (descriptor != launch_pipe[1]) ::close(static_cast<int>(descriptor));
+      if (descriptor != launch_pipe[1])
+        ::close(static_cast<int>(descriptor));
     }
     ::execve(request.executable.c_str(), argv.data(), envp.data());
     report_launch_error_and_exit(launch_pipe[1], errno);

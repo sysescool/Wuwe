@@ -60,7 +60,8 @@ bool path_within(const std::filesystem::path& root, const std::filesystem::path&
 bool valid_environment(const std::map<std::string, std::string>& environment) {
   constexpr std::size_t max_entries = 256;
   constexpr std::size_t max_bytes = 64 * 1024;
-  if (environment.size() > max_entries) return false;
+  if (environment.size() > max_entries)
+    return false;
   std::size_t total = 0;
   for (const auto& [name, value] : environment) {
     if (name.empty() || name.find('=') != std::string::npos ||
@@ -70,7 +71,8 @@ bool valid_environment(const std::map<std::string, std::string>& environment) {
         value.size() > max_bytes - (std::min)(total + name.size(), max_bytes))
       return false;
     total += name.size() + value.size() + 2;
-    if (total > max_bytes) return false;
+    if (total > max_bytes)
+      return false;
   }
   return true;
 }
@@ -95,20 +97,23 @@ execution_result run_macos_restricted_execution_plan(
   auto workdir = request.workdir.empty() ? config.fallback_workdir : request.workdir;
   std::error_code error;
   workdir = std::filesystem::canonical(workdir, error);
-  if (error || std::none_of(config.writable_roots.begin(), config.writable_roots.end(),
+  if (error || std::none_of(config.writable_roots.begin(),
+                 config.writable_roots.end(),
                  [&](const auto& root) { return path_within(root, workdir); })) {
     return { .termination_reason = execution_termination_reason::policy_denied,
       .error_message = "working directory is outside writable sandbox roots" };
   }
 
   std::map<std::string, std::string> environment = config.base_environment;
-  for (const auto& [name, value] : request.env) environment.insert_or_assign(name, value);
+  for (const auto& [name, value] : request.env)
+    environment.insert_or_assign(name, value);
   if (!valid_environment(environment))
     return { .termination_reason = execution_termination_reason::policy_denied,
       .error_message = "execution environment is invalid or exceeds macOS sandbox limits" };
   std::vector<std::string> arguments { "-p", plan->seatbelt_profile(), "/usr/bin/env", "-i" };
   arguments.reserve(arguments.size() + environment.size() + 3);
-  for (const auto& [name, value] : environment) arguments.push_back(name + "=" + value);
+  for (const auto& [name, value] : environment)
+    arguments.push_back(name + "=" + value);
   arguments.push_back(config.python_interpreter.string());
   arguments.push_back("-c");
   arguments.push_back(request.code);
