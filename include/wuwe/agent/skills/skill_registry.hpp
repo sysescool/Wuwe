@@ -1,7 +1,6 @@
 #ifndef WUWE_AGENT_SKILLS_SKILL_REGISTRY_HPP
 #define WUWE_AGENT_SKILLS_SKILL_REGISTRY_HPP
 
-#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
@@ -73,7 +72,7 @@ public:
 
 private:
   mutable std::mutex write_mutex_;
-  std::atomic<std::shared_ptr<const skill_registry_snapshot::package_map>> packages_;
+  std::shared_ptr<const skill_registry_snapshot::package_map> packages_;
 };
 
 } // namespace wuwe::agent::skills

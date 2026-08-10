@@ -194,10 +194,10 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - macos-14
           - macos-15
           - macos-26
     env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
 
     steps:
@@ -216,6 +216,11 @@ jobs:
 
       - name: Read package version
         run: echo "WUWE_VERSION=$(tr -d '\r\n' < VERSION)" >> "$GITHUB_ENV"
+
+      - name: Verify Xcode toolchain
+        run: |
+          xcodebuild -version
+          clang++ --version
 
       - name: Configure OpenSSL and SQLite release profile
         run: cmake --preset macos-arm64-vcpkg -DWUWE_ENABLE_STRICT_WARNINGS=ON
