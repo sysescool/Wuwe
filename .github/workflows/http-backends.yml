@@ -229,7 +229,9 @@ jobs:
         run: cmake --build --preset macos-arm64-vcpkg-release
 
       - name: Test
-        run: ctest --preset macos-arm64-vcpkg-release
+        run: >-
+          env PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+          ctest --preset macos-arm64-vcpkg-release
 
       - name: Install SDK
         if: matrix.os == 'macos-15'
