@@ -244,16 +244,19 @@ void applies_deterministic_ties_thresholds_and_custom_selection() {
 }
 
 void timeout_and_cancellation_return_promptly_and_keep_detached_state_alive() {
-  std::atomic<bool> release { false };
-  std::atomic<bool> finished { false };
+  struct detached_probe_state {
+    std::atomic<bool> release { false };
+    std::atomic<bool> finished { false };
+  };
+  auto detached_probe = std::make_shared<detached_probe_state>();
   reasoning::best_of_n_result timed;
   {
     reasoning::best_of_n_runner runner({
       .generator =
-        [&](const reasoning::reasoning_request&, const reasoning::best_of_n_context&) {
-          while (!release)
+        [detached_probe](const reasoning::reasoning_request&, const reasoning::best_of_n_context&) {
+          while (!detached_probe->release)
             std::this_thread::sleep_for(1ms);
-          finished = true;
+          detached_probe->finished = true;
           return successful_result("late");
         },
       .scorer =
@@ -288,8 +291,8 @@ void timeout_and_cancellation_return_promptly_and_keep_detached_state_alive() {
             timed.outstanding_reserved_usage.cost_usd == 0.25 &&
             timed.budget_accounted_usage.model_calls == 1,
     "timeout reports detached and unscheduled candidates explicitly");
-  release = true;
-  while (!finished)
+  detached_probe->release = true;
+  while (!detached_probe->finished)
     std::this_thread::sleep_for(1ms);
 
   std::stop_source stop_source;
@@ -315,11 +318,12 @@ void timeout_and_cancellation_return_promptly_and_keep_detached_state_alive() {
             cancelled.skipped_count == 2,
     "pre-requested cancellation prevents candidate generation");
 
-  std::atomic<bool> async_entered { false };
+  auto async_entered = std::make_shared<std::atomic<bool>>(false);
   reasoning::best_of_n_runner async_runner({
     .generator =
-      [&](const reasoning::reasoning_request&, const reasoning::best_of_n_context& context) {
-        async_entered = true;
+      [async_entered](
+        const reasoning::reasoning_request&, const reasoning::best_of_n_context& context) {
+        *async_entered = true;
         while (!context.cancellation_requested()) {
           std::this_thread::sleep_for(1ms);
         }
@@ -333,7 +337,7 @@ void timeout_and_cancellation_return_promptly_and_keep_detached_state_alive() {
       },
   });
   auto asynchronous = async_runner.run_async({ .input = "async cancellation" });
-  while (!async_entered)
+  while (!*async_entered)
     std::this_thread::sleep_for(1ms);
   asynchronous.request_stop();
   const auto async_cancelled = asynchronous.get();
