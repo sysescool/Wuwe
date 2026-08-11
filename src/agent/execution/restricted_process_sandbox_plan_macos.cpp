@@ -76,6 +76,19 @@ bool validate_bound_path(const std::filesystem::path& path) {
   return ::lstat(path.c_str(), &info) == 0 && !S_ISLNK(info.st_mode);
 }
 
+std::filesystem::path python_framework_version_root(const std::filesystem::path& interpreter) {
+  const auto bin = interpreter.parent_path();
+  const auto version_root = bin.parent_path();
+  const auto versions = version_root.parent_path();
+  const auto framework = versions.parent_path();
+  const auto executable_name = interpreter.filename().string();
+  if (executable_name.rfind("python", 0) != 0 || bin.filename() != "bin" ||
+      versions.filename() != "Versions" || framework.extension() != ".framework") {
+    return {};
+  }
+  return version_root;
+}
+
 void append_subpath_rules(std::ostringstream& profile, std::string_view operation,
   const std::vector<std::filesystem::path>& paths) {
   for (const auto& path : paths) {
@@ -167,6 +180,9 @@ sandbox::sandbox_compile_result compile_macos_restricted_process_sandbox_policy(
   config.python_interpreter = resolve_executable(config.python_interpreter);
   if (config.python_interpreter.empty())
     blockers.emplace_back("python_interpreter_unavailable");
+  const auto python_runtime_root = python_framework_version_root(config.python_interpreter);
+  if (!python_runtime_root.empty() && !validate_bound_path(python_runtime_root))
+    blockers.emplace_back("python_framework_runtime_unavailable");
 
   if (config.fallback_workdir.empty())
     config.fallback_workdir = std::filesystem::temp_directory_path() / "wuwe-restricted";
@@ -200,6 +216,8 @@ sandbox::sandbox_compile_result compile_macos_restricted_process_sandbox_policy(
       paths.push_back(path);
   };
   add_unique(normalized.filesystem.readable_roots, config.python_interpreter);
+  if (!python_runtime_root.empty())
+    add_unique(normalized.filesystem.readable_roots, python_runtime_root);
   add_unique(normalized.filesystem.writable_roots, config.fallback_workdir);
   config.readable_roots = normalized.filesystem.readable_roots;
   config.writable_roots = normalized.filesystem.writable_roots;
